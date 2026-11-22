@@ -10,7 +10,7 @@ import fi.iki.elonen.NanoHTTPD
  * no internet needed. The phone opens http://<tv-ip>:<port>/?code=<6 digits>
  * (QR code on the Télécommande screen) and gets the remote page.
  *
- * Endpoints (all /api/* calls require the pairing code, as a `code` query
+ * Endpoints (all /api/... calls require the pairing code, as a `code` query
  * parameter or an `X-Remote-Code` header):
  * - GET  /            → the remote page (assets/remote.html)
  * - GET  /api/status  → {"playing":bool,"kind":"live|film|...","title":"..."}

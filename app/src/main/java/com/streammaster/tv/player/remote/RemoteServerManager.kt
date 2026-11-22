@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * `remoteEnabled` setting: when enabled the server starts on the first free
  * port in 8080..8090 and keeps running while the app process is alive; when
  * disabled it stops. The pairing code comes from settings (`remoteCode`,
- * 6 digits); the server refuses every /api/* call without it.
+ * 6 digits); the server refuses every /api/... call without it.
  *
  * Limits (v1): local Wi-Fi only (the phone and the TV must share the same
  * network), and the server stops when the app process dies — there is no
