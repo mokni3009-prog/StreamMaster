@@ -57,7 +57,7 @@ fun createExoPlayer(
     networkStack: NetworkStack,
     initialBitrateBps: Long?
 ): ExoPlayer? {
-    // Media3 minSdk is 23 — on API 21–22 VLC is the primary (and only) engine.
+    // Media3 minSdk is 23 (app minSdk is 23 too) — this is just a safety guard.
     if (Build.VERSION.SDK_INT < 23) return null
 
     val renderersFactory = DefaultRenderersFactory(context)
@@ -81,11 +81,7 @@ fun createExoPlayer(
         else -> BitrateStore.DEFAULT_INITIAL_BITRATE
     }
     val bandwidthMeter = DefaultBandwidthMeter.Builder(context)
-        .setInitialBitrateSupplier( // B3: seed from the previous session.
-            object : DefaultBandwidthMeter.InitialBitrateSupplier {
-                override fun getInitialBitrateEstimate(): Long = initialBitrate
-            }
-        )
+        .setInitialBitrateEstimate(initialBitrate) // B3: seed from the previous session (1.9.0 API; the 1.11.0 supplier variant does the same).
         .build()
 
     // Max speed (2026-11-22): a bigger prefetch buffer (30s min / 90s max)

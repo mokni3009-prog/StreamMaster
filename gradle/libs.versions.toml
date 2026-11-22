@@ -1,20 +1,22 @@
 # Stream Master — version catalog (CONTRACT §2).
 #
 # Verified 2026-11-19 against Maven Central / Google Maven:
-# - media3 1.11.1 exists on Google Maven.
+# - media3 pinned to 1.9.0 (2026-11-22): 1.10.0/1.11.1 require compileSdk 36
+#   (AAR minCompileSdk=36, verified from the AAR metadata); 1.9.0 is the
+#   newest with minCompileSdk 35. Its HLS AAR still declares minSdk 23.
 # - libvlc-all 3.0.24 does NOT exist: the artifact has no 3.0.x at all
 #   (earliest published is 3.1.0; "3.0.24" is the VLC Android *app* version,
 #   not the libvlc-all *library* version). Newest stable 3.x is 3.7.7
 #   (POM returns 200). libVLC 3.x API is stable, so the code's API usage
 #   (LibVLC, MediaPlayer, VLCVideoLayout) is unaffected.
 # - cronet-embedded is NOT on Maven Central; it resolves from Google Maven.
-#   Pinned to 143.7445.0 — the exact Chromium line Media3 1.11.1's
-#   media3-datasource-cronet was built against (its cronet-api dependency).
+#   Pinned to 143.7445.0 — kept as the app's bundled network stack
+#   (independent of the media3 version; CronetDataSource takes any CronetEngine).
 [versions]
 agp = "8.6.1"
 kotlin = "2.0.21"
 composeBom = "2024.09.00"
-media3 = "1.11.1"
+media3 = "1.9.0"
 libvlc = "3.7.7"
 room = "2.6.1"
 datastore = "1.1.1"
