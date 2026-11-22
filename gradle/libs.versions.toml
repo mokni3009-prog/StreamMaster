@@ -11,7 +11,7 @@
 #   Pinned to 143.7445.0 — the exact Chromium line Media3 1.11.1's
 #   media3-datasource-cronet was built against (its cronet-api dependency).
 [versions]
-agp = "8.5.2"
+agp = "8.6.1"
 kotlin = "2.0.21"
 composeBom = "2024.09.00"
 media3 = "1.11.1"
