@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stream Master theme (CONTRACT §2: MainActivity uses @style/Theme.StreamMaster).
+         Literal gold-identity colours (SPEC §9) — no @color refs, so this file
+         stands alone without a colors.xml owned by another agent. -->
+    <style name="Theme.StreamMaster" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#080603</item>
+        <item name="android:colorBackground">#080603</item>
+        <item name="android:textColor">#FFFDF4</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

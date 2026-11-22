@@ -1,0 +1,82 @@
+package com.streammaster.tv.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.streammaster.tv.data.model.Bouquet
+import com.streammaster.tv.data.model.BouquetKind
+import com.streammaster.tv.data.model.Channel
+import com.streammaster.tv.data.model.EpgProgram
+import com.streammaster.tv.data.model.KidsFilter
+import com.streammaster.tv.data.repository.ContentRepository
+import com.streammaster.tv.data.repository.SettingsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import javax.inject.Inject
+
+data class LiveUiState(
+    val bouquets: List<Bouquet> = emptyList(),
+    val channels: List<Channel> = emptyList(),
+    val selectedBouquetId: String? = null,
+    val selectedChannel: Channel? = null,
+    val nowProgram: EpgProgram? = null,
+    val nextPrograms: List<EpgProgram> = emptyList()
+)
+
+@HiltViewModel
+class LiveViewModel @Inject constructor(
+    private val contentRepository: ContentRepository,
+    settingsRepository: SettingsRepository
+) : ViewModel() {
+    private val _selectedBouquetId = MutableStateFlow<String?>(null)
+    private val _selectedChannelId = MutableStateFlow<String?>(null)
+    val selectedBouquetId: StateFlow<String?> = _selectedBouquetId.asStateFlow()
+    val selectedChannelId: StateFlow<String?> = _selectedChannelId.asStateFlow()
+
+    val state: StateFlow<LiveUiState> = combine(
+        contentRepository.observeBouquets(BouquetKind.LIVE),
+        contentRepository.observeChannels(),
+        settingsRepository.settings,
+        _selectedBouquetId, _selectedChannelId
+    ) { bouquets, channels, settings, bouquetId, channelId ->
+        // Kids mode (2026-11-22): only kid-named bouquets/channels.
+        val kidFilteredBouquets = if (settings.kidsMode) bouquets.filter { KidsFilter.isKidCategory(it.name) } else bouquets
+        val kidFilteredChannels = if (settings.kidsMode) channels.filter { KidsFilter.isKidCategory(it.category) } else channels
+        val visibleBouquets = kidFilteredBouquets.filter { !it.hidden }
+        val bouquet = visibleBouquets.firstOrNull { it.id == bouquetId } ?: visibleBouquets.firstOrNull()
+        val bouquetChannels = kidFilteredChannels.filter { it.bouquetId == bouquet?.id && !it.hidden }
+        val channel = bouquetChannels.firstOrNull { it.id == channelId } ?: bouquetChannels.firstOrNull()
+        LiveUiState(
+            bouquets = visibleBouquets, channels = bouquetChannels,
+            selectedBouquetId = bouquet?.id, selectedChannel = channel
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LiveUiState())
+
+    /** EPG (now + next) for the currently selected channel. */
+    val epg: StateFlow<List<EpgProgram>> = _selectedChannelId.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList())
+        else contentRepository.observeEpg(id, System.currentTimeMillis(), System.currentTimeMillis() + 6 * 60 * 60 * 1000L)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun selectBouquet(id: String) {
+        _selectedBouquetId.value = id
+        _selectedChannelId.value = null
+    }
+
+    fun selectChannel(id: String) { _selectedChannelId.value = id }
+
+    /** Digit entry: custom number first, then the built-in server number. */
+    suspend fun resolveChannelNumber(digits: String): Channel? {
+        val n = digits.toIntOrNull() ?: return null
+        val list = kotlinx.coroutines.flow.first(contentRepository.observeChannels())
+        return list.firstOrNull { it.customNum == n }
+            ?: list.firstOrNull { it.num.trimStart('0').toIntOrNull() == n }
+    }
+}
