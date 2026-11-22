@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.source.DefaultPreloadManager
 import androidx.media3.exoplayer.source.MediaSource
 import com.streammaster.tv.util.DeviceCaps
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
