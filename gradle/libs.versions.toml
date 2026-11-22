@@ -4,10 +4,12 @@
 # - media3 pinned to 1.9.0 (2026-11-22): 1.10.0/1.11.1 require compileSdk 36
 #   (AAR minCompileSdk=36, verified from the AAR metadata); 1.9.0 is the
 #   newest with minCompileSdk 35. Its HLS AAR still declares minSdk 23.
-# - libvlc-all 3.0.24 does NOT exist: the artifact has no 3.0.x at all
-#   (earliest published is 3.1.0; "3.0.24" is the VLC Android *app* version,
-#   not the libvlc-all *library* version). Newest stable 3.x is 3.7.7
-#   (POM returns 200). libVLC 3.x API is stable, so the code's API usage
+# - libvlc-all pinned to 3.7.0 (2026-11-22): 3.7.6/3.7.7 require
+#   compileSdk 36 (AAR minCompileSdk=36, verified from the AAR metadata);
+#   3.7.0 is the newest verified with no compileSdk requirement
+#   (minCompileSdk=1, minSdk 17). "3.0.24" does NOT exist as a library
+#   version (earliest published is 3.1.0; 3.0.24 is the VLC Android *app*
+#   version). libVLC 3.x API is stable, so the code's API usage
 #   (LibVLC, MediaPlayer, VLCVideoLayout) is unaffected.
 # - cronet-embedded is NOT on Maven Central; it resolves from Google Maven.
 #   Pinned to 143.7445.0 — kept as the app's bundled network stack
@@ -17,7 +19,7 @@ agp = "8.6.1"
 kotlin = "2.0.21"
 composeBom = "2024.09.00"
 media3 = "1.9.0"
-libvlc = "3.7.7"
+libvlc = "3.7.0"
 room = "2.6.1"
 datastore = "1.1.1"
 workmanager = "2.9.0"
@@ -50,7 +52,7 @@ media3-session = { group = "androidx.media3", name = "media3-session", version.r
 media3-datasource-okhttp = { group = "androidx.media3", name = "media3-datasource-okhttp", version.ref = "media3" }
 media3-datasource-cronet = { group = "androidx.media3", name = "media3-datasource-cronet", version.ref = "media3" }
 media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
-# libVLC — primary engine on API 21-22, automatic fallback on API >= 23.
+# libVLC — automatic fallback engine (ExoPlayer is primary on all supported devices, minSdk 23).
 libvlc-all = { group = "org.videolan.android", name = "libvlc-all", version.ref = "libvlc" }
 # Compose for TV + Compose.
 androidx-tv-material = { group = "androidx.tv", name = "tv-material", version.ref = "tvMaterial" }
