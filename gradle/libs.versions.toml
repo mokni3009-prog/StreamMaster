@@ -4,6 +4,10 @@
 # - media3 pinned to 1.9.0 (2026-11-22): 1.10.0/1.11.1 require compileSdk 36
 #   (AAR minCompileSdk=36, verified from the AAR metadata); 1.9.0 is the
 #   newest with minCompileSdk 35. Its HLS AAR still declares minSdk 23.
+# - Kotlin pinned to 2.1.20 (2026-11-22): KAPT on 2.0.21 cannot read
+#   Kotlin metadata 2.1.0 from 2025 libraries ("Provided Metadata instance
+#   has version 2.1.0"); 2.1.20's KAPT reads it. The Compose Compiler
+#   follows the Kotlin version automatically (kotlin.compose plugin).
 # - libvlc-all pinned to 3.7.0 (2026-11-22): 3.7.6/3.7.7 require
 #   compileSdk 36 (AAR minCompileSdk=36, verified from the AAR metadata);
 #   3.7.0 is the newest verified with no compileSdk requirement
@@ -16,7 +20,7 @@
 #   (independent of the media3 version; CronetDataSource takes any CronetEngine).
 [versions]
 agp = "8.6.1"
-kotlin = "2.0.21"
+kotlin = "2.1.20"
 composeBom = "2024.09.00"
 media3 = "1.9.0"
 libvlc = "3.7.0"
