@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.streammaster.tv"
-        minSdk = 21
+        minSdk = 23
         targetSdk = 35
         versionCode = 120
         versionName = "1.2.0"
