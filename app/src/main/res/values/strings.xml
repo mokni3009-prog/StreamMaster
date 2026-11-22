@@ -175,7 +175,7 @@
     <string name="epg_24h">24 heures</string>
     <string name="epg_48h">48 heures</string>
     <string name="epg_7d">7 jours</string>
-    <string name="epg_today">Aujourd'hui</string>
+    <string name="epg_today">Aujourd\'hui</string>
     <string name="epg_tomorrow">Demain</string>
     <string name="epg_12h">12 heures</string>
     <string name="epg_off">Désactivé</string>
