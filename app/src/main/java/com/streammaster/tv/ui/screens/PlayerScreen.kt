@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
@@ -91,6 +93,12 @@ fun PlayerScreen(
 ) {
     val ui by viewModel.ui.collectAsState()
     val playback by viewModel.playbackState.collectAsState()
+    // Initial focus: the play/pause control, (re-)requested whenever the
+    // controls overlay appears, so the D-pad moves from the first press.
+    val firstControlFocus = remember { FocusRequester() }
+    LaunchedEffect(ui.controlsVisible) {
+        if (ui.controlsVisible) firstControlFocus.requestFocus()
+    }
     val position by viewModel.positionMs.collectAsState()
     val duration by viewModel.durationMs.collectAsState()
     val recState by viewModel.recordingState.collectAsState()
@@ -536,7 +544,7 @@ private fun PlayerControls(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            PlayerButton(if (playback.isPlaying) "⏸" else "▶") { viewModel.togglePlayPause() }
+            PlayerButton(if (playback.isPlaying) "⏸" else "▶", Modifier.focusRequester(firstControlFocus)) { viewModel.togglePlayPause() }
             PlayerButton("−10s") { viewModel.skip(-10_000) }
             PlayerButton("+10s") { viewModel.skip(10_000) }
             PlayerButton(stringResource(R.string.previous_channel)) { viewModel.previousChannel() }
@@ -582,9 +590,9 @@ private fun PlayerControls(
 }
 
 @Composable
-private fun PlayerButton(text: String, onClick: () -> Unit) {
+private fun PlayerButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(CardSurface)
+        modifier = modifier.clip(RoundedCornerShape(20.dp)).background(CardSurface)
             .tvFocus().clickable { onClick() }.padding(horizontal = 16.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) { Text(text = text, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldWhite) }

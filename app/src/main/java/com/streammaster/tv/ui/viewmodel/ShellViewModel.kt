@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.streammaster.tv.data.matchcenter.GoalAlert
 import com.streammaster.tv.data.matchcenter.GoalAlertBus
 import com.streammaster.tv.data.model.Playlist
+import com.streammaster.tv.data.repository.ContentRepository
 import com.streammaster.tv.data.repository.PlaylistRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import com.streammaster.tv.player.remote.RemoteBus
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -26,7 +28,8 @@ class ShellViewModel @Inject constructor(
     playlistRepository: PlaylistRepository,
     private val settingsRepository: SettingsRepository,
     private val remoteBus: RemoteBus,
-    goalAlertBus: GoalAlertBus
+    goalAlertBus: GoalAlertBus,
+    contentRepository: ContentRepository
 ) : ViewModel() {
     /** Phone remote navigation commands (2026-11-22), handled by Shell. */
     val remoteCommands: SharedFlow<RemoteCommand> = remoteBus.commands
@@ -36,6 +39,27 @@ class ShellViewModel @Inject constructor(
     val activePlaylist: StateFlow<Playlist?> = playlistRepository.observePlaylists()
         .map { list -> list.firstOrNull { it.isActive } ?: list.firstOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /** Sidebar count badges (prototype): content counts + favourites + playlists. */
+    val channelCount: StateFlow<Int> = contentRepository.observeChannels()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val filmCount: StateFlow<Int> = contentRepository.observeFilms()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val seriesCount: StateFlow<Int> = contentRepository.observeSeries()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val favoriteCount: StateFlow<Int> = combine(
+        contentRepository.observeChannels(),
+        contentRepository.observeFilms(),
+        contentRepository.observeSeries()
+    ) { channels, films, series ->
+        channels.count { it.isFavorite } + films.count { it.isFavorite } + series.count { it.isFavorite }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val playlistCount: StateFlow<Int> = playlistRepository.observePlaylists()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     /** Kids mode hides the admin sidebar items (2026-11-22). */
     val kidsMode: StateFlow<Boolean> = settingsRepository.settings

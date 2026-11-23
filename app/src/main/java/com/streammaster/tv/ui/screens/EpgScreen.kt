@@ -22,9 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +65,9 @@ fun EpgScreen(
     viewModel: EpgViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    // Initial focus: the first day tab.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     val scheduled by viewModel.scheduled.collectAsState()
     // Collecting the catalog starts its load; enrichmentFor() reads its value.
     val catalog by viewModel.catalog.collectAsState()
@@ -80,6 +86,7 @@ fun EpgScreen(
                 val selected = offset == state.selectedDayOffset
                 Box(
                     modifier = Modifier
+                        .then(if (offset == 0) Modifier.focusRequester(firstFocus) else Modifier)
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (selected) Gold else CardSurface)
                         .tvFocus()

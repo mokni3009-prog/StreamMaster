@@ -14,9 +14,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -46,6 +50,9 @@ fun RemoteScreen(
     val port by viewModel.port.collectAsState()
     val url by viewModel.pairingUrl.collectAsState()
     val qr by viewModel.qrBitmap.collectAsState()
+    // Initial focus: the enable/disable button (first focusable).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -54,7 +61,8 @@ fun RemoteScreen(
                 fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
             )
             GoldButton(
-                text = stringResource(if (enabled) R.string.remote_disable else R.string.remote_enable)
+                text = stringResource(if (enabled) R.string.remote_disable else R.string.remote_enable),
+                modifier = Modifier.focusRequester(firstFocus)
             ) { viewModel.setEnabled(!enabled) }
         }
         if (!enabled) {

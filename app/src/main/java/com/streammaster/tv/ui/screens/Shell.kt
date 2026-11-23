@@ -27,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,12 +46,16 @@ import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.CardSurface
 import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
+import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.ProfilesViewModel
 import com.streammaster.tv.ui.viewmodel.ShellViewModel
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Shell — CONTRACT §6: dark sidebar with gold active highlight, profile box
@@ -91,6 +97,16 @@ fun Shell(
     val activePlaylist by viewModel.activePlaylist.collectAsState()
     val kidsMode by viewModel.kidsMode.collectAsState()
     val kidsPinError by viewModel.kidsPinError.collectAsState()
+    // Sidebar count badges (prototype): content counts + favourites + playlists.
+    val channelCount by viewModel.channelCount.collectAsState()
+    val filmCount by viewModel.filmCount.collectAsState()
+    val seriesCount by viewModel.seriesCount.collectAsState()
+    val favoriteCount by viewModel.favoriteCount.collectAsState()
+    val playlistCount by viewModel.playlistCount.collectAsState()
+    // Initial focus (2026-11-23): the first sidebar item, so the D-pad
+    // moves from the first press.
+    val firstSidebarFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstSidebarFocus.requestFocus() }
     val profilesViewModel: ProfilesViewModel = hiltViewModel()
     val profiles by profilesViewModel.profiles.collectAsState()
     val activeProfileId by profilesViewModel.activeProfileId.collectAsState()
@@ -164,13 +180,43 @@ fun Shell(
                     color = Gold,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                visibleItems.forEach { item ->
+                // Prototype sidebar section label: "Navigation".
+                Text(
+                    text = stringResource(R.string.nav_section_navigation),
+                    fontSize = 15.sp,
+                    color = TextMuted,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+                )
+                visibleItems.forEachIndexed { index, item ->
+                    // Prototype sidebar section label: "Bibliothèque" above Favoris.
+                    if (item.route == Routes.FAVORIS) {
+                        Text(
+                            text = stringResource(R.string.nav_section_library),
+                            fontSize = 15.sp,
+                            color = TextMuted,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                        )
+                    }
                     val active = item.route == currentRoute
+                    // Prototype count badges (12K / 8K / 2K / 6 / 2/10).
+                    val countText: String? = when (item.route) {
+                        Routes.LIVE -> if (channelCount > 0) compactCount(channelCount) else null
+                        Routes.FILMS -> if (filmCount > 0) compactCount(filmCount) else null
+                        Routes.SERIES -> if (seriesCount > 0) compactCount(seriesCount) else null
+                        Routes.FAVORIS -> if (favoriteCount > 0) favoriteCount.toString() else null
+                        Routes.PLAYLISTS -> if (playlistCount > 0) "$playlistCount/10" else null
+                        else -> null
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
-                            .background(if (active) Gold else androidx.compose.ui.graphics.Color.Transparent)
+                            .then(
+                                // SPEC §9: the active item uses the gold gradient.
+                                if (active) Modifier.background(GoldGradient)
+                                else Modifier.background(androidx.compose.ui.graphics.Color.Transparent)
+                            )
+                            .then(if (index == 0) Modifier.focusRequester(firstSidebarFocus) else Modifier)
                             .tvFocus()
                             .clickable {
                                 if (item.route != currentRoute) {
@@ -194,6 +240,14 @@ fun Shell(
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                             color = if (active) GoldDeep else GoldWhite
                         )
+                        if (countText != null) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text(
+                                text = countText, fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (active) GoldDeep else Gold
+                            )
+                        }
                     }
                 }
                 if (kidsMode) {
@@ -235,8 +289,14 @@ fun Shell(
                     )
                 }
             }
-            // Content
-            Box(modifier = Modifier.weight(1f).fillMaxHeight().padding(28.dp)) { content() }
+            // Content + topbar (prototype header.topbar): search pill + live clock/date.
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                TopBar(
+                    navController = navController,
+                    modifier = Modifier.fillMaxWidth().padding(start = 28.dp, end = 28.dp, top = 20.dp)
+                )
+                Box(modifier = Modifier.weight(1f).padding(28.dp)) { content() }
+            }
         }
 
         if (profilePickerOpen) {
@@ -335,6 +395,63 @@ fun GoalAlertPopup(alert: GoalAlert, onDismiss: () -> Unit) {
             if (alert.leagueName.isNotBlank()) {
                 Text(text = alert.leagueName, fontSize = 15.sp, color = TextMuted)
             }
+        }
+    }
+}
+
+/** Prototype count format: 12450 → "12K", 8320 → "8K", 42 → "42". */
+private fun compactCount(n: Int): String = if (n >= 1000) "${n / 1000}K" else n.toString()
+
+/**
+ * Topbar (prototype header.topbar): search pill (opens Search) + live
+ * clock/date, refreshed every 30 s. The prototype's "Flux 4K Actif" and
+ * latency pills are NOT reproduced here: latency needs a ping measurement
+ * that does not exist yet.
+ */
+@Composable
+private fun TopBar(navController: NavHostController, modifier: Modifier = Modifier) {
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(30_000)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val dateFormat = remember { SimpleDateFormat("EEEE d MMMM", Locale.getDefault()) }
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(CardSurface)
+                .tvFocus()
+                .clickable { navController.navigate(Routes.SEARCH) }
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "⌕", fontSize = 20.sp, color = Gold,
+                modifier = Modifier.padding(end = 12.dp)
+            )
+            Text(
+                text = stringResource(R.string.search_hint),
+                fontSize = 17.sp, color = TextMuted
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = timeFormat.format(Date(nowMillis)),
+                fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GoldWhite
+            )
+            Text(
+                text = dateFormat.format(Date(nowMillis)),
+                fontSize = 14.sp, color = TextMuted
+            )
         }
     }
 }

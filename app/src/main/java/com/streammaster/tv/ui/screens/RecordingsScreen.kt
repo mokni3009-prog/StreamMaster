@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +64,14 @@ fun RecordingsScreen(
     }
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     val totalBytes = recordings.sumOf { it.sizeBytes }
+    // Initial focus: the Stop button while recording, else the first
+    // scheduled / rule / recorded row's first focusable element.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    val hasActiveRecording = recState is RecordingState.Active
+    val focusOnScheduled = !hasActiveRecording && scheduled.isNotEmpty()
+    val focusOnRule = !hasActiveRecording && !focusOnScheduled && seriesRules.isNotEmpty()
+    val focusOnRecording = !hasActiveRecording && !focusOnScheduled && !focusOnRule && recordings.isNotEmpty()
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -89,7 +99,7 @@ fun RecordingsScreen(
                     Text(text = "● REC ${formatDuration(elapsedS * 1000L)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
                     Text(text = active.recording.channelName, fontSize = 15.sp, color = TextMuted)
                 }
-                GoldButton(text = stringResource(R.string.record_stop)) { viewModel.stopRecording() }
+                GoldButton(text = stringResource(R.string.record_stop), modifier = if (hasActiveRecording) Modifier.focusRequester(firstFocus) else Modifier) { viewModel.stopRecording() }
             }
         }
 
@@ -100,7 +110,7 @@ fun RecordingsScreen(
                 fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
             )
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(scheduled) { rec ->
+                itemsIndexed(scheduled) { index, rec ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
@@ -128,7 +138,7 @@ fun RecordingsScreen(
                                 confirmDeleteId = null
                             }
                         } else {
-                            GhostButton(text = stringResource(R.string.cancel)) { confirmDeleteId = rec.id }
+                            GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnScheduled && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rec.id }
                         }
                     }
                 }
@@ -143,7 +153,7 @@ fun RecordingsScreen(
                 fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
             )
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(seriesRules) { rule ->
+                itemsIndexed(seriesRules) { index, rule ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
@@ -164,7 +174,7 @@ fun RecordingsScreen(
                                 confirmDeleteId = null
                             }
                         } else {
-                            GhostButton(text = stringResource(R.string.cancel)) { confirmDeleteId = rule.id }
+                            GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnRule && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rule.id }
                         }
                     }
                 }
@@ -175,11 +185,12 @@ fun RecordingsScreen(
             Text(text = stringResource(R.string.no_recordings), fontSize = 18.sp, color = TextMuted)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(recordings) { recording ->
+                itemsIndexed(recordings) { index, recording ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
+                            .then(if (focusOnRecording && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
                             .tvFocus()
                             .clickable {
                                 if (recording.status != RecordingStatus.RECORDING) {

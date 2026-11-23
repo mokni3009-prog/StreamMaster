@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,8 +18,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +34,7 @@ import com.streammaster.tv.R
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.CardSurface
+import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
@@ -48,9 +53,19 @@ fun HistoriqueScreen(
     val history by viewModel.history.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
     val dateFormat = SimpleDateFormat("dd/MM HH:mm", Locale.getDefault())
+    // Initial focus: the first history row (the "clear all" button above
+    // it is deliberately NOT the initial focus — it is destructive).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = stringResource(R.string.historique_title), fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite)
+            // Prototype header with count badge (#hist-count).
+            Text(
+                text = stringResource(R.string.historique_title) +
+                    if (history.isNotEmpty()) " (${history.size})" else "",
+                fontSize = 30.sp, fontWeight = FontWeight.Black,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite
+            )
             if (history.isNotEmpty()) {
                 GhostButton(text = stringResource(R.string.clear_all)) { confirmClear = true }
             }
@@ -66,11 +81,12 @@ fun HistoriqueScreen(
             Text(text = stringResource(R.string.historique_empty), fontSize = 18.sp, color = TextMuted)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(history.take(20)) { entry ->
+                itemsIndexed(history.take(20)) { index, entry ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
                             .tvFocus()
                             .clickable {
                                 when (entry.kind) {
@@ -80,9 +96,19 @@ fun HistoriqueScreen(
                                 }
                             }
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = entry.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+                        // Prototype row kind icons (same glyphs as the sidebar).
+                        val kindIcon = when (entry.kind) {
+                            ContentKind.LIVE -> "▶"
+                            ContentKind.FILM -> "▣"
+                            ContentKind.SERIES -> "▤"
+                        }
+                        Text(text = kindIcon, fontSize = 20.sp, color = Gold, modifier = Modifier.padding(end = 12.dp))
+                        Text(
+                            text = entry.title, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                            color = GoldWhite, modifier = Modifier.weight(1f)
+                        )
                         Text(text = dateFormat.format(Date(entry.timestampMillis)), fontSize = 15.sp, color = TextMuted)
                     }
                 }

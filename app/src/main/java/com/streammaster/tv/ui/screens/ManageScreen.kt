@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +59,9 @@ fun ManageScreen(
     viewModel: ManageViewModel = hiltViewModel()
 ) {
     val draft by viewModel.draft.collectAsState()
+    // Initial focus: the first tab (Chaînes TV).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     val context = LocalContext.current
     var renameTarget by remember { mutableStateOf<Pair<String, String>?>(null) } // id to kind ("bouquet"/"channel")
     var renameValue by remember { mutableStateOf("") }
@@ -95,7 +100,7 @@ fun ManageScreen(
             GoldButton(text = stringResource(R.string.save_changes)) { viewModel.save() }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SortPill(stringResource(R.string.nav_live), draft.kind == ManageKind.LIVE) { viewModel.setKind(ManageKind.LIVE) }
+            SortPill(stringResource(R.string.manage_tab_live), draft.kind == ManageKind.LIVE, Modifier.focusRequester(firstFocus)) { viewModel.setKind(ManageKind.LIVE) }
             SortPill(stringResource(R.string.stats_films), draft.kind == ManageKind.FILMS) { viewModel.setKind(ManageKind.FILMS) }
             SortPill(stringResource(R.string.stats_series), draft.kind == ManageKind.SERIES) { viewModel.setKind(ManageKind.SERIES) }
         }
@@ -137,9 +142,19 @@ fun ManageScreen(
                     keyboardTarget = "newBouquet"
                 }
             }
-            // Column 2 — items
+            // Column 2 — items (header follows the active tab, prototype).
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                Text(text = stringResource(R.string.channels), fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite, modifier = Modifier.padding(bottom = 10.dp))
+                Text(
+                    text = stringResource(
+                        when (draft.kind) {
+                            ManageKind.LIVE -> R.string.channels
+                            ManageKind.FILMS -> R.string.stats_films
+                            ManageKind.SERIES -> R.string.stats_series
+                        }
+                    ),
+                    fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(items) { (id, name, hidden) ->
                         val selected = id in selectedIds

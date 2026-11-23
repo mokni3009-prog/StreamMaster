@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
+import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
@@ -59,7 +60,11 @@ fun GoldButton(
         modifier = modifier
             .height(52.dp)
             .clip(RoundedCornerShape(20.dp))
-            .background(bg)
+            .then(
+                // SPEC §9: primary buttons use the gold gradient, not flat gold.
+                if (enabled && !outlined) Modifier.background(GoldGradient)
+                else Modifier.background(bg)
+            )
             .tvFocus()
             .clickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center

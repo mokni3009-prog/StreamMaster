@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -139,11 +141,15 @@ fun SettingsScreen(
         add("chooser" to label(R.string.external_chooser))
     }
 
+    // Initial focus (2026-11-23): the language row (first setting), so the
+    // remote (D-pad) moves from the first press.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Text(text = stringResource(R.string.settings_title), fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite, modifier = Modifier.padding(bottom = 8.dp))
         }
-        item { SettingRow(stringResource(R.string.language), langOptions.firstOrNull { it.first == draft.lang }?.second ?: draft.lang) { selector = "lang" } }
+        item { SettingRow(stringResource(R.string.language), langOptions.firstOrNull { it.first == draft.lang }?.second ?: draft.lang, Modifier.focusRequester(firstFocus)) { selector = "lang" } }
         item { SettingRow(stringResource(R.string.dns), dnsOptions.firstOrNull { it.first == draft.dns }?.second ?: draft.dns) { selector = "dns" } }
         if (draft.dns == "custom") {
             item { ReadOnlyField(stringResource(R.string.dns_custom), draft.dnsCustom) { keyboardTarget = "dnsCustom" } }
@@ -171,7 +177,11 @@ fun SettingsScreen(
                         fontSize = 15.sp, color = TextMuted
                     )
                 }
-                GoldButton(text = stringResource(R.string.set_pin)) { pinDialog = true }
+                GoldButton(
+                    text = stringResource(
+                        if (settings.pin.isNotEmpty()) R.string.change_pin else R.string.set_pin
+                    )
+                ) { pinDialog = true }
             }
         }
         item {
@@ -435,9 +445,9 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingRow(label: String, value: String, onClick: () -> Unit) {
+private fun SettingRow(label: String, value: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
             .background(com.streammaster.tv.ui.theme.CardSurface)
             .tvFocus()

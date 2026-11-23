@@ -143,7 +143,7 @@ interface EpisodeDao {
     suspend fun getAllForSeries(seriesId: String): List<EpisodeEntity>
 
     /** All episodes sharing one code (e.g. "S01E01") across series — used to
-     *  tell demo episodes apart from real Xtream episodes in getStreamUrls. */
+     *  resolve an episode code to its stored stream URL in getStreamUrls. */
     @Query("SELECT * FROM episodes WHERE code = :code")
     suspend fun getByCode(code: String): List<EpisodeEntity>
 

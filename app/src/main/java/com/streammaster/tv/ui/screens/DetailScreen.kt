@@ -19,8 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -56,6 +59,9 @@ fun DetailScreen(
     val state by viewModel.state.collectAsState()
     val isWatchLater by viewModel.isWatchLater.collectAsState()
     val context = LocalContext.current
+    // Initial focus: the Play button (first action).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     LaunchedEffect(kind, id) { viewModel.load(kind, id) }
     // One-shot download notice as a toast.
     LaunchedEffect(state.downloadNoticeRes) {
@@ -95,7 +101,7 @@ fun DetailScreen(
                         }
                         Text(text = description, fontSize = 18.sp, color = GoldWhite)
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            GoldButton(text = stringResource(R.string.detail_play)) {
+                            GoldButton(text = stringResource(R.string.detail_play), modifier = Modifier.focusRequester(firstFocus)) {
                                 navController.navigate(Routes.player(kind, id))
                             }
                             GhostButton(text = if (isFavorite) "♥ ${stringResource(R.string.favorite)}" else stringResource(R.string.favorite)) {

@@ -12,7 +12,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,10 +37,13 @@ fun SeriesScreen(
 ) {
     val series by viewModel.series.collectAsState()
     val sort by viewModel.sort.collectAsState()
+    // Initial focus: the first sort pill.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     Column(modifier = Modifier.fillMaxSize()) {
         Text(text = stringResource(R.string.series_title), fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite, modifier = Modifier.padding(bottom = 16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 20.dp)) {
-            SortPill(stringResource(R.string.sort_default), sort == SeriesSort.DEFAULT) { viewModel.setSort(SeriesSort.DEFAULT) }
+            SortPill(stringResource(R.string.sort_default), sort == SeriesSort.DEFAULT, Modifier.focusRequester(firstFocus)) { viewModel.setSort(SeriesSort.DEFAULT) }
             SortPill(stringResource(R.string.sort_rated), sort == SeriesSort.RATED) { viewModel.setSort(SeriesSort.RATED) }
             SortPill(stringResource(R.string.sort_seasons), sort == SeriesSort.SEASONS) { viewModel.setSort(SeriesSort.SEASONS) }
             SortPill(stringResource(R.string.sort_az), sort == SeriesSort.AZ) { viewModel.setSort(SeriesSort.AZ) }

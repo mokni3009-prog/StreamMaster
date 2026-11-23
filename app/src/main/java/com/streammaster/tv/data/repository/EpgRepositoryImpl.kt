@@ -5,7 +5,6 @@ import com.streammaster.tv.data.api.StalkerApi
 import com.streammaster.tv.data.api.XmlTvParser
 import com.streammaster.tv.data.api.XtreamApi
 import com.streammaster.tv.data.db.StreamMasterDatabase
-import com.streammaster.tv.data.demo.DemoData
 import com.streammaster.tv.data.model.EpgProgram
 import com.streammaster.tv.data.model.PlaylistType
 import com.streammaster.tv.data.prefs.SettingsStore
@@ -30,7 +29,6 @@ private const val TAG = "StreamMaster"
  * - Second source: the playlist's optional xmltvUrl is fetched after the
  *   primary source and fills ONLY the channels the primary did not cover —
  *   provider data always wins.
- * Demo playlist EPG comes from DemoData and is seeded with the demo content.
  */
 @Singleton
 class EpgRepositoryImpl @Inject constructor(
@@ -46,10 +44,6 @@ class EpgRepositoryImpl @Inject constructor(
 
     override suspend fun refreshEpg(playlistId: String) {
         val playlist = db.playlistDao().getById(playlistId)?.toModel() ?: return
-        if (playlist.id == DemoData.DEMO_PLAYLIST_ID) {
-            db.epgDao().upsertAll(DemoData.epgPrograms().map { it.toEntity() })
-            return
-        }
         val now = System.currentTimeMillis()
         // Days of guide kept, from the EPG window setting: 24h = tonight +
         // tomorrow night, 48h = one more night, 7d = a full week.

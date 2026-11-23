@@ -25,8 +25,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,6 +61,9 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    // Initial focus: the first filter pill ("Tous").
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     var keyboardLang by remember { mutableStateOf(KeyboardLanguage.FR) }
     var keyboard123 by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -85,7 +91,7 @@ fun SearchScreen(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(CardSurface).padding(16.dp)
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SortPill(stringResource(R.string.search_filter_all), state.filter == null) { viewModel.setFilter(null) }
+            SortPill(stringResource(R.string.search_filter_all), state.filter == null, Modifier.focusRequester(firstFocus)) { viewModel.setFilter(null) }
             SortPill(stringResource(R.string.search_filter_live), state.filter == ContentKind.LIVE) { viewModel.setFilter(ContentKind.LIVE) }
             SortPill(stringResource(R.string.search_filter_film), state.filter == ContentKind.FILM) { viewModel.setFilter(ContentKind.FILM) }
             SortPill(stringResource(R.string.search_filter_series), state.filter == ContentKind.SERIES) { viewModel.setFilter(ContentKind.SERIES) }

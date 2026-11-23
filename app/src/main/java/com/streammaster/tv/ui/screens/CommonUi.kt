@@ -41,9 +41,9 @@ fun GhostButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
 }
 
 @Composable
-fun SortPill(text: String, selected: Boolean, onClick: () -> Unit) {
+fun SortPill(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(if (selected) Gold else CardSurface)
             .tvFocus()

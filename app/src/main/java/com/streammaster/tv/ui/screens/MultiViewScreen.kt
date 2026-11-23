@@ -23,10 +23,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -61,6 +64,9 @@ fun MultiViewScreen(
     val slots by viewModel.slots.collectAsState()
     val focused by viewModel.focused.collectAsState()
     val pickerSlot by viewModel.pickerSlot.collectAsState()
+    // Initial focus: the first tile (slot 0).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -88,7 +94,7 @@ fun MultiViewScreen(
                                 if (channel == null) viewModel.openPicker(index)
                                 else navController.navigate(Routes.player("live", channel.id))
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = if (index == 0) Modifier.weight(1f).focusRequester(firstFocus) else Modifier.weight(1f)
                         )
                     }
                 }
@@ -169,6 +175,9 @@ private fun MultiViewPicker(
 ) {
     val liveViewModel: LiveViewModel = hiltViewModel()
     val liveState by liveViewModel.state.collectAsState()
+    // Initial focus: the Back button (first focusable of the picker).
+    val pickerFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { pickerFocus.requestFocus() }
     var selectedBouquetId by remember { mutableStateOf<String?>(null) }
     val channels = liveState.channels.filter {
         selectedBouquetId == null || it.bouquetId == selectedBouquetId
@@ -184,7 +193,7 @@ private fun MultiViewPicker(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (filled) GhostButton(text = stringResource(R.string.clear_slot)) { onClear() }
-                    GoldButton(text = stringResource(R.string.back)) { onClose() }
+                    GoldButton(text = stringResource(R.string.back), modifier = Modifier.focusRequester(pickerFocus)) { onClose() }
                 }
             }
             Row(

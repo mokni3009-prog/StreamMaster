@@ -53,9 +53,6 @@ interface ContentRepository {
      *  stored stream URL. */
     suspend fun getEpisodeStreamUrls(seriesId: String, code: String): List<String>
 
-    /** Seeds the demo playlist/content on first run when no playlist exists. */
-    suspend fun seedIfEmpty()
-
     /** Recent search queries (max 10), newest first. */
     suspend fun getRecentSearches(): List<String>
     suspend fun recordSearch(query: String)

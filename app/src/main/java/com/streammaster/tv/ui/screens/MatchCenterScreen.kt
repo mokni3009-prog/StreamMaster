@@ -15,9 +15,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -46,6 +50,9 @@ fun MatchCenterScreen(
     val matches by viewModel.matches.collectAsState()
     val loading by viewModel.loading.collectAsState()
     val goalAlerts by viewModel.goalAlerts.collectAsState()
+    // Initial focus: the goal-alerts toggle (first focusable).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -57,7 +64,8 @@ fun MatchCenterScreen(
                 // Goal alerts (2026-11-22): opt-in toggle, on/off any time.
                 GhostButton(
                     text = if (goalAlerts) "✓ " + stringResource(R.string.goal_alerts)
-                    else stringResource(R.string.goal_alerts)
+                    else stringResource(R.string.goal_alerts),
+                    modifier = Modifier.focusRequester(firstFocus)
                 ) { viewModel.toggleGoalAlerts() }
                 GoldButton(text = stringResource(R.string.refresh)) { viewModel.refresh() }
             }

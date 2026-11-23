@@ -7,7 +7,6 @@ import com.streammaster.tv.data.db.HistoryEntity
 import com.streammaster.tv.data.db.ReminderEntity
 import com.streammaster.tv.data.db.SearchHistoryEntity
 import com.streammaster.tv.data.db.StreamMasterDatabase
-import com.streammaster.tv.data.demo.DemoData
 import com.streammaster.tv.data.model.Bouquet
 import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.data.model.Channel
@@ -37,19 +36,20 @@ import javax.inject.Singleton
 
 private const val TAG = "StreamMaster"
 private const val HISTORY_CAP = 20
+/** Id of the demo playlist removed in 2026-11-23 — only used to clean old installs. */
+private const val LEGACY_DEMO_PLAYLIST_ID = "demo"
 
-/** Series episode codes look like "S01E01" (demo and Xtream alike). */
+/** Series episode codes look like "S01E01". */
 private val EPISODE_CODE_REGEX = Regex("^S\\d{2}E\\d{2}$")
 
 /**
  * Single source of truth for UI content: every observe* Flow reads Room.
- * The active playlist id is resolved on each call (falls back to the demo
- * playlist when none is active).
+ * The active playlist id is resolved on each call; null when no playlist
+ * exists at all (first run goes to Login).
  *
- * Seeding: [seedIfEmpty] inserts the demo playlist + content when the DB has
- * no playlist at all. It is launched once from init on an internal IO scope
- * (StreamMasterApp is owned by the build agent, so there is no app-owned
- * entry point to call it from yet); it is also safe to call directly.
+ * No demo data: the demo playlist was removed in 2026-11-23. A one-time
+ * cleanup ([purgeLegacyDemoPlaylist]) deletes it from installs that still
+ * carry it, so it never comes back.
  */
 @Singleton
 class ContentRepositoryImpl @Inject constructor(
@@ -61,34 +61,58 @@ class ContentRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        scope.launch { runCatching { seedIfEmpty() }.onFailure { Log.w(TAG, "Demo seed failed", it) } }
+        scope.launch { runCatching { purgeLegacyDemoPlaylist() }.onFailure { Log.w(TAG, "Demo purge failed", it) } }
     }
 
-    private suspend fun activePlaylistId(): String {
+    /** Null when no playlist exists at all (first run goes to Login). */
+    private suspend fun activePlaylistId(): String? {
         val active = db.playlistDao().getActive()
         if (active != null) return active.id
-        val all = db.playlistDao().getAll()
-        return all.firstOrNull()?.id ?: DemoData.DEMO_PLAYLIST_ID
+        return db.playlistDao().getAll().firstOrNull()?.id
+    }
+
+    /**
+     * One-time cleanup for installs that still carry the demo playlist
+     * removed in 2026-11-23: deletes the playlist and all its content
+     * (channels/films/series/episodes/bouquets/EPG) so first run goes to
+     * Login. No-op when no demo playlist exists.
+     */
+    private suspend fun purgeLegacyDemoPlaylist() {
+        val pid = LEGACY_DEMO_PLAYLIST_ID
+        if (db.playlistDao().getById(pid) == null) return
+        val channelIds = db.channelDao().getAll(pid).map { it.id }
+        channelIds.forEach { db.epgDao().deleteRange(it, 0L, Long.MAX_VALUE) }
+        db.seriesDao().getAll(pid).forEach { db.episodeDao().deleteBySeries(it.id) }
+        db.channelDao().deleteByPlaylist(pid)
+        db.filmDao().deleteByPlaylist(pid)
+        db.seriesDao().deleteByPlaylist(pid)
+        db.bouquetDao().deleteByPlaylist(pid)
+        db.playlistDao().deleteById(pid)
+        Log.i(TAG, "Purged legacy demo playlist")
     }
 
     override fun observeChannels(): Flow<List<Channel>> = flow {
         val pid = activePlaylistId()
-        emitAll(db.channelDao().observeAll(pid).map { list -> list.map { it.toModel() } })
+        if (pid == null) emit(emptyList())
+        else emitAll(db.channelDao().observeAll(pid).map { list -> list.map { it.toModel() } })
     }
 
     override fun observeFilms(): Flow<List<Film>> = flow {
         val pid = activePlaylistId()
-        emitAll(db.filmDao().observeAll(pid).map { list -> list.map { it.toModel() } })
+        if (pid == null) emit(emptyList())
+        else emitAll(db.filmDao().observeAll(pid).map { list -> list.map { it.toModel() } })
     }
 
     override fun observeSeries(): Flow<List<Series>> = flow {
         val pid = activePlaylistId()
-        emitAll(db.seriesDao().observeAll(pid).map { list -> list.map { it.toModel() } })
+        if (pid == null) emit(emptyList())
+        else emitAll(db.seriesDao().observeAll(pid).map { list -> list.map { it.toModel() } })
     }
 
     override fun observeBouquets(kind: BouquetKind): Flow<List<Bouquet>> = flow {
         val pid = activePlaylistId()
-        emitAll(db.bouquetDao().observeByKind(pid, kind.name).map { list -> list.map { it.toModel() } })
+        if (pid == null) emit(emptyList())
+        else emitAll(db.bouquetDao().observeByKind(pid, kind.name).map { list -> list.map { it.toModel() } })
     }
 
     override fun observeEpg(channelId: String, fromMillis: Long, toMillis: Long): Flow<List<EpgProgram>> =
@@ -134,11 +158,6 @@ class ContentRepositoryImpl @Inject constructor(
     override suspend fun getEpisodes(seriesId: String, season: Int): List<Episode> {
         val stored = db.episodeDao().getEpisodes(seriesId, season)
         if (stored.isNotEmpty()) return stored.map { it.toModel() }
-        // Demo fallback: deterministic episodes from DemoData (not persisted for real playlists).
-        val series = getSeries(seriesId) ?: return emptyList()
-        if (seriesId in DemoData.series.map { it.id }) {
-            return DemoData.episodesFor(series, season)
-        }
         return emptyList()
     }
 
@@ -208,7 +227,7 @@ class ContentRepositoryImpl @Inject constructor(
         films: List<Film>,
         series: List<Series>
     ) {
-        val pid = activePlaylistId()
+        val pid = activePlaylistId() ?: return
         db.bouquetDao().upsertAll(bouquets.map { it.toEntity(pid) })
         val storedChannels = db.channelDao().getAll(pid).associateBy { it.id }
         db.channelDao().upsertAll(channels.mapIndexed { idx, c ->
@@ -268,16 +287,13 @@ class ContentRepositoryImpl @Inject constructor(
         // Episode codes (S01E01): the player resolves series episodes through
         // this method (PlayerManagerImpl.resolveUrls). Episodes now carry
         // their resolved stream URL (XtreamApi -> Episode -> Room), so return
-        // the first stored URL for this code; demo episodes fall back to the
-        // public demo HLS pool below. (Before the fix, real Xtream episodes
-        // lost their stream id when mapped to Episode.code and returned
-        // empty here, showing the error screen.)
+        // the first stored URL for this code. (Before the fix, real Xtream
+        // episodes lost their stream id when mapped to Episode.code and
+        // returned empty here, showing the error screen.)
         if (EPISODE_CODE_REGEX.matches(channelId)) {
             val byCode = db.episodeDao().getByCode(channelId)
             val stored = byCode.mapNotNull { it.streamUrl }.firstOrNull { it.isNotBlank() }
             if (stored != null) return listOf(stored)
-            val demoHit = byCode.any { it.seriesId in DemoData.series.map { s -> s.id } }
-            if (demoHit) return listOf(DemoData.episodeStreamUrl(channelId))
         }
         return emptyList()
     }
@@ -285,21 +301,6 @@ class ContentRepositoryImpl @Inject constructor(
     override suspend fun getEpisodeStreamUrls(seriesId: String, code: String): List<String> {
         val url = db.episodeDao().getBySeriesAndCode(seriesId, code)?.streamUrl
         return if (!url.isNullOrBlank()) listOf(url) else emptyList()
-    }
-
-    override suspend fun seedIfEmpty() {
-        if (db.playlistDao().count() > 0) return
-        val pid = DemoData.DEMO_PLAYLIST_ID
-        db.playlistDao().upsert(DemoData.demoPlaylist.toEntity())
-        db.bouquetDao().upsertAll(DemoData.bouquets.map { it.toEntity(pid) })
-        db.channelDao().upsertAll(DemoData.channels.mapIndexed { i, c -> c.toEntity(pid, i) })
-        db.filmDao().upsertAll(DemoData.films.mapIndexed { i, f -> f.toEntity(pid, i) })
-        db.seriesDao().upsertAll(DemoData.series.mapIndexed { i, s -> s.toEntity(pid, i) })
-        val episodes = DemoData.series.flatMap { DemoData.allEpisodes(it) }
-        db.episodeDao().upsertAll(episodes.map { it.toEntity() })
-        db.epgDao().upsertAll(DemoData.epgPrograms().map { it.toEntity() })
-        Log.i(TAG, "Seeded demo playlist (${DemoData.channels.size} channels, " +
-            "${DemoData.films.size} films, ${DemoData.series.size} series)")
     }
 
     override suspend fun getRecentSearches(): List<String> =

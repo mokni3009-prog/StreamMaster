@@ -21,6 +21,8 @@ data class HomeUiState(
     val filmCount: Int = 0,
     val seriesCount: Int = 0,
     val playlistCount: Int = 0,
+    /** 4th stat on Home (prototype "Mes Favoris"): favourites across all kinds. */
+    val favoriteCount: Int = 0,
     val recentFilms: List<Film> = emptyList(),
     val recentSeries: List<Series> = emptyList(),
     val popularFilms: List<Film> = emptyList(),
@@ -47,6 +49,7 @@ class HomeViewModel @Inject constructor(
             expiryDaysLeft = daysLeft(active?.expiryDate ?: ""),
             channelCount = channels.size, filmCount = films.size, seriesCount = series.size,
             playlistCount = playlists.size,
+            favoriteCount = channels.count { it.isFavorite } + films.count { it.isFavorite } + series.count { it.isFavorite },
             // Dynamic "Récemment vus": progress recorded at pause/stop, cleared at >=95%.
             // Hidden items never appear on Home (same as Live/Epg/Favoris).
             recentFilms = films.filter { !it.hidden && it.recentProgress in 1..94 },

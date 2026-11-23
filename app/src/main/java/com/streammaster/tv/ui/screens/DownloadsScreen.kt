@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
@@ -20,8 +20,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +51,9 @@ fun DownloadsScreen(
 ) {
     val downloads by viewModel.downloads.collectAsState()
     var confirmDeleteId by remember { mutableStateOf<String?>(null) }
+    // Initial focus: the first download row.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
@@ -58,7 +64,7 @@ fun DownloadsScreen(
             Text(text = stringResource(R.string.downloads_empty), fontSize = 18.sp, color = TextMuted)
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(downloads) { download ->
+                itemsIndexed(downloads) { index, download ->
                     val pct = if (download.totalBytes > 0) {
                         (download.downloadedBytes * 100 / download.totalBytes).toInt().coerceIn(0, 100)
                     } else 0
@@ -66,6 +72,7 @@ fun DownloadsScreen(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
                             .tvFocus()
                             .clickable {
                                 if (download.status == DownloadStatus.DONE) {

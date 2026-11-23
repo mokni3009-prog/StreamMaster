@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.theme
 
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 
 /** Gold identity — exact values from SPEC §9 / CONTRACT §6. */
@@ -19,3 +20,15 @@ val TextMuted = Color(0xFFC9BFA6)
 val TextDim = Color(0xFF8A7F63)
 val Danger = Color(0xFFE57373)
 val Success = Color(0xFF81C784)
+
+/**
+ * SPEC §9 gold gradient (prototype --gold-grad):
+ * linear-gradient(135deg, #fff6cc, #ecc75c 38%, #b8860b 75%, #f7dc88).
+ * Used for primary buttons and the active sidebar item.
+ */
+val GoldGradient: Brush = Brush.linearGradient(
+    0.0f to Color(0xFFFFF6CC),
+    0.38f to Color(0xFFECC75C),
+    0.75f to Color(0xFFB8860B),
+    1.0f to Color(0xFFF7DC88)
+)

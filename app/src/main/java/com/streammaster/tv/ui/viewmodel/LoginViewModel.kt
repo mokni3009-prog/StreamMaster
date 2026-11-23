@@ -49,7 +49,10 @@ class LoginViewModel @Inject constructor(
     fun setPlaylistName(v: String) = _state.update { it.copy(playlistName = v) }
     fun clearError() = _state.update { it.copy(errorRes = null) }
 
-    /** Validates the active tab, then persists the playlist. On success -> Loading screen. */
+    /** Validates the active tab, then persists the playlist and syncs it
+     *  from the server at once, so the Loading screen that follows already
+     *  has content and goes home. If the sync fails the playlist is removed
+     *  again so a retry starts clean. On success -> Loading screen. */
     fun submit() {
         val s = _state.value
         val error = when (s.tab) {
@@ -86,7 +89,17 @@ class LoginViewModel @Inject constructor(
                     m3uUrl = s.m3uUrl, isActive = true,
                     expiryDate = "", connections = 1, lastUpdate = "", status = "active"
                 )
-                playlistRepository.addPlaylist(playlist)
+                val id = playlistRepository.addPlaylist(playlist)
+                // Sync the new playlist at once: without this the Loading
+                // screen that follows waits for content that never arrives
+                // (the only other refresh is the 12h periodic worker).
+                val synced = runCatching { playlistRepository.refreshPlaylist(id) }
+                    .getOrDefault(false)
+                if (!synced) {
+                    runCatching { playlistRepository.deletePlaylist(id) }
+                    _state.update { it.copy(loading = false, errorRes = com.streammaster.tv.R.string.login_error) }
+                    return@launch
+                }
                 _state.update { it.copy(loading = false, success = true) }
             } catch (e: Exception) {
                 _state.update { it.copy(loading = false, errorRes = com.streammaster.tv.R.string.login_error) }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,9 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -64,6 +68,9 @@ fun LiveScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var digitBuffer by remember { mutableStateOf("") }
+    // Initial focus: the first bouquet (first focusable of the 3 columns).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     fun openChannel(channelId: String) {
         navController.navigate(Routes.player("live", channelId))
     }
@@ -94,10 +101,11 @@ fun LiveScreen(
             Column(modifier = Modifier.width(300.dp).fillMaxHeight()) {
                 Text(text = stringResource(R.string.bouquets), fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite, modifier = Modifier.padding(bottom = 12.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(state.bouquets) { bouquet ->
+                    itemsIndexed(state.bouquets) { index, bouquet ->
                         val selected = bouquet.id == state.selectedBouquetId
                         Box(
                             modifier = Modifier.fillMaxWidth()
+                                .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
                                 .clip(RoundedCornerShape(20.dp))
                                 .background(if (selected) Gold else CardSurface)
                                 .tvFocus()

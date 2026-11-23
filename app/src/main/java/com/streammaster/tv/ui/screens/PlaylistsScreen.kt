@@ -13,6 +13,7 @@ import com.streammaster.tv.ui.components.KeyboardMode
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +57,9 @@ fun PlaylistsScreen(
 ) {
     val playlists by viewModel.playlists.collectAsState()
     val form by viewModel.form.collectAsState()
+    // Initial focus: the Add button (first focusable).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     val context = LocalContext.current
     var keyboardOpen by remember { mutableStateOf(false) }
     var keyboardField by remember { mutableStateOf("name") } // field the built-in keyboard edits
@@ -66,10 +72,18 @@ fun PlaylistsScreen(
         }
     }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
             Text(text = stringResource(R.string.playlists_title), fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite)
-            GoldButton(text = stringResource(R.string.add_playlist)) { viewModel.openAdd() }
+            // Prototype count badge "2 / 10".
+            Text(
+                text = "${playlists.size} / 10",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gold,
+                modifier = Modifier.padding(start = 16.dp)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            GoldButton(text = stringResource(R.string.add_playlist), modifier = Modifier.focusRequester(firstFocus)) { viewModel.openAdd() }
         }
+        Text(text = stringResource(R.string.playlists_version_line), fontSize = 16.sp, color = TextMuted)
         // Subscription info card for the active playlist
         val active = playlists.firstOrNull { it.isActive } ?: playlists.firstOrNull()
         if (active != null) {

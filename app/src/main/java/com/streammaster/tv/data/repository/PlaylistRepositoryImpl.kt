@@ -78,10 +78,6 @@ class PlaylistRepositoryImpl @Inject constructor(
      */
     override suspend fun refreshPlaylist(id: String): Boolean {
         val playlist = db.playlistDao().getById(id)?.toModel() ?: return false
-        if (playlist.id == com.streammaster.tv.data.demo.DemoData.DEMO_PLAYLIST_ID) {
-            // Demo playlist has no server; nothing to refresh.
-            return true
-        }
         val format = runCatching { settingsStore.settings.first().format }.getOrDefault("auto")
         return try {
             when (playlist.type) {
