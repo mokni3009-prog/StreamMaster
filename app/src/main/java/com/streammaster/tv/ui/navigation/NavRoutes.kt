@@ -24,6 +24,7 @@ object Routes {
     const val PLAYLISTS = "playlists"
     const val MANAGE = "manage"
     const val SETTINGS = "settings"
+    const val PARENTAL = "parental"
     const val SEARCH = "search"
     const val PLAYER = "player/{kind}/{id}"
     const val DETAIL = "detail/{kind}/{id}"

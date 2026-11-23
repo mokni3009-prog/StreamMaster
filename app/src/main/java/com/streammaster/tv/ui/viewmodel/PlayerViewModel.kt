@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streammaster.tv.data.model.Channel
 import com.streammaster.tv.data.model.ContentKind
+import com.streammaster.tv.data.model.EpgProgram
 import com.streammaster.tv.data.model.Episode
 import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.PlaybackItem
@@ -107,6 +108,25 @@ class PlayerViewModel @Inject constructor(
 
     private val _ui = MutableStateFlow(PlayerUiState())
     val ui: StateFlow<PlayerUiState> = _ui.asStateFlow()
+    /** EPG (now + next 6h) for the current live channel (PL05/PL06/PL09):
+     *  the screen derives the now/next program from this list with the
+     *  wall clock, so it stays correct as time passes. Empty for VOD. */
+    private val _epgPrograms = MutableStateFlow<List<EpgProgram>>(emptyList())
+    val epgPrograms: StateFlow<List<EpgProgram>> = _epgPrograms.asStateFlow()
+    /** All live channels (bouquet counters in the player lists, PL14). */
+    val allChannels: StateFlow<List<Channel>> = contentRepository.observeChannels()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private var epgJob: Job? = null
+
+    /** (Re)starts EPG collection for one live channel. */
+    private fun observeEpgFor(channelId: String) {
+        epgJob?.cancel()
+        epgJob = viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            contentRepository.observeEpg(channelId, now, now + 6 * 60 * 60 * 1000L)
+                .collect { _epgPrograms.value = it }
+        }
+    }
     private var hideJob: Job? = null
     private var digitJob: Job? = null
     private var previousChannelId: String? = null
@@ -151,6 +171,8 @@ class PlayerViewModel @Inject constructor(
 
     fun load(kind: String, id: String) = viewModelScope.launch {
         _ui.update { it.copy(kind = kind, id = id, lastRoute = backRouteFor(kind)) }
+        epgJob?.cancel()
+        _epgPrograms.value = emptyList()
         when (kind) {
             "live" -> {
                 val channel = contentRepository.getChannel(id) ?: return@launch
@@ -192,6 +214,7 @@ class PlayerViewModel @Inject constructor(
     private fun playLive(channel: Channel) {
         previousChannelId = _ui.value.channel?.id?.takeIf { it != channel.id } ?: previousChannelId
         playerManager.play(PlaybackItem.Live(channel))
+        observeEpgFor(channel.id)
         viewModelScope.launch { contentRepository.recordHistory(ContentKind.LIVE, channel.id, channel.name) }
     }
 

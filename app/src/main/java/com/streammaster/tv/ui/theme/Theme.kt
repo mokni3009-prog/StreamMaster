@@ -13,9 +13,11 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -44,33 +46,51 @@ private val StreamMasterColors = darkColorScheme(
 private val StreamMasterTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = TitleFontFamily, fontWeight = FontWeight.Black,
-        fontSize = 48.sp, letterSpacing = LogoLetterSpacing, color = GoldWhite
+        fontSize = 48.sp, letterSpacing = LogoLetterSpacing, color = GoldWhite,
+        shadow = TextShadowCrisp
     ),
     headlineLarge = TextStyle(
         fontFamily = TitleFontFamily, fontWeight = FontWeight.Black,
-        fontSize = 36.sp, letterSpacing = LogoLetterSpacing, color = GoldWhite
+        fontSize = 36.sp, letterSpacing = LogoLetterSpacing, color = GoldWhite,
+        shadow = TextShadowCrisp
     ),
     headlineMedium = TextStyle(
         fontFamily = TitleFontFamily, fontWeight = FontWeight.Black,
-        fontSize = 28.sp, color = GoldWhite
+        fontSize = 28.sp, color = GoldWhite, shadow = TextShadowCrisp
     ),
     titleLarge = TextStyle(
         fontFamily = TitleFontFamily, fontWeight = FontWeight.Black,
-        fontSize = 22.sp, color = GoldWhite
+        fontSize = 22.sp, color = GoldWhite, shadow = TextShadowCrisp
     ),
     titleMedium = TextStyle(
         fontFamily = TitleFontFamily, fontWeight = FontWeight.Black,
-        fontSize = 18.sp, color = GoldWhite
+        fontSize = 18.sp, color = GoldWhite, shadow = TextShadowCrisp
     ),
-    bodyLarge = TextStyle(fontFamily = BodyFontFamily, fontSize = 18.sp, color = GoldWhite),
-    bodyMedium = TextStyle(fontFamily = BodyFontFamily, fontSize = 16.sp, color = GoldWhite),
-    bodySmall = TextStyle(fontFamily = BodyFontFamily, fontSize = 14.sp, color = TextMuted),
-    labelLarge = TextStyle(fontFamily = BodyFontFamily, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = GoldWhite)
+    bodyLarge = TextStyle(
+        fontFamily = BodyFontFamily, fontSize = 18.sp, color = GoldWhite,
+        shadow = TextShadowCrisp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = BodyFontFamily, fontSize = 16.sp, color = GoldWhite,
+        shadow = TextShadowCrisp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = BodyFontFamily, fontSize = 14.sp, color = TextMuted,
+        shadow = TextShadowCrisp
+    ),
+    labelLarge = TextStyle(
+        fontFamily = BodyFontFamily, fontWeight = FontWeight.Bold, fontSize = 16.sp,
+        color = GoldWhite, shadow = TextShadowCrisp
+    )
 )
 
 /**
- * Dark theme: vertical gradient BgTop -> BgBottom plus two radial gold glows
- * (top-left and bottom-right corners), matching the 1920x1080 prototype stage.
+ * Dark theme: vertical gradient BgTop -> BgBottom plus the two radial gold
+ * glows from the prototype `#stage` (G07), always drawn — including on
+ * low-RAM devices (the prototype shows them unconditionally):
+ *  - 1300x750 at 80%/-10%, rgba(229,193,88,.22)
+ *  - 1000x680 at 15%/110%, rgba(184,134,11,.20)
+ * Sizes are fractions of the 1920x1080 stage (1300/1920, 750/1080, ...).
  */
 @Composable
 fun StreamMasterTheme(content: @Composable () -> Unit) {
@@ -83,24 +103,40 @@ fun StreamMasterTheme(content: @Composable () -> Unit) {
                     .fillMaxSize()
                     .background(Brush.verticalGradient(listOf(BgTop, BgBottom)))
                     .drawBehind {
-                        if (!lowRam) {
-                            drawRadialGlow(Offset(size.width * 0.08f, size.height * 0.02f), size.minDimension * 0.55f)
-                            drawRadialGlow(Offset(size.width * 0.95f, size.height * 0.98f), size.minDimension * 0.5f)
-                        }
+                        drawEllipticalGlow(
+                            center = Offset(size.width * 0.80f, size.height * -0.10f),
+                            glowSize = Size(size.width * 0.677f, size.height * 0.694f),
+                            color = Color(0x38E5C158) // rgba(229,193,88,.22)
+                        )
+                        drawEllipticalGlow(
+                            center = Offset(size.width * 0.15f, size.height * 1.10f),
+                            glowSize = Size(size.width * 0.521f, size.height * 0.630f),
+                            color = Color(0x33B8860B) // rgba(184,134,11,.20)
+                        )
                     }
             ) { content() }
         }
     }
 }
 
-private fun DrawScope.drawRadialGlow(center: Offset, radius: Float) {
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(Color(0x3DE5C158), Color(0x00E5C158)),
+/** Radial gradient glow stretched into an ellipse of [glowSize] around [center]. */
+private fun DrawScope.drawEllipticalGlow(center: Offset, glowSize: Size, color: Color) {
+    val radius = maxOf(glowSize.width, glowSize.height) / 2f
+    withTransform({
+        scale(
+            scaleX = glowSize.width / (2f * radius),
+            scaleY = glowSize.height / (2f * radius),
+            pivot = center
+        )
+    }) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(color, Color.Transparent),
+                center = center, radius = radius
+            ),
             center = center, radius = radius
-        ),
-        center = center, radius = radius
-    )
+        )
+    }
 }
 
 /** Convenience scope for full-screen themed content. */

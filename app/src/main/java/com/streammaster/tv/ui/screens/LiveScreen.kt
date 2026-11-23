@@ -1,7 +1,12 @@
 package com.streammaster.tv.ui.screens
 
 import android.view.KeyEvent
-import android.widget.Toast
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,11 +19,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -31,32 +41,59 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
+import com.streammaster.tv.ui.components.showToast
+import com.streammaster.tv.data.model.Channel
+import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
-import com.streammaster.tv.ui.theme.CardSurface
-import com.streammaster.tv.ui.theme.Gold
+import com.streammaster.tv.ui.theme.BorderStrong
+import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldDeep
+import com.streammaster.tv.ui.theme.GoldGradient
+import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
-import com.streammaster.tv.ui.theme.tvFocus
+import com.streammaster.tv.ui.theme.tvFocusBorderless
 import com.streammaster.tv.ui.viewmodel.LiveViewModel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Live (Direct) — 3 columns: bouquets | channels | player window + channel
- * name + EPG below (CONTRACT §6). Digit keys open the channel by number
- * (custom number first, then built-in), with a temporary OSD.
+ * Live (Direct) — model structure (stream-master.html, .live-workspace):
+ * one column: top bouquet strip (.cat-strip) + a row with the channel
+ * list (580dp) on the left and the preview column (viewport + EPG panel)
+ * on the right. Single click selects + previews a channel; a second
+ * click within 500ms (or the «Lancer» button) opens the fullscreen
+ * player. Digit keys open the channel by number (custom number first,
+ * then built-in), with a temporary OSD.
+ *
+ * Channel logos: the model has NO logo URL field (Channel carries only
+ * `code`, the 2-letter initials), so the 66×66 logo box shows the code
+ * on the gold gradient, exactly like the model — no Coil load is
+ * possible. «SIGNAL FAIBLE» is never shown: no signal-strength data
+ * exists anywhere (Channel.isBroken is a broken-stream flag, not a
+ * signal level).
  */
 @Composable
 fun LiveScreen(
@@ -68,113 +105,577 @@ fun LiveScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var digitBuffer by remember { mutableStateOf("") }
-    // Initial focus: the first bouquet (first focusable of the 3 columns).
+    // Double-click detection (V11): last OK click on the same channel.
+    var lastClickChannelId by remember { mutableStateOf<String?>(null) }
+    var lastClickMillis by remember { mutableStateOf(0L) }
+    // Initial focus: the first bouquet pill (first focusable of the screen).
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
     fun openChannel(channelId: String) {
         navController.navigate(Routes.player("live", channelId))
     }
+    fun onChannelClick(channel: Channel) {
+        val nowMs = System.currentTimeMillis()
+        if (lastClickChannelId == channel.id && nowMs - lastClickMillis < 500) {
+            lastClickMillis = 0L
+            openChannel(channel.id)
+        } else {
+            viewModel.selectChannel(channel.id)
+            lastClickChannelId = channel.id
+            lastClickMillis = nowMs
+        }
+    }
 
-    Column(
-        modifier = Modifier.fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                val digit = when (event.nativeKeyEvent.keyCode) {
-                    KeyEvent.KEYCODE_0 -> '0'; KeyEvent.KEYCODE_1 -> '1'; KeyEvent.KEYCODE_2 -> '2'
-                    KeyEvent.KEYCODE_3 -> '3'; KeyEvent.KEYCODE_4 -> '4'; KeyEvent.KEYCODE_5 -> '5'
-                    KeyEvent.KEYCODE_6 -> '6'; KeyEvent.KEYCODE_7 -> '7'; KeyEvent.KEYCODE_8 -> '8'
-                    KeyEvent.KEYCODE_9 -> '9'; else -> null
-                } ?: return@onPreviewKeyEvent false
-                digitBuffer = (digitBuffer + digit).take(2)
-                scope.launch {
-                    kotlinx.coroutines.delay(1500)
-                    val found = viewModel.resolveChannelNumber(digitBuffer)
-                    if (found != null) openChannel(found.id)
-                    else Toast.makeText(context, R.string.channel_not_found, Toast.LENGTH_SHORT).show()
-                    digitBuffer = ""
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                    val digit = when (event.nativeKeyEvent.keyCode) {
+                        KeyEvent.KEYCODE_0 -> '0'; KeyEvent.KEYCODE_1 -> '1'; KeyEvent.KEYCODE_2 -> '2'
+                        KeyEvent.KEYCODE_3 -> '3'; KeyEvent.KEYCODE_4 -> '4'; KeyEvent.KEYCODE_5 -> '5'
+                        KeyEvent.KEYCODE_6 -> '6'; KeyEvent.KEYCODE_7 -> '7'; KeyEvent.KEYCODE_8 -> '8'
+                        KeyEvent.KEYCODE_9 -> '9'; else -> null
+                    } ?: return@onPreviewKeyEvent false
+                    digitBuffer = (digitBuffer + digit).take(2)
+                    scope.launch {
+                        kotlinx.coroutines.delay(1500)
+                        val found = viewModel.resolveChannelNumber(digitBuffer)
+                        if (found != null) openChannel(found.id)
+                        else showToast(context, context.getString(R.string.channel_not_found))
+                        digitBuffer = ""
+                    }
+                    true
                 }
-                true
-            }
-    ) {
-        Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            // Column 1 — bouquets
-            Column(modifier = Modifier.width(300.dp).fillMaxHeight()) {
-                Text(text = stringResource(R.string.bouquets), fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite, modifier = Modifier.padding(bottom = 12.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    itemsIndexed(state.bouquets) { index, bouquet ->
-                        val selected = bouquet.id == state.selectedBouquetId
-                        Box(
-                            modifier = Modifier.fillMaxWidth()
-                                .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(if (selected) Gold else CardSurface)
-                                .tvFocus()
-                                .clickable { viewModel.selectBouquet(bouquet.id) }
-                                .padding(16.dp)
-                        ) {
-                            Text(text = bouquet.name, fontSize = 18.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, color = if (selected) GoldDeep else GoldWhite)
-                        }
+        ) {
+            // V02 — bouquet strip (.cat-pill): 50dp high, radius 25, 19sp ExtraBold.
+            LazyRow(
+                modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    val allSelected = state.selectedBouquetId == null
+                    Box(
+                        modifier = Modifier.height(50.dp)
+                            .focusRequester(firstFocus)
+                            .clip(RoundedCornerShape(25.dp))
+                            .then(
+                                if (allSelected) Modifier.background(GoldGradient)
+                                    .border(2.dp, Color(0xFFFFF8D6), RoundedCornerShape(25.dp))
+                                else Modifier.background(Color(0xEB1A1205))
+                                    .border(2.dp, BorderGold, RoundedCornerShape(25.dp))
+                            )
+                            .tvFocusBorderless()
+                            .clickable { viewModel.selectAll() }
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.live_all), fontSize = 19.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (allSelected) GoldDeep else GoldWhite
+                        )
+                    }
+                }
+                itemsIndexed(state.bouquets) { _, bouquet ->
+                    val selected = bouquet.id == state.selectedBouquetId
+                    Box(
+                        modifier = Modifier.height(50.dp)
+                            .clip(RoundedCornerShape(25.dp))
+                            .then(
+                                if (selected) Modifier.background(GoldGradient)
+                                    .border(2.dp, Color(0xFFFFF8D6), RoundedCornerShape(25.dp))
+                                else Modifier.background(Color(0xEB1A1205))
+                                    .border(2.dp, BorderGold, RoundedCornerShape(25.dp))
+                            )
+                            .tvFocusBorderless()
+                            .clickable { viewModel.selectBouquet(bouquet.id) }
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = bouquet.name, fontSize = 19.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (selected) GoldDeep else GoldWhite
+                        )
                     }
                 }
             }
-            // Column 2 — channels of the focused bouquet
-            Column(modifier = Modifier.width(380.dp).fillMaxHeight()) {
-                Text(text = stringResource(R.string.channels), fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite, modifier = Modifier.padding(bottom = 12.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(state.channels) { channel ->
-                        val selected = channel.id == state.selectedChannel?.id
-                        val displayNum = channel.customNum?.toString() ?: channel.num
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(if (selected) Gold else CardSurface)
-                                .tvFocus()
-                                .clickable { viewModel.selectChannel(channel.id) }
-                                .padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = displayNum, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (selected) GoldDeep else Gold, modifier = Modifier.width(48.dp))
-                            Text(text = channel.customName ?: channel.name, fontSize = 17.sp, color = if (selected) GoldDeep else GoldWhite, modifier = Modifier.weight(1f))
-                            if (channel.customNum != null) {
-                                Text(text = "N° ${channel.customNum}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GoldDeep, modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Gold).padding(horizontal = 6.dp, vertical = 2.dp))
-                            }
-                            if (channel.isFavorite) Text(text = "♥", color = if (selected) GoldDeep else Gold)
+            Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                // Left — channel list (580dp) + usage hint (V03).
+                Column(modifier = Modifier.width(580.dp).fillMaxHeight()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, bottom = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.live_tip_astuce), fontSize = 14.sp,
+                            fontWeight = FontWeight.Black, color = GoldDeep,
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                                .background(GoldGradient).padding(horizontal = 10.dp, vertical = 3.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.live_hint), fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold, color = GoldBright
+                        )
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            start = 6.dp, end = 12.dp, bottom = 16.dp
+                        )
+                    ) {
+                        items(state.channels) { channel ->
+                            ChannelCard(
+                                channel = channel,
+                                selected = channel.id == state.selectedChannel?.id,
+                                onClick = { onChannelClick(channel) }
+                            )
                         }
                     }
                 }
-            }
-            // Column 3 — player window + channel name + EPG
-            Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Right — preview column: viewport (V07) + EPG panel (V08).
                 val channel = state.selectedChannel
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(420.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(androidx.compose.ui.graphics.Color.hsv((channel?.hue ?: 44).toFloat(), 0.55f, 0.25f))
-                        .border(2.dp, BorderGold, RoundedCornerShape(20.dp))
-                        .tvFocus()
-                        .clickable { channel?.let { openChannel(it.id) } },
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Text(text = channel?.code ?: "—", fontSize = 64.sp, fontWeight = FontWeight.Black, color = GoldWhite)
+                    LiveViewport(
+                        channel = channel,
+                        epgNowTitle = epg.firstOrNull {
+                            it.startMillis <= System.currentTimeMillis() && it.endMillis > System.currentTimeMillis()
+                        }?.title ?: channel?.nowTitle.orEmpty(),
+                        onLaunch = { channel?.let { openChannel(it.id) } },
+                        onToggleFavorite = { viewModel.toggleFavorite() }
+                    )
                     if (channel != null) {
-                        Text(text = stringResource(R.string.live_badge), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GoldDeep, modifier = Modifier.align(Alignment.TopStart).padding(14.dp).clip(RoundedCornerShape(10.dp)).background(Gold).padding(horizontal = 10.dp, vertical = 4.dp))
+                        LiveEpgPanel(channel = channel, epg = epg)
                     }
                 }
-                if (channel != null) {
-                    Text(text = channel.customName ?: channel.name, fontSize = 26.sp, fontWeight = FontWeight.Black, fontFamily = androidx.compose.ui.text.font.FontFamily.Serif, color = GoldWhite)
-                    Text(text = "${stringResource(R.string.epg_now)}: ${channel.nowTitle} — ${channel.nowTime}", fontSize = 17.sp, color = TextMuted)
-                    val next = epg.drop(1).firstOrNull()
-                    if (next != null) {
-                        Text(text = "${stringResource(R.string.epg_next)}: ${next.title}", fontSize = 16.sp, color = TextMuted)
-                    } else if (channel.next.isNotEmpty()) {
-                        Text(text = "${stringResource(R.string.epg_next)}: ${channel.next.first().second}", fontSize = 16.sp, color = TextMuted)
-                    }
+            }
+        }
+        // V10 — digit-entry OSD (.live-num-osd): dark bg, 2px border,
+        // radius 16, padding 12×22, 24sp Black.
+        if (digitBuffer.isNotEmpty()) {
+            Box(
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xE0080501))
+                    .border(2.dp, BorderStrong, RoundedCornerShape(16.dp))
+                    .padding(horizontal = 22.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.channel_osd, digitBuffer),
+                    fontSize = 24.sp, fontWeight = FontWeight.Black, color = GoldWhite
+                )
+            }
+        }
+    }
+}
+
+/** V04/V05 — channel card (.chan-card): number 21sp + 66×66 logo box +
+ *  title 22sp + quality badge + ★ + current program 18sp + 6dp progress
+ *  bar + «EN LECTURE» tag (visible only when selected). Selected: full
+ *  gold gradient + white border + scale 1.02 / translateX 5dp + 4dp
+ *  #FFF8D6 halo + 42dp glow, all text turned black. */
+@Composable
+private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit) {
+    val black = Color(0xFF171000)
+    val density = LocalDensity.current
+    val translateX = with(density) { 5.dp.toPx() }
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .graphicsLayer {
+                if (selected) { scaleX = 1.02f; scaleY = 1.02f; translationX = translateX }
+            }
+            .then(
+                if (selected) Modifier
+                    .shadow(42.dp, RoundedCornerShape(20.dp), ambientColor = Color(0xFFFFF8D6), spotColor = GoldBright)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(GoldGradient)
+                    .border(4.dp, Color(0xFFFFF8D6), RoundedCornerShape(20.dp))
+                    .border(2.dp, Color.White, RoundedCornerShape(20.dp))
+                else Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color(0xF01C1406), Color(0xF50E0A03))
+                        )
+                    )
+                    .border(2.dp, Color(0x47FFE89E), RoundedCornerShape(20.dp))
+            )
+            .tvFocusBorderless()
+            .clickable { onClick() }
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        val displayNum = channel.customNum?.toString() ?: channel.num
+        Text(
+            text = displayNum, fontSize = 21.sp, fontWeight = FontWeight.Black,
+            color = if (selected) black else GoldBright,
+            modifier = Modifier.width(40.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        // Logo: no URL exists on Channel — the model's own 2-letter code.
+        Box(
+            modifier = Modifier.size(66.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .then(
+                    if (selected) Modifier.background(black)
+                        .border(2.dp, Color.White, RoundedCornerShape(16.dp))
+                    else Modifier.background(GoldGradient)
+                )
+                .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color.Black),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = channel.code, fontSize = 24.sp, fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Serif,
+                color = if (selected) GoldBright else GoldDeep
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = channel.customName ?: channel.name, fontSize = 22.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (selected) black else GoldWhite,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                )
+                if (channel.quality.isNotBlank()) {
+                    Text(
+                        text = channel.quality, fontSize = 13.sp, fontWeight = FontWeight.Black,
+                        color = if (selected) GoldBright else GoldWhite,
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                            .then(
+                                if (selected) Modifier.background(black)
+                                else Modifier.background(Color(0x38E5C158))
+                                    .border(1.dp, GoldBright, RoundedCornerShape(6.dp))
+                            )
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
                 }
-                if (digitBuffer.isNotEmpty()) {
-                    Text(text = stringResource(R.string.channel_osd, digitBuffer), fontSize = 28.sp, fontWeight = FontWeight.Black, color = Gold)
+                if (channel.isFavorite) {
+                    Text(text = "★", fontSize = 18.sp, color = if (selected) black else GoldBright)
+                }
+            }
+            if (channel.nowTitle.isNotBlank()) {
+                Text(
+                    text = channel.nowTitle + if (channel.nowTime.isNotBlank()) " • ${channel.nowTime}" else "",
+                    fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    color = if (selected) black else GoldBright,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                // 6dp progress bar (.chan-mini-bar).
+                val fraction = (channel.progress.coerceIn(0, 100) / 100f)
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(6.dp)
+                        .padding(top = 7.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(if (selected) Color(0x4D171000) else Color(0xBF000000))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth(fraction)
+                            .background(if (selected) black else GoldGradient)
+                    )
+                }
+            }
+        }
+        // «EN LECTURE» tag — hidden until the channel is selected (model .chan-status-tag).
+        if (selected) {
+            Text(
+                text = stringResource(R.string.live_playing_tag), fontSize = 13.sp,
+                fontWeight = FontWeight.Black, color = GoldBright,
+                modifier = Modifier.clip(RoundedCornerShape(14.dp))
+                    .background(black)
+                    .border(1.dp, GoldBright, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+/** V07 — preview window (.live-viewport): 420dp high, radius 26,
+ *  2.5px border, pulsing «EN DIRECT» pill + tech pill on top, bottom
+ *  bar with the «Now playing» title + gold «Lancer» and «Favori»
+ *  buttons. A single click on a channel only selects/previews it —
+ *  the viewport itself does NOT open the player. */
+@Composable
+private fun LiveViewport(
+    channel: Channel?,
+    epgNowTitle: String,
+    onLaunch: () -> Unit,
+    onToggleFavorite: () -> Unit
+) {
+    val pulse = rememberInfiniteTransition(label = "liveDot")
+    val dotAlpha by pulse.animateFloat(
+        initialValue = 1f, targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(tween(1200), RepeatMode.Reverse),
+        label = "liveDotAlpha"
+    )
+    Box(
+        modifier = Modifier.fillMaxWidth().height(420.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(Color(0xFF050401))
+            .border(2.5.dp, BorderStrong, RoundedCornerShape(26.dp))
+            .shadow(24.dp, RoundedCornerShape(26.dp), ambientColor = Color.Black, spotColor = Color.Black)
+    ) {
+        // Radial gold glow behind the play art (model .live-viewport svg).
+        Box(
+            modifier = Modifier.fillMaxSize().background(
+                Brush.radialGradient(
+                    0.0f to Color(0x73FFE89E),
+                    0.6f to Color(0x2E9C6F08),
+                    1.0f to Color(0xFF050301)
+                )
+            )
+        )
+        Box(
+            modifier = Modifier.align(Alignment.Center).size(120.dp)
+                .border(3.dp, GoldBright.copy(alpha = 0.4f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_play),
+                contentDescription = null, tint = GoldBright,
+                modifier = Modifier.size(54.dp)
+            )
+        }
+        Row(
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(22.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.clip(RoundedCornerShape(22.dp))
+                    .background(Color(0xE00C0802))
+                    .border(1.5.dp, GoldBright, RoundedCornerShape(22.dp))
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(11.dp)
+                        .clip(CircleShape)
+                        .background(GoldBright.copy(alpha = dotAlpha))
+                )
+                Text(
+                    text = stringResource(R.string.live_badge), fontSize = 16.sp,
+                    fontWeight = FontWeight.Black, color = GoldWhite
+                )
+            }
+            if (channel != null && channel.quality.isNotBlank()) {
+                Text(
+                    text = channel.quality, fontSize = 16.sp, fontWeight = FontWeight.Black,
+                    color = GoldBright,
+                    modifier = Modifier.clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xE00C0802))
+                        .border(1.5.dp, BorderGold, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(22.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val nowText = epgNowTitle.ifBlank { stringResource(R.string.live_select_channel) }
+            Text(
+                text = "${stringResource(R.string.live_now_playing)} : $nowText",
+                fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = GoldWhite,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xDB080602))
+                    .border(1.dp, BorderGold, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 18.dp, vertical = 9.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.height(50.dp)
+                        .clip(RoundedCornerShape(25.dp))
+                        .background(GoldGradient)
+                        .border(2.dp, Color(0xFFFFF8D6), RoundedCornerShape(25.dp))
+                        .tvFocusBorderless()
+                        .clickable { onLaunch() }
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_play),
+                        contentDescription = null, tint = GoldDeep, modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.live_launch), fontSize = 17.sp,
+                        fontWeight = FontWeight.Black, color = GoldDeep
+                    )
+                }
+                Row(
+                    modifier = Modifier.height(50.dp)
+                        .clip(RoundedCornerShape(25.dp))
+                        .background(Color(0xE60E0A03))
+                        .border(2.dp, GoldBright, RoundedCornerShape(25.dp))
+                        .tvFocusBorderless()
+                        .clickable { onToggleFavorite() }
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_heart),
+                        contentDescription = null, tint = GoldBright, modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.favorite), fontSize = 17.sp,
+                        fontWeight = FontWeight.Black, color = GoldWhite
+                    )
                 }
             }
         }
     }
+}
 
+/** V08 — EPG panel below the viewport (.live-epg-panel): gradient card
+ *  with 2px border, header (58dp logo + 28sp name + «Chaîne N° 01 •
+ *  Cinéma»), current program (21sp title + time + description + 10dp
+ *  bar) and the «next» list in a 2-column grid. Data comes from the
+ *  EPG flow (LiveViewModel.epg); Channel.nowTitle/nowTime/description
+ *  are the fallback when the EPG has no program for this channel. */
+@Composable
+private fun LiveEpgPanel(channel: Channel, epg: List<com.streammaster.tv.data.model.EpgProgram>) {
+    val nowMs = System.currentTimeMillis()
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val nowProg = epg.firstOrNull { it.startMillis <= nowMs && it.endMillis > nowMs }
+    val nextProgs = epg.filter { it.endMillis > nowMs && it != nowProg }.take(4)
+    val nowTitle = nowProg?.title ?: channel.nowTitle
+    val nowTime = if (nowProg != null) {
+        "${timeFormat.format(Date(nowProg.startMillis))} – ${timeFormat.format(Date(nowProg.endMillis))}"
+    } else channel.nowTime
+    val nowDesc = nowProg?.description?.takeIf { it.isNotBlank() } ?: channel.description
+    val fraction = if (nowProg != null && nowProg.endMillis > nowProg.startMillis) {
+        ((nowMs - nowProg.startMillis).toFloat() / (nowProg.endMillis - nowProg.startMillis)).coerceIn(0f, 1f)
+    } else channel.progress.coerceIn(0, 100) / 100f
+    val displayNum = channel.customNum?.toString() ?: channel.num
+
+    // R-B2: CardSurface with the panel's own 24dp shape, gradient and 2px
+    // border, so it carries the --card-shadow.
+    CardSurface(
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        shape = RoundedCornerShape(24.dp),
+        background = Brush.linearGradient(
+            listOf(Color(0xF21E1606), Color(0xFA0D0903))
+        ),
+        border = BorderStroke(2.dp, BorderGold)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 26.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(
+                modifier = Modifier.size(58.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(GoldGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = channel.code, fontSize = 22.sp, fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Serif, color = GoldDeep
+                )
+            }
+            Column {
+                Text(
+                    text = channel.customName ?: channel.name, fontSize = 28.sp,
+                    fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif,
+                    color = GoldWhite, maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = stringResource(R.string.live_channel_number, displayNum, channel.category),
+                    fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = GoldBright
+                )
+            }
+        }
+        Box(
+            modifier = Modifier.fillMaxWidth().height(1.5.dp)
+                .background(Color(0x40FFE89E))
+        )
+        if (nowTitle.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = nowTitle, fontSize = 21.sp, fontWeight = FontWeight.Black,
+                    color = GoldWhite, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Text(
+                    text = nowTime, fontSize = 19.sp, fontWeight = FontWeight.Black,
+                    color = GoldBright
+                )
+            }
+            if (nowDesc.isNotBlank()) {
+                Text(
+                    text = nowDesc, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
+                    color = GoldSoft, maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxWidth().height(10.dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(Color(0xCC000000))
+                    .border(1.dp, BorderGold, RoundedCornerShape(5.dp))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxHeight().fillMaxWidth(fraction)
+                        .background(GoldGradient)
+                )
+            }
+        } else {
+            Text(text = stringResource(R.string.no_epg), fontSize = 18.sp, color = TextMuted)
+        }
+        // «Next» list — 2-column grid (EPG rows first, Channel.next fallback).
+        val nextItems: List<Pair<String, String>> = if (nextProgs.isNotEmpty()) {
+            nextProgs.map { timeFormat.format(Date(it.startMillis)) to it.title }
+        } else channel.next.take(4)
+        if (nextItems.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                nextItems.chunked(2).forEach { rowItems ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        rowItems.forEach { (time, title) ->
+                            Row(
+                                modifier = Modifier.weight(1f)
+                                    .clip(RoundedCornerShape(13.dp))
+                                    .background(Color(0x80000000))
+                                    .border(1.dp, BorderGold, RoundedCornerShape(13.dp))
+                                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = time, fontSize = 14.sp, fontWeight = FontWeight.Black,
+                                    color = GoldBright
+                                )
+                                Text(
+                                    text = title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
+                                    color = GoldWhite, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (rowItems.size == 1) {
+                            androidx.compose.foundation.layout.Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+        }
+    }
 }

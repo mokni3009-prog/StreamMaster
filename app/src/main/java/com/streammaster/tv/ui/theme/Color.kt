@@ -16,9 +16,9 @@ val BorderGold = Color(0x5CFFE89E) // rgba(255,232,158,.36) — alpha 0x5C
 val BorderStrong = Color(0xC7FFF4C8) // rgba(255,244,200,.78) — alpha 0xC7
 val CardSurface = Color(0xFF1A1408)
 val CardSurfaceMuted = Color(0xFF14100A)
-val TextMuted = Color(0xFFC9BFA6)
+val TextMuted = Color(0xFFF3D98B) // G12: soft gold for secondary text (was grey-beige #C9BFA6)
 val TextDim = Color(0xFF8A7F63)
-val Danger = Color(0xFFE57373)
+val Danger = Color(0xFFFF6A4D) // G13: prototype danger (was Material #E57373)
 val Success = Color(0xFF81C784)
 
 /**

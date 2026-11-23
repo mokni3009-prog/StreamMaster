@@ -52,9 +52,18 @@ fun WatchLaterScreen(
     val items by viewModel.items.collectAsState()
     var confirmDeleteId by remember { mutableStateOf<String?>(null) }
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-    // Initial focus: the first watch-later row.
+    // Initial focus: the first watch-later row. The row only exists once
+    // the data has loaded — a LaunchedEffect(Unit) fires before that and
+    // the request is lost — so the request is re-tried (once) when the
+    // list arrives.
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    LaunchedEffect(items.isNotEmpty()) {
+        if (items.isNotEmpty() && !initialFocusDone) {
+            firstFocus.requestFocus()
+            initialFocusDone = true
+        }
+    }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
             text = stringResource(R.string.watch_later_title),

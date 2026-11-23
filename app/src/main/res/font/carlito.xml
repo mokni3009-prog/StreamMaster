@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carlito (OFL) — metrically compatible with Calibri, closest free match to Segoe UI, used for body text (SPEC §9). -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font android:fontStyle="normal" android:fontWeight="400" android:font="@font/carlito_regular" />
+    <font android:fontStyle="normal" android:fontWeight="700" android:font="@font/carlito_bold" />
+</font-family>

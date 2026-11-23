@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.streammaster.tv.data.model.Bouquet
 import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.data.model.Channel
+import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.EpgProgram
 import com.streammaster.tv.data.model.KidsFilter
 import com.streammaster.tv.data.repository.ContentRepository
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class LiveUiState(
@@ -38,6 +40,8 @@ class LiveViewModel @Inject constructor(
 ) : ViewModel() {
     private val _selectedBouquetId = MutableStateFlow<String?>(null)
     private val _selectedChannelId = MutableStateFlow<String?>(null)
+    /** «Toutes» pill (model renderLiveCats): all bouquets at once. */
+    private val _showAllBouquets = MutableStateFlow(false)
     val selectedBouquetId: StateFlow<String?> = _selectedBouquetId.asStateFlow()
     val selectedChannelId: StateFlow<String?> = _selectedChannelId.asStateFlow()
 
@@ -45,14 +49,15 @@ class LiveViewModel @Inject constructor(
         contentRepository.observeBouquets(BouquetKind.LIVE),
         contentRepository.observeChannels(),
         settingsRepository.settings,
-        _selectedBouquetId, _selectedChannelId
-    ) { bouquets, channels, settings, bouquetId, channelId ->
+        _selectedBouquetId, _selectedChannelId, _showAllBouquets
+    ) { bouquets, channels, settings, bouquetId, channelId, showAll ->
         // Kids mode (2026-11-22): only kid-named bouquets/channels.
         val kidFilteredBouquets = if (settings.kidsMode) bouquets.filter { KidsFilter.isKidCategory(it.name) } else bouquets
         val kidFilteredChannels = if (settings.kidsMode) channels.filter { KidsFilter.isKidCategory(it.category) } else channels
         val visibleBouquets = kidFilteredBouquets.filter { !it.hidden }
-        val bouquet = visibleBouquets.firstOrNull { it.id == bouquetId } ?: visibleBouquets.firstOrNull()
-        val bouquetChannels = kidFilteredChannels.filter { it.bouquetId == bouquet?.id && !it.hidden }
+        val bouquet = if (showAll) null else visibleBouquets.firstOrNull { it.id == bouquetId } ?: visibleBouquets.firstOrNull()
+        val bouquetChannels = if (showAll) kidFilteredChannels.filter { !it.hidden }
+            else kidFilteredChannels.filter { it.bouquetId == bouquet?.id && !it.hidden }
         val channel = bouquetChannels.firstOrNull { it.id == channelId } ?: bouquetChannels.firstOrNull()
         LiveUiState(
             bouquets = visibleBouquets, channels = bouquetChannels,
@@ -67,8 +72,22 @@ class LiveViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun selectBouquet(id: String) {
+        _showAllBouquets.value = false
         _selectedBouquetId.value = id
         _selectedChannelId.value = null
+    }
+
+    /** «Toutes» pill: show every (visible) channel, no bouquet filter. */
+    fun selectAll() {
+        _showAllBouquets.value = true
+        _selectedBouquetId.value = null
+        _selectedChannelId.value = null
+    }
+
+    /** Viewport «Favori» button (model toggleCurrentChannelFav). */
+    fun toggleFavorite() = viewModelScope.launch {
+        val channel = state.value.selectedChannel ?: return@launch
+        contentRepository.setFavorite(ContentKind.LIVE, channel.id, !channel.isFavorite)
     }
 
     fun selectChannel(id: String) { _selectedChannelId.value = id }

@@ -10,10 +10,12 @@ import com.streammaster.tv.data.model.Series
 import com.streammaster.tv.data.repository.ContentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -47,6 +49,30 @@ class ManageViewModel @Inject constructor(
     private val _draft = MutableStateFlow(ManageDraftState())
     val draft: StateFlow<ManageDraftState> = _draft.asStateFlow()
 
+    /** M07 — snapshot of the last persisted content, for the dirty badge
+     *  and for "Annuler les modifications" (reload the draft from the
+     *  repository). Only bouquets/channels/films/series count as content;
+     *  kind, selection and the saved flag are UI state. */
+    private val _pristine = MutableStateFlow<ManageDraftState?>(null)
+    val dirty: StateFlow<Boolean> = combine(_draft, _pristine) { d, p ->
+        p != null && !sameContent(d, p)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    private fun sameContent(a: ManageDraftState, b: ManageDraftState): Boolean =
+        a.bouquets == b.bouquets && a.channels == b.channels &&
+            a.films == b.films && a.series == b.series
+
+    /** M07 — throw the draft away and reload it from the repository. */
+    fun discardChanges() {
+        _pristine.value?.let { p ->
+            _draft.value = p.copy(
+                kind = _draft.value.kind,
+                selectedBouquetId = p.selectedBouquetId,
+                selectedItemIds = emptySet(), multiSelect = false, saved = false
+            )
+        }
+    }
+
     init {
         viewModelScope.launch {
             combine(
@@ -71,6 +97,10 @@ class ManageViewModel @Inject constructor(
                         selectedBouquetId = it.selectedBouquetId
                             ?: allBouquets.firstOrNull { b -> b.kind == BouquetKind.LIVE }?.id
                     )
+                }
+                // First load from the repository becomes the pristine snapshot.
+                if (_pristine.value == null) {
+                    _pristine.value = _draft.value.copy(saved = false)
                 }
             }.collect()
         }
@@ -181,6 +211,7 @@ class ManageViewModel @Inject constructor(
     fun save() = viewModelScope.launch {
         val d = _draft.value
         contentRepository.saveManageDraft(d.bouquets, d.channels, d.films, d.series)
+        _pristine.value = d.copy(saved = false)
         _draft.update { it.copy(saved = true) }
     }
 

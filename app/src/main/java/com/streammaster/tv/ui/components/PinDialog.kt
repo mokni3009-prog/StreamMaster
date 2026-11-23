@@ -1,6 +1,7 @@
 package com.streammaster.tv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -25,19 +27,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.streammaster.tv.ui.theme.CardSurface
-import com.streammaster.tv.ui.theme.Danger
-import com.streammaster.tv.ui.theme.Gold
+import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.GoldDeep
+import com.streammaster.tv.ui.theme.GoldGradient
+import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
-import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import kotlinx.coroutines.delay
 
@@ -48,6 +51,12 @@ import kotlinx.coroutines.delay
  * digits 1–9, then clear (✕), 0, backspace (⌫); dots UI showing the
  * entered digits; [onComplete] fires automatically once 4 digits are
  * entered (after a short 180 ms beat, like the prototype).
+ *
+ * K07 (prototype `.pin-dot` / `.pin-key` / `.pin-err`): dots are 62dp
+ * circles with a 2.5px border; keys are 72dp high with an 18dp radius
+ * and 28sp text (20sp for function keys) in a 3-column grid of 110dp
+ * keys; the error line is always reserved (26dp high) so the pad does
+ * not jump when an error appears.
  *
  * The [title] distinguishes the two uses — setup ("Définir le code PIN")
  * vs verify ("Entrez le code PIN"). The two-step setup flow (enter, then
@@ -81,67 +90,97 @@ fun PinDialog(
         }
     }
 
+    // .dlg-card shell (prototype): 720dp, padding 40×46, radius 30,
+    // gold gradient, 2.5px border.
+    val cardShape = RoundedCornerShape(30.dp)
     Dialog(
         onDismissRequest = onCancel,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Column(
             modifier = modifier
-                .fillMaxWidth(0.55f)
-                .background(Color(0xFF14100A), RoundedCornerShape(20.dp))
-                .padding(24.dp),
+                .width(720.dp)
+                .background(
+                    Brush.linearGradient(
+                        0.0f to Color(0xFA221807),
+                        1.0f to Color(0xFC0C0903)
+                    ),
+                    cardShape
+                )
+                .border(2.5.dp, BorderStrong, cardShape)
+                .padding(horizontal = 46.dp, vertical = 40.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             Text(
                 text = title,
                 color = GoldWhite,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Serif,
                 textAlign = TextAlign.Center
             )
             if (subtitle.isNotEmpty()) {
                 Text(
                     text = subtitle,
-                    color = TextMuted,
-                    fontSize = 16.sp,
+                    color = GoldSoft,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
             }
 
-            // Dots UI: 4 dots, filled gold as digits are entered.
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Dots UI: 4 dots of 62dp, filled gold as digits are entered.
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                 repeat(4) { i ->
+                    val filled = i < entry.length
                     Box(
                         modifier = Modifier
-                            .size(22.dp)
+                            .size(62.dp)
                             .clip(CircleShape)
-                            .background(if (i < entry.length) Gold else Color(0xFF3A2F16)),
+                            .then(
+                                if (filled) Modifier.background(GoldGradient)
+                                else Modifier.background(Color(0x99000000))
+                            )
+                            .border(
+                                2.5.dp,
+                                if (filled) Color.White else BorderStrong,
+                                CircleShape
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (i < entry.length) {
-                            Text(text = "•", color = GoldDeep, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        if (filled) {
+                            Text(text = "•", color = GoldDeep, fontSize = 30.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
             }
 
-            if (errorMessage != null) {
-                Text(
-                    text = errorMessage,
-                    color = Danger,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
-                )
+            // .pin-err: reserved 26dp line, shown only on error.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (errorMessage != null) {
+                    Text(
+                        text = errorMessage,
+                        color = Color(0xFFFFB9A8),
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
 
-            // Pad: 1–9, then clear / 0 / backspace (prototype order).
+            // Pad: 1–9, then clear / 0 / backspace (prototype order),
+            // 3 columns of 110dp keys.
             val keys = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back")
             keys.chunked(3).forEachIndexed { rowIndex, row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
                 ) {
                     row.forEachIndexed { colIndex, key ->
                         val requester = if (rowIndex == 0 && colIndex == 0) firstKeyFocus else null
@@ -160,7 +199,7 @@ fun PinDialog(
                                     else -> if (entry.length < 4) entry += key
                                 }
                             },
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.width(110.dp)
                         )
                     }
                 }
@@ -185,19 +224,24 @@ private fun PinKey(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null
 ) {
+    val shape = RoundedCornerShape(18.dp)
     var m = modifier
-        .height(60.dp)
-        .clip(RoundedCornerShape(14.dp))
-        .background(if (isFunction) Color(0xFF2A2113) else CardSurface)
+        .height(72.dp)
+        .clip(shape)
+        .background(Color(0x21E5C158))
+        .border(2.dp, Color(0x59FFE89E), shape)
+        // The focusRequester must come BEFORE tvFocus (which owns the
+        // focusable): after it, the request lands on a phantom target
+        // and the key shows no halo.
+        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
         .tvFocus()
         .clickable { onClick() }
-    if (focusRequester != null) m = m.focusRequester(focusRequester)
     Box(modifier = m, contentAlignment = Alignment.Center) {
         Text(
             text = label,
             color = GoldWhite,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
+            fontSize = if (isFunction) 20.sp else 28.sp,
+            fontWeight = FontWeight.Black,
             textAlign = TextAlign.Center
         )
     }

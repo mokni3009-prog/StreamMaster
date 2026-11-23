@@ -51,9 +51,18 @@ fun DownloadsScreen(
 ) {
     val downloads by viewModel.downloads.collectAsState()
     var confirmDeleteId by remember { mutableStateOf<String?>(null) }
-    // Initial focus: the first download row.
+    // Initial focus: the first download row. The row only exists once the
+    // data has loaded — a LaunchedEffect(Unit) fires before that and the
+    // request is lost — so the request is re-tried (once) when the list
+    // arrives.
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    LaunchedEffect(downloads.isNotEmpty()) {
+        if (downloads.isNotEmpty() && !initialFocusDone) {
+            firstFocus.requestFocus()
+            initialFocusDone = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(

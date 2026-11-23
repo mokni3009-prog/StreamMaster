@@ -106,20 +106,57 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.settings.collect { s ->
                 if (!_draft.value.loaded) {
-                    _draft.value = SettingsDraft(
-                        lang = s.lang, dns = s.dns, dnsCustom = s.dnsCustom,
-                        ua = s.ua, uaCustom = s.uaCustom, format = s.format,
-                        engine = s.engine, epgWindow = s.epgWindow, autoResume = s.autoResume,
-                        sleepMinutes = s.sleepMinutes, pin = s.pin, loaded = true,
-                        autoStartOnBoot = s.autoStartOnBoot, appLock = s.appLock,
-                        kidsMode = s.kidsMode, frameRateSwitch = s.frameRateSwitch,
-                        externalPlayer = s.externalPlayer,
-                        recordingFolderUri = s.recordingFolderUri, updateUrl = s.updateUrl,
-                        goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed
-                    )
+                    _draft.value = draftFrom(s)
                 }
             }
         }
+    }
+
+    /** Builds a draft from persisted settings (used on first load, on
+     *  discard and on reset). */
+    private fun draftFrom(s: AppSettings) = SettingsDraft(
+        lang = s.lang, dns = s.dns, dnsCustom = s.dnsCustom,
+        ua = s.ua, uaCustom = s.uaCustom, format = s.format,
+        engine = s.engine, epgWindow = s.epgWindow, autoResume = s.autoResume,
+        sleepMinutes = s.sleepMinutes, pin = s.pin, loaded = true,
+        autoStartOnBoot = s.autoStartOnBoot, appLock = s.appLock,
+        kidsMode = s.kidsMode, frameRateSwitch = s.frameRateSwitch,
+        externalPlayer = s.externalPlayer,
+        recordingFolderUri = s.recordingFolderUri, updateUrl = s.updateUrl,
+        goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed
+    )
+
+    /** ST05 — reset to defaults. Like the prototype's resetSettings(): the
+     *  PIN and the parental locks are KEPT, everything else returns to the
+     *  app defaults (and the draft is reset the same way). */
+    fun resetToDefaults() = viewModelScope.launch {
+        val keptPin = settings.value.pin
+        val keptBouquets = settings.value.lockedBouquets
+        val keptItems = settings.value.lockedItems
+        val keptProfile = settings.value.activeProfileId
+        settingsRepository.update {
+            AppSettings(
+                pin = keptPin, lockedBouquets = keptBouquets,
+                lockedItems = keptItems, activeProfileId = keptProfile
+            )
+        }
+        _draft.value = SettingsDraft(
+            pin = keptPin, loaded = true
+        )
+        _messageRes.value = com.streammaster.tv.R.string.st_reset_done
+    }
+
+    /** ST06 — throw the draft away and reload it from persisted settings. */
+    fun discardChanges() {
+        _draft.value = draftFrom(settings.value)
+    }
+
+    /** ST07 — delete the parental PIN (locks stay stored, but nothing is
+     *  enforced without a PIN, like SettingsRepository.isLocked). */
+    fun clearPin() = viewModelScope.launch {
+        settingsRepository.setPin("")
+        _draft.update { it.copy(pin = "") }
+        _messageRes.value = com.streammaster.tv.R.string.st_pin_removed
     }
 
     fun setLang(v: String) = _draft.update { it.copy(lang = v) }

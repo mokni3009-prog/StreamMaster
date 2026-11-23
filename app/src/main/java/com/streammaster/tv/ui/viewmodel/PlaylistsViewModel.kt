@@ -79,8 +79,20 @@ class PlaylistsViewModel @Inject constructor(
             password = f.password, portalUrl = f.portalUrl, mac = f.mac, m3uUrl = f.m3uUrl,
             xmltvUrl = f.xmltvUrl.takeIf { it.isNotBlank() }
         )
-        if (f.editing == null) playlistRepository.addPlaylist(updated)
-        else playlistRepository.updatePlaylist(updated)
+        if (f.editing == null) {
+            // Y07 — same path as Login: addPlaylist then refresh; if the
+            // refresh fails the playlist is removed again (LoginViewModel).
+            val id = playlistRepository.addPlaylist(updated)
+            val ok = runCatching { playlistRepository.refreshPlaylist(id) }.getOrDefault(false)
+            if (!ok) {
+                runCatching { playlistRepository.deletePlaylist(id) }
+                _form.update { it.copy(messageRes = com.streammaster.tv.R.string.login_error) }
+                return@launch
+            }
+        } else {
+            playlistRepository.updatePlaylist(updated)
+            runCatching { playlistRepository.refreshPlaylist(updated.id) }
+        }
         _form.update { PlaylistFormState() }
     }
 

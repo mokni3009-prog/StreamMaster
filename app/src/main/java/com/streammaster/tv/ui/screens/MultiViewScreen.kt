@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -67,6 +68,14 @@ fun MultiViewScreen(
     // Initial focus: the first tile (slot 0).
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // The picker is a same-window overlay: when it closes, the focused
+    // picker item is disposed, so focus returns to the first tile —
+    // otherwise the D-pad is left with no focus.
+    LaunchedEffect(pickerSlot) {
+        if (pickerSlot == null) firstFocus.requestFocus()
+    }
+    // Back closes the picker first, instead of leaving the screen.
+    BackHandler(enabled = pickerSlot != null) { viewModel.closePicker() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {

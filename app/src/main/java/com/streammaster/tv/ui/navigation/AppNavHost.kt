@@ -1,11 +1,15 @@
 package com.streammaster.tv.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.streammaster.tv.ui.components.GoldToastHost
 import com.streammaster.tv.ui.screens.DetailScreen
 import com.streammaster.tv.ui.screens.DownloadsScreen
 import com.streammaster.tv.ui.screens.EpgScreen
@@ -20,6 +24,7 @@ import com.streammaster.tv.ui.screens.ManageScreen
 import com.streammaster.tv.ui.screens.MatchCenterScreen
 import com.streammaster.tv.ui.screens.MultiViewScreen
 import com.streammaster.tv.ui.screens.PlayerScreen
+import com.streammaster.tv.ui.screens.ParentalScreen
 import com.streammaster.tv.ui.screens.PlaylistsScreen
 import com.streammaster.tv.ui.screens.RecordingsScreen
 import com.streammaster.tv.ui.screens.RemoteScreen
@@ -37,7 +42,10 @@ import com.streammaster.tv.ui.screens.WatchLaterScreen
  */
 @Composable
 fun AppNavHost(navController: NavHostController) {
-    NavHost(navController = navController, startDestination = Routes.SPLASH) {
+    // R-M2: the gold toast host overlays the whole NavHost, so it covers
+    // every screen — including Splash / Login / Loading.
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(navController = navController, startDestination = Routes.SPLASH) {
         composable(Routes.SPLASH) { SplashScreen(navController) }
         composable(Routes.LOGIN) { LoginScreen(navController) }
         composable(Routes.LOADING) { LoadingScreen(navController) }
@@ -59,6 +67,9 @@ fun AppNavHost(navController: NavHostController) {
         composable(Routes.PLAYLISTS) { Shell(navController, Routes.PLAYLISTS) { PlaylistsScreen(navController) } }
         composable(Routes.MANAGE) { Shell(navController, Routes.MANAGE) { ManageScreen(navController) } }
         composable(Routes.SETTINGS) { Shell(navController, Routes.SETTINGS) { SettingsScreen(navController) } }
+        // PC01 — parental control is NOT a sidebar item (the prototype does
+        // not put it there); it is reached from the locks row in Settings.
+        composable(Routes.PARENTAL) { Shell(navController, Routes.PARENTAL) { ParentalScreen(navController) } }
 
         composable(
             route = Routes.PLAYER,
@@ -82,5 +93,7 @@ fun AppNavHost(navController: NavHostController) {
             val id = backStackEntry.arguments?.getString("id") ?: ""
             DetailScreen(navController = navController, kind = kind, id = id)
         }
+        }
+        GoldToastHost()
     }
 }

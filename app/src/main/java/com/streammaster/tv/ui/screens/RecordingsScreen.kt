@@ -64,14 +64,30 @@ fun RecordingsScreen(
     }
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     val totalBytes = recordings.sumOf { it.sizeBytes }
-    // Initial focus: the Stop button while recording, else the first
-    // scheduled / rule / recorded row's first focusable element.
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     val hasActiveRecording = recState is RecordingState.Active
     val focusOnScheduled = !hasActiveRecording && scheduled.isNotEmpty()
     val focusOnRule = !hasActiveRecording && !focusOnScheduled && seriesRules.isNotEmpty()
     val focusOnRecording = !hasActiveRecording && !focusOnScheduled && !focusOnRule && recordings.isNotEmpty()
+    // Initial focus: the Stop button while recording, else the first
+    // scheduled / rule / recorded row's first focusable element. The
+    // target only exists once the data has loaded — a LaunchedEffect(Unit)
+    // fires before that and the request is lost — so the request is
+    // re-tried (once) when the target section appears.
+    val firstFocus = remember { FocusRequester() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    val focusTarget = when {
+        hasActiveRecording -> "active"
+        focusOnScheduled -> "scheduled"
+        focusOnRule -> "rule"
+        focusOnRecording -> "recording"
+        else -> null
+    }
+    LaunchedEffect(focusTarget) {
+        if (focusTarget != null && !initialFocusDone) {
+            firstFocus.requestFocus()
+            initialFocusDone = true
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -115,6 +131,11 @@ fun RecordingsScreen(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
+                            // The row itself is focusable (no click of its
+                            // own — its action lives in the Annuler button);
+                            // without this the D-pad can only land on the
+                            // buttons and never on the row.
+                            .tvFocus()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -158,6 +179,11 @@ fun RecordingsScreen(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
+                            // The row itself is focusable (no click of its
+                            // own — its action lives in the Annuler button);
+                            // without this the D-pad can only land on the
+                            // buttons and never on the row.
+                            .tvFocus()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {

@@ -1,6 +1,8 @@
 package com.streammaster.tv.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +12,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,16 +24,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streammaster.tv.R
 import com.streammaster.tv.ui.keyboard.KeyboardLayouts
+import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.CardSurface
-import com.streammaster.tv.ui.theme.Gold
-import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldDeep
+import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
@@ -78,6 +85,8 @@ fun BuiltInKeyboard(
     onAction: (KeyboardAction) -> Unit,
     language: KeyboardLanguage,
     mode: KeyboardMode,
+    /** K02: when non-null, a ✕ "clear all" key is shown in the function row. */
+    onClearAll: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Prototype default: shift ON for French (uppercase first), OFF for Arabic.
@@ -104,12 +113,21 @@ fun BuiltInKeyboard(
         onAction(KeyboardAction.Char(c))
     }
 
+    // .kb-panel (prototype): gradient panel, 24dp radius, 2px border.
+    val panelShape = RoundedCornerShape(24.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(CardSurface, RoundedCornerShape(20.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .background(
+                Brush.linearGradient(
+                    0.0f to Color(0xF01E1606),
+                    1.0f to Color(0xF50E0A03)
+                ),
+                panelShape
+            )
+            .border(2.dp, BorderGold, panelShape)
+            .padding(horizontal = 26.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         layout.rows.forEach { row ->
             Row(
@@ -126,9 +144,10 @@ fun BuiltInKeyboard(
             }
         }
 
-        // Function row: language | 123/ABC | Shift (FR only) | Space | ⌫ | Valider
+        // Function row: language | 123/ABC | Shift (FR only) | Space | ⌫ | ✕ (K02, only when onClearAll is passed) | Valider
         // (Prototype also had a ✕ "clear" key; KeyboardAction has no Clear
-        // action, so clearing is done with repeated ⌫ or by the host screen.)
+        // action, so clearing is done through [onClearAll] when the host
+        // screen passes it, or with repeated ⌫ otherwise.)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -169,8 +188,18 @@ fun BuiltInKeyboard(
                 modifier = Modifier.weight(1f),
                 isFunction = true
             )
+            if (onClearAll != null) {
+                KbKey(
+                    label = "✕",
+                    onClick = onClearAll,
+                    modifier = Modifier.weight(1f),
+                    isFunction = true
+                )
+            }
             KbKey(
-                label = "✓ Valider",
+                // R-S3: ic_check icon + "Valider" instead of the "✓ " prefix.
+                label = "Valider",
+                iconRes = R.drawable.ic_check,
                 onClick = { onAction(KeyboardAction.Validate) },
                 modifier = Modifier.weight(1.6f),
                 isGold = true
@@ -179,7 +208,7 @@ fun BuiltInKeyboard(
     }
 }
 
-/** One key of the built-in keyboard. */
+/** One key of the built-in keyboard (K01: `.kb2-key` in the prototype). */
 @Composable
 private fun KbKey(
     label: String,
@@ -187,35 +216,82 @@ private fun KbKey(
     modifier: Modifier = Modifier,
     isFunction: Boolean = false,
     isActive: Boolean = false,
-    isGold: Boolean = false
+    isGold: Boolean = false,
+    @DrawableRes iconRes: Int? = null
 ) {
-    val bg = when {
-        isGold -> Gold
-        isActive -> GoldBright
-        isFunction -> Color(0xFF2A2113)
-        else -> Color(0xFF221B0E)
-    }
+    // Prototype `.kb2-key`: height 62px, radius 15, font 24px (18px for
+    // function keys), vertical gradient rgba(255,232,158,.16→.06), 1.5px
+    // border rgba(255,232,158,.35); gold keys use the gold gradient with a
+    // #fff8d6 border; active keys (Shift on) use the gold gradient too.
+    val shape = RoundedCornerShape(15.dp)
     val fg = when {
         isGold || isActive -> GoldDeep
         else -> GoldWhite
     }
+    var m = modifier
+        .height(62.dp)
+        .clip(shape)
+    m = when {
+        isGold || isActive -> m.background(GoldGradient)
+        isFunction -> m.background(Color(0x8C000000))
+        else -> m.background(
+            Brush.verticalGradient(
+                Color(0x29FFE89E),
+                Color(0x0FFFE89E)
+            )
+        )
+    }
+    m = if (isGold || isActive) {
+        m.border(1.5.dp, Color(0xFFFFF8D6), shape)
+    } else {
+        m.border(1.5.dp, Color(0x59FFE89E), shape)
+    }
+    m = m
+        .tvFocus()
+        .clickable { onClick() }
     Box(
-        modifier = modifier
-            .height(52.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(bg)
-            .tvFocus()
-            .clickable { onClick() },
+        modifier = m,
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            color = fg,
-            fontSize = if (label.length > 1 && !isGold) 15.sp else 17.sp,
-            fontWeight = if (isFunction || isGold) FontWeight.Bold else FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
+        // R-S3: optional leading icon (the Valider key's ic_check).
+        if (iconRes != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = fg,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = label,
+                    color = fg,
+                    fontSize = when {
+                        isGold -> 20.sp
+                        isFunction -> 18.sp
+                        else -> 24.sp
+                    },
+                    fontWeight = if (isFunction || isGold) FontWeight.Bold else FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
+        } else {
+            Text(
+                text = label,
+                color = fg,
+                fontSize = when {
+                    isGold -> 20.sp
+                    isFunction -> 18.sp
+                    else -> 24.sp
+                },
+                fontWeight = if (isFunction || isGold) FontWeight.Bold else FontWeight.Black,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
     }
 }
 
