@@ -49,13 +49,19 @@ class ManageViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             combine(
-                contentRepository.observeBouquets(BouquetKind.LIVE),
-                contentRepository.observeBouquets(BouquetKind.FILMS),
-                contentRepository.observeBouquets(BouquetKind.SERIES),
-                contentRepository.observeChannels(),
-                contentRepository.observeFilms(),
-                contentRepository.observeSeries()
-            ) { live: List<Bouquet>, films: List<Bouquet>, series: List<Bouquet>, channels: List<Channel>, filmList: List<Film>, seriesList: List<Series> ->
+                combine(
+                    contentRepository.observeBouquets(BouquetKind.LIVE),
+                    contentRepository.observeBouquets(BouquetKind.FILMS),
+                    contentRepository.observeBouquets(BouquetKind.SERIES)
+                ) { live, films, series -> Triple(live, films, series) },
+                combine(
+                    contentRepository.observeChannels(),
+                    contentRepository.observeFilms(),
+                    contentRepository.observeSeries()
+                ) { channels, films, series -> Triple(channels, films, series) }
+            ) { bouquets, rest ->
+                val (live, films, series) = bouquets
+                val (channels, filmList, seriesList) = rest
                 val allBouquets = live + films + series
                 _draft.update {
                     it.copy(
