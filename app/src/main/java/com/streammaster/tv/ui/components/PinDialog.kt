@@ -30,6 +30,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,6 +44,7 @@ import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.tvFocus
+import com.streammaster.tv.ui.theme.uiScale
 import kotlinx.coroutines.delay
 
 /**
@@ -91,11 +93,17 @@ fun PinDialog(
         }
     }
 
-    // .dlg-card shell (prototype): 720dp, padding 32×46, radius 30,
-    // gold gradient, 2.5px border. Vertical padding is 32dp, not the
-    // prototype's 40dp: at 40dp the dialog is ~727dp tall and the bottom
-    // of "Annuler" is cut ~7dp on a 720p canvas (720dp high); at 32dp
-    // it is ~711dp and fits (an invisible change on the reference).
+    // .dlg-card shell (prototype): 720dp, padding 40×46, radius 30,
+    // gold gradient, 2.5px border. B-S3: the vertical padding is 40dp
+    // as in the prototype on the reference, and 32dp only on a short
+    // design canvas (design height < 1080dp, i.e. the 720p xhdpi canvas
+    // at 720 design-dp): at 40dp the dialog is ~727dp tall and the
+    // bottom of "Annuler" is cut ~7dp there; at 32dp it is ~711dp and
+    // fits. The check uses the DESIGN height (screenHeightDp /
+    // uiScale(), LoginScreen idiom) — NOT screenHeightDp < 700, which
+    // would wrongly give 32dp on a 1080p xhdpi TV (540dp high).
+    // The other dialogs (NumberPad/Confirm/Selector) are on 40dp too.
+    val vPad = if (LocalConfiguration.current.screenHeightDp / uiScale() < 1080f) 32.dp else 40.dp
     val cardShape = RoundedCornerShape(30.dp)
     Dialog(
         onDismissRequest = onCancel,
@@ -112,7 +120,7 @@ fun PinDialog(
                     cardShape
                 )
                 .border(2.5.dp, BorderStrong, cardShape)
-                .padding(horizontal = 46.dp, vertical = 32.dp),
+                .padding(horizontal = 46.dp, vertical = vPad),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {

@@ -394,7 +394,6 @@
     <string name="topbar_latency_unknown">— ms</string>
     <string name="profile_active_manage">Xtream Actif • Gérer</string>
     <string name="login_error_title">Connexion impossible</string>
-    <string name="sync_in_progress">En cours…</string>
     <string name="sync_done_percent">100 %</string>
     <!-- Search screen (SE05/SE08/SE09) + remote hint. -->
     <plurals name="search_results_count">

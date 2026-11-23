@@ -26,6 +26,7 @@ object M3uParser {
 
     fun parse(text: String, playlistUrl: String): ParsedM3u {
         val lines = text.lineSequence().map { it.trim() }.toList()
+        SyncProgressBus.reset()
         var xmlTvUrl: String? = null
         val channels = mutableListOf<Channel>()
         val groups = linkedMapOf<String, Int>() // group name -> order
@@ -38,6 +39,11 @@ object M3uParser {
         }
 
         for ((lineNo, line) in lines.withIndex()) {
+            // Real per-line progress (R-M3): the playlist size is known, so
+            // the live step advances 0 -> 95 % while parsing; 100 % at the end.
+            if (lineNo % 500 == 0 && lines.isNotEmpty()) {
+                SyncProgressBus.setStep(0, (lineNo * 95 / lines.size).coerceIn(0, 95))
+            }
             when {
                 line.startsWith("#EXTM3U") -> {
                     val attrs = parseAttrs(line)
@@ -81,6 +87,8 @@ object M3uParser {
                         isBroken = false,
                         streamUrl = resolveUrl(url),
                         epgId = attrs["tvg-id"]?.takeIf { it.isNotEmpty() },
+                        logoUrl = attrs["tvg-logo"]?.takeIf { it.isNotBlank() }
+                            ?.let { resolveUrl(it) },
                         customNum = null,
                         hidden = false,
                         customName = null,
@@ -130,6 +138,7 @@ object M3uParser {
                 hidden = false
             )
         }
+        SyncProgressBus.setStep(0, 100)
         return ParsedM3u(bouquets, channels, xmlTvUrl)
     }
 

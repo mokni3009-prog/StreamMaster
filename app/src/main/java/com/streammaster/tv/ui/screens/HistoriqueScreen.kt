@@ -103,12 +103,14 @@ fun HistoriqueScreen(
             )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(history.take(20)) { index, entry ->
+                itemsIndexed(history.take(20)) { index, row ->
+                    val entry = row.entry
                     // Prototype `.hist-row`: min 64dp, radius 17, black 45%,
                     // 2px border, 46dp gold kind icon, 20sp title, 15sp sub, 16sp time.
-                    // The sub line shows the kind only: HistoryEntry carries no
-                    // category/genre/current-programme to show (prototype
-                    // `histSub` needs the full item, which the entry does not keep).
+                    // R-S6: the sub line is the model's `histSub` — kind +
+                    // detail from the catalog (category + current programme
+                    // for a channel, genre + year for a film, genre for a
+                    // series); kind alone when the item left the catalog.
                     val (kindIcon, kindLabel) = when (entry.kind) {
                         ContentKind.LIVE -> R.drawable.ic_tv to R.string.hist_kind_channel
                         ContentKind.FILM -> R.drawable.ic_film to R.string.hist_kind_film
@@ -150,7 +152,11 @@ fun HistoriqueScreen(
                                 color = GoldWhite, maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = stringResource(kindLabel),
+                                text = if (row.detail != null) {
+                                    "${stringResource(kindLabel)} • ${row.detail}"
+                                } else {
+                                    stringResource(kindLabel)
+                                },
                                 fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldBright,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )

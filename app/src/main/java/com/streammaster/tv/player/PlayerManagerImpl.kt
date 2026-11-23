@@ -18,6 +18,7 @@ import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import com.streammaster.tv.data.db.ChannelDao
 import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.PlaybackItem
@@ -83,6 +84,7 @@ private enum class ErrorKind { SOURCE, RENDERER, UNEXPECTED }
 class PlayerManagerImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val contentRepository: ContentRepository,
+    private val channelDao: ChannelDao,
     private val settingsRepository: SettingsRepository,
     private val networkStack: NetworkStack,
     private val qoeLogger: QoeLogger,
@@ -138,6 +140,9 @@ class PlayerManagerImpl @Inject constructor(
     private var currentUrls: List<String> = emptyList()
     private var mirrorIndex: Int = 0
     private var retryCount: Int = 0
+    /** Per-play() guard so the broken-flag clear below writes at most once
+     *  per playback session (onIsPlayingChanged / VLC Playing fire often). */
+    private var brokenFlagClearedForSession: Boolean = false
     private var engineSwitched: Boolean = false
     private var activeEngine: Engine = Engine.EXOPLAYER
     private var playSessionId: Int = 0
@@ -190,6 +195,7 @@ class PlayerManagerImpl @Inject constructor(
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _state.update { it.copy(isPlaying = isPlaying) }
+            if (isPlaying) clearBrokenFlagOnce()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -298,6 +304,7 @@ class PlayerManagerImpl @Inject constructor(
         val session = playSessionId
         currentItem = item
         retryCount = 0
+        brokenFlagClearedForSession = false
         mirrorIndex = 0
         engineSwitched = false
         outroHandled = false
@@ -865,11 +872,52 @@ class PlayerManagerImpl @Inject constructor(
     }
 
     private fun showError(message: String) {
+        // Terminal failure (every failure path funnels here — see callers):
+        // the recovery chain is exhausted, so the live channel is broken.
+        markCurrentChannelBroken()
         stallDetector.stop()
         tickerJob?.cancel()
         tickerJob = null
         stopEnginesOnly()
         _state.update { it.copy(showError = true, errorMessage = message, isPlaying = false, isBuffering = false) }
+    }
+
+    /**
+     * SIGNAL FAIBLE badge (LiveScreen ChannelCard, gated on Channel.isBroken).
+     * The flag lives in the channels table (no new column / migration: it is
+     * part of the schema since v1) and reaches the UI through the existing
+     * path — ChannelEntity.toModel() -> ContentRepositoryImpl.observeChannels()
+     * (Room Flow) -> LiveViewModel -> LiveScreen — so a DAO write refreshes
+     * the badge with no UI change. Writes run on Dispatchers.IO and never
+     * fail playback: any error is only logged. VOD items are untouched
+     * (their isBroken is a sync-time flag, not a playback verdict).
+     */
+    private fun markCurrentChannelBroken() {
+        val live = currentItem as? PlaybackItem.Live ?: return
+        scope.launch(Dispatchers.IO) {
+            try {
+                channelDao.setBroken(live.channel.id, true)
+            } catch (e: Exception) {
+                Log.w(TAG, "setBroken(true) failed for ${live.channel.id}", e)
+            }
+        }
+    }
+
+    /** Clear the flag on the first successful playback of a session, so the
+     *  badge does not stick after the channel works again. Guarded by
+     *  [brokenFlagClearedForSession] (reset in play()): at most one write
+     *  per session, however often Playing fires (pause/resume, rebuffer). */
+    private fun clearBrokenFlagOnce() {
+        if (brokenFlagClearedForSession) return
+        val live = currentItem as? PlaybackItem.Live ?: return
+        brokenFlagClearedForSession = true
+        scope.launch(Dispatchers.IO) {
+            try {
+                channelDao.setBroken(live.channel.id, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "setBroken(false) failed for ${live.channel.id}", e)
+            }
+        }
     }
 
     // ---- VLC events --------------------------------------------------------------
@@ -878,6 +926,7 @@ class PlayerManagerImpl @Inject constructor(
         when (event) {
             is VlcEvent.Playing -> {
                 _state.update { it.copy(isPlaying = true, isBuffering = false) }
+                clearBrokenFlagOnce()
             }
             is VlcEvent.Buffering -> {
                 val buffering = event.percent < 100f

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -979,14 +980,27 @@ private fun PlayerControls(
                 }
                 // Groups row (PL07): three control groups. LazyRow
                 // (2026-11-23) so the row scrolls with D-pad focus when
-                // the groups overflow: live totals ~1851dp vs 1816dp at
-                // the reference (~35dp) and far more than the ~728dp
-                // available on the narrow 1280x720 screen. Lazy lists
-                // only use arrangement.spacing — SpaceBetween spacing is
-                // 0dp — so the SpaceBetween spread is reproduced from
-                // the measured group widths: when the groups fit, the gap
+                // the groups overflow on the narrow 1280x720 screen (far
+                // less than the ~728dp available there). Lazy lists only
+                // use arrangement.spacing — SpaceBetween spacing is 0dp —
+                // so the SpaceBetween spread is reproduced from the
+                // measured group widths: when the groups fit, the gap
                 // spreads them like SpaceBetween; when they overflow,
                 // the gap is 0 and the row scrolls.
+                // B-S2 (2026-11-23): on the 1080p reference the groups
+                // used to total ~1851dp vs 1816dp available (~35dp of
+                // the third group clipped) when the Direct button shows
+                // (timeshifted Live). The excess was the label text:
+                // ExtraBold (800) is not in the bundled Carlito family
+                // (400/700), so Compose's default FontSynthesis.All
+                // fake-bolded the Bold cut ~10% wider (~61dp over the
+                // ~635dp of labels); the model renders weight 800 as
+                // plain Segoe Bold (browsers only synthesise when no
+                // bold face exists at all). FsCtrlButton now requests
+                // Bold (700) — the bundled cut, no synthesis — so the
+                // worst case (Direct visible) measures 1790.2dp from
+                // Carlito Bold advances (G1 587.1 + G2 715.9 + G3 487.2)
+                // and fits in 1816dp with ~12.9dp gaps.
                 var groupWidths by remember { mutableStateOf(listOf(0, 0, 0)) }
                 BoxWithConstraints(
                     modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
@@ -1160,7 +1174,13 @@ private fun FsCtrlButton(
                 )
             }
             Text(
-                text = text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
+                // B-S2: Bold (700), not ExtraBold (800): 800 is not in
+                // the bundled Carlito family, so the default
+                // FontSynthesis.All fake-bolds the Bold cut ~10% wider
+                // and the Live row overflowed the 1816dp reference
+                // width; Bold renders the bundled cut exactly, like
+                // the model (weight 800 as plain Segoe Bold).
+                text = text, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                 color = GoldWhite, maxLines = 1
             )
         }
@@ -1279,13 +1299,15 @@ private fun StatusPills(
             )
         }
         if (sleepRemainingMin > 0) {
-            Text(
-                text = stringResource(R.string.sleep_badge, sleepRemainingMin),
-                fontSize = 14.sp, color = GoldWhite,
-                modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                    .background(CardSurface)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            )
+            // R-B2: CardSurface component (10dp) so the badge carries the
+            // prototype --card-shadow instead of a flat background.
+            com.streammaster.tv.ui.components.CardSurface(shape = RoundedCornerShape(10.dp)) {
+                Text(
+                    text = stringResource(R.string.sleep_badge, sleepRemainingMin),
+                    fontSize = 14.sp, color = GoldWhite,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
         }
         if (usingBackup) {
             Text(
@@ -1415,15 +1437,18 @@ private fun VolumeOsd(
 
 @Composable
 private fun VolumeStepButton(text: String, onClick: () -> Unit) {
-    Box(
+    // R-B2: CardSurface component (24dp radius = the 48dp circle) so the
+    // button carries the prototype --card-shadow; the 2dp gold border kept.
+    com.streammaster.tv.ui.components.CardSurface(
         modifier = Modifier.size(48.dp)
-            .clip(CircleShape)
-            .background(CardSurface)
-            .border(2.dp, BorderGold, CircleShape)
             .tvFocus().clickable { onClick() },
-        contentAlignment = Alignment.Center
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(2.dp, BorderGold)
     ) {
-        Text(text = text, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+        Text(
+            text = text, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = GoldWhite,
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
 

@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.util.TitleNormalizer
@@ -83,9 +85,10 @@ import kotlin.math.roundToInt
  *   highlighted background (E08); title 17sp / time 13sp (E09).
  * A future program opens the action dialog (reminder / recording —
  * E07, kept: SelectorDialog is the approved post-model behaviour).
- * Channel logos: the model has NO logo URL field (Channel carries only
- * `code`, the 2-letter initials), so the 48dp logo box shows the code
- * on the gold gradient — no Coil load is possible.
+ * Channel logos: `Channel.logoUrl` (stored at sync time, DB v7) is
+ * shown with Coil in the 48dp logo box, falling back to the 2-letter
+ * `code` on the gold gradient when the provider supplies no logo or
+ * the load fails.
  */
 @Composable
 fun EpgScreen(
@@ -209,6 +212,8 @@ fun EpgScreen(
                     horizontalArrangement = Arrangement.spacedBy(slotGap)
                 ) {
                     // E04 — channel cell (.epg-g-ch): 48dp logo + name 18sp + category 15sp gold.
+                    // Logo: provider logo via Coil, code fallback.
+                    var cellLogoFailed by remember(channel.id) { mutableStateOf(false) }
                     Row(
                         modifier = Modifier.width(chanW).height(64.dp)
                             .clip(RoundedCornerShape(16.dp))
@@ -224,11 +229,20 @@ fun EpgScreen(
                                 .background(GoldGradient),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = channel.code, fontSize = 18.sp,
-                                fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif,
-                                color = GoldDeep
-                            )
+                            if (!channel.logoUrl.isNullOrBlank() && !cellLogoFailed) {
+                                AsyncImage(
+                                    model = channel.logoUrl, contentDescription = null,
+                                    contentScale = ContentScale.Fit,
+                                    onError = { cellLogoFailed = true },
+                                    modifier = Modifier.fillMaxSize().padding(4.dp)
+                                )
+                            } else {
+                                Text(
+                                    text = channel.code, fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif,
+                                    color = GoldDeep
+                                )
+                            }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(

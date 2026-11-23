@@ -31,6 +31,8 @@ data class ChannelEntity(
     /** Extra mirror URLs, encoded with "\u001f" separator. Primary streamUrl comes first. */
     val backupUrlsEncoded: String,
     val epgId: String?,
+    /** Channel logo URL (see Channel.logoUrl); added by Migration(6, 7). */
+    val logoUrl: String? = null,
     val customNum: Int?,
     val hidden: Boolean,
     val customName: String?,

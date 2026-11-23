@@ -44,6 +44,7 @@ fun ChannelEntity.toModel(): Channel = Channel(
     quality = quality, nowTitle = nowTitle, nowTime = nowTime, progress = progress, hue = hue,
     description = description, next = Converters.decodePairs(nextEncoded),
     isFavorite = isFavorite, isBroken = isBroken, streamUrl = streamUrl, epgId = epgId,
+    logoUrl = logoUrl,
     customNum = customNum, hidden = hidden, customName = customName, bouquetId = bouquetId
 )
 
@@ -54,6 +55,7 @@ fun Channel.toEntity(playlistId: String, orderIndex: Int, backupUrls: List<Strin
         description = description, nextEncoded = Converters.encodePairs(next),
         isFavorite = isFavorite, isBroken = isBroken, streamUrl = streamUrl,
         backupUrlsEncoded = Converters.encodeStrings(backupUrls), epgId = epgId,
+        logoUrl = logoUrl,
         customNum = customNum, hidden = hidden, customName = customName,
         bouquetId = bouquetId, playlistId = playlistId, orderIndex = orderIndex
     )

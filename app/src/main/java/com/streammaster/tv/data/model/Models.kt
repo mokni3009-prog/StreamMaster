@@ -23,6 +23,10 @@ data class Channel(
     val isBroken: Boolean,
     val streamUrl: String,
     val epgId: String?,
+    /** Channel logo URL (Xtream `stream_icon`, Stalker `logo`, M3U
+     *  `tvg-logo`), stored at sync time (R-M3 logos / zero-diff C-3).
+     *  Null when the provider supplies none — the UI falls back to `code`. */
+    val logoUrl: String? = null,
     val customNum: Int?,
     val hidden: Boolean,
     val customName: String?,

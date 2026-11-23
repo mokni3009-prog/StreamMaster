@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.keyboard.KeyboardLayouts
 import com.streammaster.tv.ui.theme.BorderGold
-import com.streammaster.tv.ui.theme.CardSurface
+import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
@@ -334,17 +334,18 @@ fun KeyboardSheet(
             fontWeight = FontWeight.Bold
         )
         // Current text — read-only display box (never an editable TextField).
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(CardSurface, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+        // R-B2: CardSurface component (12dp) so the box carries the
+        // prototype --card-shadow instead of a flat background.
+        CardSurface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Text(
                 text = text.ifEmpty { "…" },
                 color = if (text.isEmpty()) TextMuted else GoldWhite,
                 fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
             )
         }
         BuiltInKeyboard(

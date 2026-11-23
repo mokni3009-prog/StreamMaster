@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
+import com.streammaster.tv.data.api.SyncProgressBus
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.BorderStrong
@@ -56,10 +57,13 @@ private val SyncCardGradient: Brush = Brush.linearGradient(
  * 74dp gold spinner (6dp stroke), title 34sp Black + description 20sp
  * gold-bright; sync steps as dark cards (black 55%, 1.5px border, 20dp
  * radius, 18×24dp padding) with a 12dp full-width progress bar.
- * LD05: no fake live percentage — the active step shows an indeterminate
- * bar, a finished step shows "100 %", a pending step shows "En attente".
- * A true live percentage needs sync progress from the repository layer,
- * which does not exist (no API reports per-item sync progress).
+ * LD05 / R-M3: live per-step percentage — the active step shows the real
+ * sync progress (0 % -> 100 %) from SyncProgressBus, written by the API
+ * layer as each fetch stage completes (Xtream's 6 sequential calls +
+ * per-series info loop, Stalker handshake/genres/channels, M3U per-line
+ * parsing); a finished step shows "100 %", a pending step "En attente".
+ * The bar is determinate on the active step. EPG sync is a separate
+ * worker and is not part of this percentage.
  * Navigates home once any content is ready.
  */
 @Composable
@@ -70,6 +74,10 @@ fun LoadingScreen(
     val isReady by viewModel.isReady.collectAsState()
     val steps by viewModel.stepsReady.collectAsState()
     val playlistName by viewModel.playlistName.collectAsState()
+    // R-M3: live phase-based progress from the API layer (0 % at rest,
+    // like the model's sp1-txt "0 %"); the done state still comes from
+    // the DB via stepsReady, so a step only reads "100 %" once stored.
+    val syncProgress by SyncProgressBus.state.collectAsState()
     LaunchedEffect(isReady) {
         if (isReady) {
             delay(600)
@@ -129,17 +137,20 @@ fun LoadingScreen(
                     SyncStep(
                         labelRes = R.string.sync_step_live,
                         done = steps.first,
-                        active = activeIndex == 0
+                        active = activeIndex == 0,
+                        percent = syncProgress.stepPercents.getOrElse(0) { 0 }
                     )
                     SyncStep(
                         labelRes = R.string.sync_step_films,
                         done = steps.second,
-                        active = activeIndex == 1
+                        active = activeIndex == 1,
+                        percent = syncProgress.stepPercents.getOrElse(1) { 0 }
                     )
                     SyncStep(
                         labelRes = R.string.sync_step_series,
                         done = steps.third,
-                        active = activeIndex == 2
+                        active = activeIndex == 2,
+                        percent = syncProgress.stepPercents.getOrElse(2) { 0 }
                     )
                 }
             }
@@ -147,9 +158,12 @@ fun LoadingScreen(
     }
 }
 
-/** One sync step row (model .sync-step): dark card + 12dp progress bar. */
+/** One sync step row (model .sync-step): dark card + 12dp progress bar.
+ *  The right-hand value sits in the same place and format as the model
+ *  (sp1-txt "0 %" / "100 %"): the active step shows the live percent,
+ *  a finished step "100 %", a pending step "En attente". */
 @Composable
-private fun SyncStep(labelRes: Int, done: Boolean, active: Boolean) {
+private fun SyncStep(labelRes: Int, done: Boolean, active: Boolean, percent: Int = 0) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -171,7 +185,7 @@ private fun SyncStep(labelRes: Int, done: Boolean, active: Boolean) {
             Text(
                 text = when {
                     done -> stringResource(R.string.sync_done_percent)
-                    active -> stringResource(R.string.sync_in_progress)
+                    active -> "${percent.coerceIn(0, 100)} %"
                     else -> stringResource(R.string.sync_waiting)
                 },
                 fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = GoldBright
@@ -184,20 +198,20 @@ private fun SyncStep(labelRes: Int, done: Boolean, active: Boolean) {
                 .clip(RoundedCornerShape(10.dp))
                 .background(Color(0xFF3A2F16))
         ) {
-            if (active) {
-                LinearProgressIndicator(
-                    modifier = Modifier.fillMaxSize(),
-                    color = Gold,
-                    trackColor = Color.Transparent
-                )
-            } else {
-                LinearProgressIndicator(
-                    progress = { if (done) 1f else 0f },
-                    modifier = Modifier.fillMaxSize(),
-                    color = Gold,
-                    trackColor = Color.Transparent
-                )
-            }
+            // Determinate bar: live percent on the active step, full when
+            // done, empty while pending (model .loader-bar-fill).
+            LinearProgressIndicator(
+                progress = {
+                    when {
+                        done -> 1f
+                        active -> percent.coerceIn(0, 100) / 100f
+                        else -> 0f
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                color = Gold,
+                trackColor = Color.Transparent
+            )
         }
     }
 }

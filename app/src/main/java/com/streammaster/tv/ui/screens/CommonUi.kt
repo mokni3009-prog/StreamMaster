@@ -23,8 +23,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.theme.BorderGold
-import com.streammaster.tv.ui.theme.CardSurface
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
@@ -41,18 +41,18 @@ fun GhostButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Box(
+    // R-B2: CardSurface component (20dp, theme colour) so the button
+    // carries the prototype --card-shadow instead of a flat background.
+    CardSurface(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(CardSurface)
             .tvFocus()
             .clickable { onClick() }
-            .padding(horizontal = 24.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center
     ) {
         // R-S4: optional leading icon (e.g. the episode download button);
         // text stays optional so an icon-only button is possible.
         Row(
+            modifier = Modifier.align(Alignment.Center)
+                .padding(horizontal = 24.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

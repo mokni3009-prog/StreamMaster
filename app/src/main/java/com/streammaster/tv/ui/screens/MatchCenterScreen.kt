@@ -62,9 +62,10 @@ fun MatchCenterScreen(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // Goal alerts (2026-11-22): opt-in toggle, on/off any time.
+                // R-S3: ic_check icon when on instead of the "✓ " prefix.
                 GhostButton(
-                    text = if (goalAlerts) "✓ " + stringResource(R.string.goal_alerts)
-                    else stringResource(R.string.goal_alerts),
+                    text = stringResource(R.string.goal_alerts),
+                    iconRes = if (goalAlerts) R.drawable.ic_check else null,
                     modifier = Modifier.focusRequester(firstFocus)
                 ) { viewModel.toggleGoalAlerts() }
                 GoldButton(text = stringResource(R.string.refresh)) { viewModel.refresh() }

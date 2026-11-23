@@ -184,10 +184,13 @@ fun ParentalScreen(
                 count = lockedCountFor(ManageKind.SERIES), selected = kind == ManageKind.SERIES
             ) { kind = ManageKind.SERIES; selectedBouquetId = null; selectedItemId = null }
         }
+        // B-S4: exact column weights for the 1472dp reference content
+        // width (470:528:430 over 1428dp after the 2×22dp gaps, i.e.
+        // 0.8902/1/0.8144) — the old 0.89/1/0.81 gave 470.7/528.9/428.4.
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             // Column 1 — bouquets
             MgCol(
-                modifier = Modifier.weight(0.89f).widthIn(max = 470.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.8902f).widthIn(max = 470.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_folder,
                 title = stringResource(R.string.bouquets),
                 count = kindBouquets.size
@@ -253,7 +256,7 @@ fun ParentalScreen(
             // Column 3 — actions (no column header in the prototype: the
             // target box is the first element).
             MgCol(
-                modifier = Modifier.weight(0.81f).widthIn(max = 430.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.8144f).widthIn(max = 430.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_shield,
                 title = stringResource(R.string.mg_target),
                 count = dirtyCount,

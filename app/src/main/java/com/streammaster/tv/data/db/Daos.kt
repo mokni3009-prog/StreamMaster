@@ -46,6 +46,12 @@ interface ChannelDao {
     @Query("UPDATE channels SET isFavorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: String, favorite: Boolean)
 
+    /** SIGNAL FAIBLE badge (LiveScreen ChannelCard, gated on Channel.isBroken):
+     *  set by PlayerManagerImpl when the playback recovery chain is exhausted
+     *  for a live channel, cleared on the next successful playback. */
+    @Query("UPDATE channels SET isBroken = :broken WHERE id = :id")
+    suspend fun setBroken(id: String, broken: Boolean)
+
     @Query("UPDATE channels SET customNum = NULL WHERE customNum = :number AND id != :exceptId")
     suspend fun clearCustomNum(number: Int, exceptId: String)
 

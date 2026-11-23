@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -131,15 +134,20 @@ fun HomeScreen(
         // 2-line title + 2-line description) overflows the 358dp left by
         // the fixed 420dp height on the narrow 1280x720 screen
         // (640x360dp) and is clipped from the top by Arrangement.Bottom.
-        // heightIn(min) lets the hero grow with its content there and
-        // stays 420dp at the reference. The Box sits inside a
-        // verticalScroll, so its children must not use fillMaxSize
-        // (unbounded max height): the backdrop uses matchParentSize and
-        // the content column is content-sized, bottom-aligned by the Box.
+        // B-S5: on the reference the height is the fixed 420dp of the
+        // prototype (`.hero{height:420px;overflow:hidden}`) — heightIn
+        // alone let a 3-line description grow the hero to ~444dp. The
+        // flexible height stays only on a narrow canvas
+        // (screenWidthDp < 700, the codebase's narrow definition).
+        // The Box sits inside a verticalScroll, so its children must
+        // not use fillMaxSize (unbounded max height): the backdrop uses
+        // matchParentSize and the content column is content-sized,
+        // bottom-aligned by the Box.
         if (heroFilm != null) {
+            val narrow = LocalConfiguration.current.screenWidthDp < 700
             Box(
                 modifier = Modifier.fillMaxWidth()
-                    .heightIn(min = 420.dp)
+                    .then(if (narrow) Modifier.heightIn(min = 420.dp) else Modifier.height(420.dp))
                     .clip(RoundedCornerShape(28.dp))
                     .border(2.dp, BorderStrong, RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.BottomStart
@@ -370,9 +378,11 @@ fun HomeScreen(
 
 /**
  * Hero backdrop (H04): the prototype hero is an SVG scene (golden sun +
- * dark mountains) that cannot be reproduced literally; this is the richer,
- * deeper gradient equivalent — a golden radial glow on the right over the
- * dark left-to-right + bottom vignette of `.hero::after`.
+ * dark mountains, `.hero-art`, viewBox 1500×420) drawn literally here
+ * with Canvas — solid sun disc + two mountain ridges — over the dark
+ * background, under the left-to-right + bottom vignette of
+ * `.hero::after`. The radial glow stays hue-driven (featured film);
+ * the sun and ridges are the model's fixed gold, as in the prototype.
  */
 @Composable
 private fun HeroBackdrop(hue: Int, modifier: Modifier = Modifier) {
@@ -392,6 +402,49 @@ private fun HeroBackdrop(hue: Int, modifier: Modifier = Modifier) {
                 )
             )
         )
+        // Hero scene (model `.hero-art`, stream-master.html:1235-1250):
+        // the model's coordinates, scaled x/1500*w and y/420*h.
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val sx = { x: Float -> x / 1500f * size.width }
+            val sy = { y: Float -> y / 420f * size.height }
+            // Sun disc: circle cx=1080 cy=200 r=80, #fff6cc (the r=300
+            // glow circle is the radial gradient above).
+            drawCircle(
+                color = Color(0xFFFFF6CC),
+                radius = 80f / 1500f * size.width,
+                center = Offset(sx(1080f), sy(200f))
+            )
+            // Far ridge, #3b2906.
+            drawPath(
+                path = Path().apply {
+                    moveTo(sx(460f), sy(420f))
+                    lineTo(sx(730f), sy(240f))
+                    lineTo(sx(890f), sy(315f))
+                    lineTo(sx(1070f), sy(190f))
+                    lineTo(sx(1250f), sy(295f))
+                    lineTo(sx(1390f), sy(230f))
+                    lineTo(sx(1500f), sy(300f))
+                    lineTo(sx(1500f), sy(420f))
+                    close()
+                },
+                color = Color(0xFF3B2906)
+            )
+            // Near ridge, #191103.
+            drawPath(
+                path = Path().apply {
+                    moveTo(sx(280f), sy(420f))
+                    lineTo(sx(560f), sy(315f))
+                    lineTo(sx(740f), sy(375f))
+                    lineTo(sx(950f), sy(285f))
+                    lineTo(sx(1160f), sy(375f))
+                    lineTo(sx(1360f), sy(325f))
+                    lineTo(sx(1500f), sy(390f))
+                    lineTo(sx(1500f), sy(420f))
+                    close()
+                },
+                color = Color(0xFF191103)
+            )
+        }
         Box(
             modifier = Modifier.fillMaxSize().background(
                 Brush.linearGradient(

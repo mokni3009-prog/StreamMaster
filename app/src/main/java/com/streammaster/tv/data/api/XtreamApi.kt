@@ -15,8 +15,42 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 private const val TAG = "StreamMaster"
+
+/** Live sync progress (R-M3, zero-diff C-2). The Loading screen has no
+ *  other channel to the sync: the refresh runs in the repository layer,
+ *  while this bus is written by the API layer (Xtream/Stalker/M3U) as
+ *  each fetch stage completes and read by [LoadingScreen]. Percentages
+ *  are phase-based, not per-byte: each stage's weight reflects the work
+ *  it does (network fetch with a known item count once it returns, then
+ *  the per-series info loop). Step order matches the model's 3 steps:
+ *  0 = live channels, 1 = films, 2 = series & episodes. Values only
+ *  move forward within one sync; [reset] starts a new sync at 0 %. */
+data class SyncProgress(val stepPercents: List<Int> = listOf(0, 0, 0))
+
+object SyncProgressBus {
+    private val _state = MutableStateFlow(SyncProgress())
+    val state: StateFlow<SyncProgress> = _state.asStateFlow()
+
+    fun reset() {
+        _state.value = SyncProgress()
+    }
+
+    /** Sets step [step] to [percent], never moving it backwards. */
+    fun setStep(step: Int, percent: Int) {
+        if (step !in 0..2) return
+        _state.update { cur ->
+            val clamped = percent.coerceIn(0, 100)
+            if (clamped <= cur.stepPercents[step]) cur
+            else cur.copy(stepPercents = cur.stepPercents.toMutableList().also { it[step] = clamped })
+        }
+    }
+}
 
 /** Raw Xtream Codes player_api.php responses (subset of fields we use). */
 data class XtreamCategory(
@@ -262,7 +296,9 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
         val svc = service(playlist.serverUrl)
         val u = playlist.username
         val p = playlist.password
+        SyncProgressBus.reset()
         val auth = runCatching { svc.authenticate(u, p) }.getOrNull()
+        SyncProgressBus.setStep(0, 5)
         val expiry = auth?.userInfo?.expDate?.let { exp ->
             runCatching {
                 val d = java.util.Date(exp.toLong() * 1000)
@@ -273,11 +309,20 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
         val status = auth?.userInfo?.status ?: playlist.status
 
         val liveCats = runCatching { svc.getLiveCategories(u, p) }.getOrDefault(emptyList())
+        SyncProgressBus.setStep(0, 10)
         val vodCats = runCatching { svc.getVodCategories(u, p) }.getOrDefault(emptyList())
+        SyncProgressBus.setStep(1, 5)
         val seriesCats = runCatching { svc.getSeriesCategories(u, p) }.getOrDefault(emptyList())
+        SyncProgressBus.setStep(2, 5)
         val live = runCatching { svc.getLiveStreams(u, p) }.getOrDefault(emptyList())
+        // Live list fetched (live.size known): the channels step is past fetch.
+        SyncProgressBus.setStep(0, 60)
         val vod = runCatching { svc.getVodStreams(u, p) }.getOrDefault(emptyList())
+        SyncProgressBus.setStep(0, 100)
+        SyncProgressBus.setStep(1, 55)
         val seriesRaw = runCatching { svc.getSeries(u, p) }.getOrDefault(emptyList())
+        SyncProgressBus.setStep(1, 100)
+        SyncProgressBus.setStep(2, 40)
 
         val catName = mutableMapOf<String, String>()
         liveCats.forEach { it.categoryId?.let { id -> catName["L$id"] = it.categoryName ?: "Autre" } }
@@ -320,6 +365,7 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                 isBroken = false,
                 streamUrl = "$base/live/$u/$p/${s.streamId}.$ext",
                 epgId = s.epgChannelId,
+                logoUrl = s.streamIcon?.takeIf { it.isNotBlank() },
                 customNum = null,
                 hidden = false,
                 customName = null,
@@ -364,11 +410,29 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
             )
         }
         // Episodes + season counts (best effort, one call per series).
+        // Progress advances per series (series.size is known): this loop
+        // is the slowest part of the sync (one call per series).
         val episodes = mutableListOf<Episode>()
-        val seriesWithSeasons = series.map { s ->
+        val seriesWithSeasons = mutableListOf<Series>()
+        val totalSeries = series.size
+        series.forEachIndexed { seriesIdx, s ->
+            fun advance() {
+                if (totalSeries > 0) {
+                    SyncProgressBus.setStep(2, 40 + (55 * (seriesIdx + 1) / totalSeries))
+                }
+            }
             val sid = s.id.removePrefix("xt-ser-").toIntOrNull()
-            if (sid == null) return@map s
-            val info = runCatching { svc.getSeriesInfo(u, p, sid) }.getOrNull() ?: return@map s
+            if (sid == null) {
+                seriesWithSeasons += s
+                advance()
+                return@forEachIndexed
+            }
+            val info = runCatching { svc.getSeriesInfo(u, p, sid) }.getOrNull()
+            if (info == null) {
+                seriesWithSeasons += s
+                advance()
+                return@forEachIndexed
+            }
             val seasonCount = info.seasons?.size ?: 0
             info.episodes?.forEach { (seasonKey, eps) ->
                 val season = seasonKey.toIntOrNull() ?: return@forEach
@@ -390,8 +454,10 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                     )
                 }
             }
-            s.copy(seasons = seasonCount)
+            seriesWithSeasons += s.copy(seasons = seasonCount)
+            advance()
         }
+        SyncProgressBus.setStep(2, 100)
         return XtreamContent(bouquets, channels, films, seriesWithSeasons, episodes, expiry, connections, status)
     }
 

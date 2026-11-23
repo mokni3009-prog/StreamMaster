@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,8 +47,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -59,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.Channel
@@ -88,12 +93,18 @@ import java.util.Locale
  * player. Digit keys open the channel by number (custom number first,
  * then built-in), with a temporary OSD.
  *
- * Channel logos: the model has NO logo URL field (Channel carries only
- * `code`, the 2-letter initials), so the 66×66 logo box shows the code
- * on the gold gradient, exactly like the model — no Coil load is
- * possible. «SIGNAL FAIBLE» is never shown: no signal-strength data
- * exists anywhere (Channel.isBroken is a broken-stream flag, not a
- * signal level).
+ * Channel logos: `Channel.logoUrl` (Xtream `stream_icon`, Stalker
+ * `logo`, M3U `tvg-logo`, stored at sync time, DB v7) is shown with
+ * Coil in the 66×66 logo box, falling back to the 2-letter `code` on
+ * the gold gradient when the provider supplies no logo or the load
+ * fails. «SIGNAL FAIBLE» is shown in the channel card's title row,
+ * exactly where the model puts it (`.chan-warn`, after the quality
+ * badge and ★), when `Channel.isBroken` is true — the model's own
+ * per-channel flag. Note: nothing in the app sets `isBroken` yet
+ * (no Dao setter / failure hook), so the badge stays hidden until a
+ * later wave revives the flag; live bandwidth (`networkSpeedLabel`)
+ * belongs to the player session and cannot apply to this static
+ * preview list.
  */
 @Composable
 fun LiveScreen(
@@ -103,6 +114,7 @@ fun LiveScreen(
     val state by viewModel.state.collectAsState()
     val epg by viewModel.epg.collectAsState()
     val context = LocalContext.current
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     val scope = rememberCoroutineScope()
     var digitBuffer by remember { mutableStateOf("") }
     // Double-click detection (V11): last OK click on the same channel.
@@ -243,16 +255,18 @@ fun LiveScreen(
                 // Flexible split (2026-11-23): the fixed 420dp viewport
                 // left the weight(1f) EPG panel only ~42dp on the narrow
                 // 1280x720 screen (640x360dp) against ~326dp of content.
-                // Weights keep the reference split almost unchanged
-                // (viewport ~452dp, panel ~370dp) and give the panel
-                // ~208dp on the narrow screen.
+                // At the 1920×1080 reference the viewport is a fixed
+                // 420dp and the panel fills the rest (~402dp); on the
+                // narrow screen the weights (viewport 0.55 / panel 0.45)
+                // give the panel ~208dp.
                 val channel = state.selectedChannel
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     LiveViewport(
-                        modifier = Modifier.fillMaxWidth().weight(0.55f),
+                        modifier = Modifier.fillMaxWidth()
+                            .then(if (narrow) Modifier.weight(0.55f) else Modifier.height(420.dp)),
                         channel = channel,
                         epgNowTitle = epg.firstOrNull {
                             it.startMillis <= System.currentTimeMillis() && it.endMillis > System.currentTimeMillis()
@@ -261,7 +275,7 @@ fun LiveScreen(
                         onToggleFavorite = { viewModel.toggleFavorite() }
                     )
                     if (channel != null) {
-                        LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().weight(0.45f))
+                        LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().then(if (narrow) Modifier.weight(0.45f) else Modifier.weight(1f)))
                     }
                 }
             }
@@ -329,7 +343,10 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
             color = if (selected) black else GoldBright,
             modifier = Modifier.width(40.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
-        // Logo: no URL exists on Channel — the model's own 2-letter code.
+        // Logo (66×66): the provider logo via Coil when `logoUrl` is
+        // set, falling back to the 2-letter `code` on the gold gradient
+        // when there is no logo or the load fails.
+        var logoFailed by remember(channel.id) { mutableStateOf(false) }
         Box(
             modifier = Modifier.size(66.dp)
                 .clip(RoundedCornerShape(16.dp))
@@ -341,11 +358,20 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
                 .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = channel.code, fontSize = 24.sp, fontWeight = FontWeight.Black,
-                fontFamily = FontFamily.Serif,
-                color = if (selected) GoldBright else GoldDeep
-            )
+            if (!channel.logoUrl.isNullOrBlank() && !logoFailed) {
+                AsyncImage(
+                    model = channel.logoUrl, contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    onError = { logoFailed = true },
+                    modifier = Modifier.fillMaxSize().padding(6.dp)
+                )
+            } else {
+                Text(
+                    text = channel.code, fontSize = 24.sp, fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Serif,
+                    color = if (selected) GoldBright else GoldDeep
+                )
+            }
         }
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -370,6 +396,18 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
                 }
                 if (channel.isFavorite) {
                     Text(text = "★", fontSize = 18.sp, color = if (selected) black else GoldBright)
+                }
+                // «SIGNAL FAIBLE» (.chan-warn, model chanCardHTML): after
+                // the quality badge and ★, gated on Channel.isBroken.
+                if (channel.isBroken) {
+                    Text(
+                        text = "SIGNAL FAIBLE", fontSize = 11.sp,
+                        fontWeight = FontWeight.Black, letterSpacing = 1.sp,
+                        color = if (selected) Color(0xFFFF9D86) else Color(0xFF1B1200),
+                        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                            .background(if (selected) black else Color(0xFFFF6A4D))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
                 }
             }
             if (channel.nowTitle.isNotBlank()) {
@@ -412,8 +450,9 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
 /** V07 — preview window (.live-viewport): radius 26,
  *  2.5px border, pulsing «EN DIRECT» pill + tech pill on top, bottom
  *  bar with the «Now playing» title + gold «Lancer» and «Favori»
- *  buttons. Flexible height (2026-11-23): weight 0.55 of the preview
- *  column (~452dp at the reference, ~254dp on the narrow screen).
+ *  buttons. Flexible height (2026-11-23): fixed 420dp at the
+ *  reference, weight 0.55 of the preview column on the narrow screen
+ *  (~254dp).
  *  A single click on a channel only selects/previews it — the
  *  viewport itself does NOT open the player. */
 @Composable
@@ -447,16 +486,32 @@ private fun LiveViewport(
                 )
             )
         )
+        // Centre art (model `.live-viewport svg.screen-art`,
+        // viewBox 900×420): outer circle r=120, inner circle r=72 and
+        // solid gold play triangle (points 436,172 436,228 480,200),
+        // all centred on (450,200). Scaled to the 120dp outer circle
+        // (model outer diameter 240 units → 0.5×): inner 72dp,
+        // triangle 22×28dp.
         Box(
             modifier = Modifier.align(Alignment.Center).size(120.dp)
                 .border(3.dp, GoldBright.copy(alpha = 0.4f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_play),
-                contentDescription = null, tint = GoldBright,
-                modifier = Modifier.size(54.dp)
+            Box(
+                modifier = Modifier.size(72.dp)
+                    .border(3.dp, GoldBright.copy(alpha = 0.4f), CircleShape)
             )
+            Canvas(modifier = Modifier.size(22.dp, 28.dp)) {
+                drawPath(
+                    path = Path().apply {
+                        moveTo(0f, 0f)
+                        lineTo(0f, size.height)
+                        lineTo(size.width, size.height / 2f)
+                        close()
+                    },
+                    color = GoldBright
+                )
+            }
         }
         Row(
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(22.dp),
@@ -595,16 +650,27 @@ private fun LiveEpgPanel(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Logo (58dp): provider logo via Coil, code fallback.
+            var panelLogoFailed by remember(channel.id) { mutableStateOf(false) }
             Box(
                 modifier = Modifier.size(58.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(GoldGradient),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = channel.code, fontSize = 22.sp, fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Serif, color = GoldDeep
-                )
+                if (!channel.logoUrl.isNullOrBlank() && !panelLogoFailed) {
+                    AsyncImage(
+                        model = channel.logoUrl, contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        onError = { panelLogoFailed = true },
+                        modifier = Modifier.fillMaxSize().padding(5.dp)
+                    )
+                } else {
+                    Text(
+                        text = channel.code, fontSize = 22.sp, fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Serif, color = GoldDeep
+                    )
+                }
             }
             Column {
                 Text(

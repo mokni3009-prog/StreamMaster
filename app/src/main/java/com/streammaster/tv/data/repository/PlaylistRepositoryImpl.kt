@@ -113,7 +113,9 @@ class PlaylistRepositoryImpl @Inject constructor(
                 customNum = old.customNum,
                 customName = old.customName,
                 bouquetId = old.bouquetId,
-                backupUrlsEncoded = old.backupUrlsEncoded
+                backupUrlsEncoded = old.backupUrlsEncoded,
+                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                isBroken = old.isBroken
             )
         })
         db.filmDao().upsertAll(content.films.mapIndexed { idx, f ->
@@ -157,7 +159,9 @@ class PlaylistRepositoryImpl @Inject constructor(
                 hidden = old.hidden,
                 customNum = old.customNum,
                 customName = old.customName,
-                bouquetId = old.bouquetId
+                bouquetId = old.bouquetId,
+                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                isBroken = old.isBroken
             )
         })
         val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
@@ -188,7 +192,9 @@ class PlaylistRepositoryImpl @Inject constructor(
                 hidden = old.hidden,
                 customNum = old.customNum,
                 customName = old.customName,
-                bouquetId = old.bouquetId
+                bouquetId = old.bouquetId,
+                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                isBroken = old.isBroken
             )
         })
         val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())

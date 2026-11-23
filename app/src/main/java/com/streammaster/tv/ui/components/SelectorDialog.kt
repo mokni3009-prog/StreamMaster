@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +30,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -147,8 +150,12 @@ fun SelectorDialog(
             // plain weight(1f) would stretch EVERY selector dialog to
             // full window height, even a 3-option list; with fill=false
             // short lists stay compact and only long ones are capped.
+            // B-S6: heightIn(max = 480.dp) caps the list at the
+            // prototype's `.sel-list{max-height:480px}` so a long list
+            // scrolls internally instead of stretching the dialog to
+            // ~1080dp; short lists are unaffected.
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 itemsIndexed(options) { index, option ->
@@ -199,12 +206,17 @@ fun SelectorDialog(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "✓",
-                                color = if (selected) GoldDeep else Color.Transparent,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            // R-S3: Feather ic_check icon (20dp) instead
+                            // of the "✓" text glyph; shown only when
+                            // selected, like the transparent text before.
+                            if (selected) {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_check),
+                                    contentDescription = null,
+                                    tint = GoldDeep,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(

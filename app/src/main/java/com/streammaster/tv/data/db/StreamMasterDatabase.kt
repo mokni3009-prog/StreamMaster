@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -26,7 +28,7 @@ import androidx.room.TypeConverters
         DownloadEntity::class,
         QoeEvent::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -52,8 +54,17 @@ abstract class StreamMasterDatabase : RoomDatabase() {
     companion object {
         const val NAME = "stream_master.db"
 
+        /** 6 -> 7 (zero-diff C-3): channel logos. Nullable column, so
+         *  existing rows keep their data and read back NULL (no logo). */
+        val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE channels ADD COLUMN logoUrl TEXT")
+            }
+        }
+
         fun create(context: Context): StreamMasterDatabase =
             Room.databaseBuilder(context, StreamMasterDatabase::class.java, NAME)
+                .addMigrations(MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
     }

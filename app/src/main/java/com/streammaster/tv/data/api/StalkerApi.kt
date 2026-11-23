@@ -158,11 +158,17 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
 
     /** Full fetch: handshake -> genres + channels. Stream URLs resolved lazily per channel. */
     suspend fun fetchAll(playlist: Playlist): StalkerContent? {
+        SyncProgressBus.reset()
         val token = handshake(playlist) ?: return null
+        SyncProgressBus.setStep(0, 15)
         val genres = fetchGenres(playlist, token)
+        SyncProgressBus.setStep(0, 30)
         val genreName = genres.associate { it.id to it.title }
         val raw = fetchChannels(playlist, token)
         if (raw.isEmpty()) return null
+        // Channels fetched (raw.size known): the live step is done fetching;
+        // the DB upsert that follows is local and fast.
+        SyncProgressBus.setStep(0, 100)
         val bouquets = genres.mapIndexed { i, g ->
             Bouquet("st-${g.id}", g.title, BouquetKind.LIVE, i, false)
         }
@@ -185,6 +191,9 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
                 isBroken = false,
                 streamUrl = c.cmd, // resolved on demand via resolveStreamUrl when played
                 epgId = c.epgId,
+                // Stalker logos are often portal-relative paths; resolve them
+                // against the portal base, like M3uParser.resolveUrl does.
+                logoUrl = resolveLogoUrl(portalBase(playlist), c.logo),
                 customNum = null,
                 hidden = false,
                 customName = null,
@@ -192,6 +201,16 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
             )
         }
         return StalkerContent(bouquets, channels, playlist.expiryDate, "Actif")
+    }
+
+    /** Resolves a Stalker logo value to an absolute URL (or null when the
+     *  portal supplies none). Absolute URLs pass through unchanged. */
+    private fun resolveLogoUrl(portal: String, logo: String?): String? {
+        val raw = logo?.trim().takeIf { !it.isNullOrEmpty() } ?: return null
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+        return runCatching {
+            java.net.URL(java.net.URL("$portal/"), raw).toString()
+        }.getOrDefault(raw)
     }
 
     /** Short EPG for a channel (period in hours, default 24). Best effort. */
