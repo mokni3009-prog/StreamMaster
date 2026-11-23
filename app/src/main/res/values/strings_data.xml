@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings added by the data-layer builder (point 2, 2026-11-23):
+     catchup, smart match alerts, follow alerts. French only here —
+     the other locales fall back to these values. -->
+<resources>
+    <!-- §4.43 Catchup -->
+    <string name="catchup_revoir">Revoir</string>
+
+    <!-- §4.36.8 Smart match alerts -->
+    <string name="match_starts_soon_title">Coup d\'envoi dans 15 minutes</string>
+
+    <!-- §4.50 / §4.57 Follow alerts -->
+    <string name="follow_alerts_channel">Suivis (séries et genres)</string>
+    <string name="follow_alerts_channel_desc">Alertes pour les nouvelles sorties des séries et genres suivis</string>
+    <string name="follow_new_episodes_title">Nouvel épisode</string>
+    <string name="follow_new_episodes_text">%2$s : %1$d nouvel(s) épisode(s)</string>
+    <string name="follow_new_films_title">Nouveaux films</string>
+    <string name="follow_new_films_text">De nouveaux films %1$s sont arrivés</string>
+</resources>

@@ -16,7 +16,7 @@ android {
         applicationId = "com.streammaster.tv"
         minSdk = 23
         targetSdk = 35
-        versionCode = 120
+        versionCode = 121
         versionName = "1.2.0"
     }
 
@@ -114,6 +114,9 @@ dependencies {
 
     // Images (channel logos, posters) — Coil.
     implementation(libs.coil.compose)
+
+    // Chromecast (§4.46) — Cast sender framework; see cast/CastManager.kt.
+    implementation(libs.play.services.cast.framework)
 
     // Coroutines.
     implementation(libs.kotlinx.coroutines.android)

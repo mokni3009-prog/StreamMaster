@@ -8,6 +8,7 @@ import com.streammaster.tv.data.db.StreamMasterDatabase
 import com.streammaster.tv.data.model.EpgProgram
 import com.streammaster.tv.data.model.PlaylistType
 import com.streammaster.tv.data.prefs.SettingsStore
+import com.streammaster.tv.data.util.TitleNormalizer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -133,13 +134,16 @@ class EpgRepositoryImpl @Inject constructor(
         }
         val channels = db.channelDao().getAll(playlistId)
         val byEpgId = channels.filter { it.epgId != null }.associateBy { it.epgId }
-        val byName = channels.associateBy { it.name.lowercase() }
+        // §4.36.4 — smart EPG linking: match on the NORMALIZED name
+        // (accents / spaces / case / quality tags stripped), not on the
+        // raw lowercase name. epgId still wins when it matches.
+        val byName = channels.associateBy { TitleNormalizer.normalize(it.name) }
         val xmlNameById = result.channels.associate { it.id to it.displayName }
         val grouped = result.programs.groupBy { it.channelId }
         val covered = mutableSetOf<String>()
         for ((xmlId, programs) in grouped) {
             val channel = byEpgId[xmlId]
-                ?: xmlNameById[xmlId]?.let { byName[it.lowercase()] }
+                ?: xmlNameById[xmlId]?.let { byName[TitleNormalizer.normalize(it)] }
                 ?: continue
             if (channel.id in skipChannelIds) continue
             val inWindow = programs.filter { it.startMillis in from..to }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="diag_dead_link">Dead link: this channel no longer responds. Try another channel or refresh the playlist.</string>
+    <string name="diag_server_down">Provider server unreachable. Try again in a few minutes.</string>
+    <string name="diag_weak_network">Internet connection is weak or unstable. Check your Wi-Fi or move closer to the router.</string>
+    <string name="diag_timeout">Timed out: the server is taking too long to respond. Try again.</string>
+    <string name="diag_stalled">The stream froze (empty buffer). Check your connection.</string>
+    <string name="diag_decoder">Decoder incompatible with this stream. Try the VLC engine in settings.</string>
+    <string name="diag_behind_live">The live stream restarted on the server. Back to live.</string>
+    <string name="diag_unknown">Playback impossible. Check your connection or try another channel.</string>
+</resources>

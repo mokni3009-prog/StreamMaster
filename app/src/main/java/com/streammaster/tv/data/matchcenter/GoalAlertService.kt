@@ -16,6 +16,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streammaster.tv.R
+import com.streammaster.tv.data.prefs.SettingsStore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,12 +30,16 @@ import javax.inject.Inject
 
 private val Context.goalAlertsDataStore: DataStore<Preferences> by preferencesDataStore(name = "goal_alerts")
 private val KEY_SEEN_GOALS = stringSetPreferencesKey("seenGoals")
+/** §4.36.8 — pre-match alerts already sent ("pre:<espn event id>"). */
+private val KEY_SEEN_PRE_MATCH_ALERTS = stringSetPreferencesKey("seenPreMatchAlerts")
 
 private const val SERVICE_CHANNEL_ID = "goal_alerts_service"
 private const val ALERT_CHANNEL_ID = "goal_alerts"
 private const val SERVICE_NOTIFICATION_ID = 1004
 private const val POLL_INTERVAL_MS = 30_000L
 private const val MAX_SEEN_GOALS = 300
+/** §4.36.8 — warn this long before kickoff. */
+private const val PRE_MATCH_LEAD_MS = 15 * 60_000L
 
 /**
  * Goal alerts (2026-11-22): foreground service that polls the ESPN
@@ -55,6 +60,11 @@ class GoalAlertService : Service() {
 
     @Inject
     lateinit var bus: GoalAlertBus
+
+    /** §4.36.8 — reads AppSettings.smartMatchAlerts (added by the
+     *  settings builder, default true). */
+    @Inject
+    lateinit var settingsStore: SettingsStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pollJob: Job? = null
@@ -168,6 +178,76 @@ class GoalAlertService : Service() {
         for (alert in fresh) {
             bus.emit(alert)
             if (!AppForeground.isForeground) postSystemNotification(alert)
+        }
+        // §4.36.8 — pre-match alerts for ALL of today's matches (not
+        // just favourites): 15 minutes before kickoff, once per match.
+        runCatching { checkPreMatchAlerts(matches) }
+    }
+
+    /**
+     * §4.36.8 — for every not-yet-started match whose kickoff is within
+     * the next 15 minutes, post one notification (never twice: the key
+     * persists in the same `goal_alerts` DataStore as the seen goals).
+     * Gated on AppSettings.smartMatchAlerts (default true).
+     * NOTE: this service only runs while goal alerts are enabled
+     * (GoalAlertManager starts it on `goalAlerts`); for smart match
+     * alerts to work on their own, the manager must also start the
+     * service when `smartMatchAlerts` is on.
+     */
+    private suspend fun checkPreMatchAlerts(matches: List<LiveMatch>) {
+        val enabled = runCatching { settingsStore.settings.first().smartMatchAlerts }
+            .getOrDefault(true)
+        if (!enabled) return
+        val now = System.currentTimeMillis()
+        val seen = loadSeenPreMatch().toMutableSet()
+        var changed = false
+        for (match in matches) {
+            if (match.state != "pre" || match.startMillis <= 0L) continue
+            val lead = match.startMillis - now
+            if (lead <= 0L || lead > PRE_MATCH_LEAD_MS) continue
+            val key = "pre:${match.id}"
+            if (key in seen) continue
+            seen += key
+            changed = true
+            postPreMatchNotification(match)
+        }
+        if (changed) saveSeenPreMatch(seen.toList().takeLast(MAX_SEEN_GOALS).toSet())
+    }
+
+    private suspend fun loadSeenPreMatch(): Set<String> =
+        applicationContext.goalAlertsDataStore.data.first()[KEY_SEEN_PRE_MATCH_ALERTS] ?: emptySet()
+
+    private suspend fun saveSeenPreMatch(keys: Set<String>) {
+        applicationContext.goalAlertsDataStore.edit { prefs ->
+            prefs[KEY_SEEN_PRE_MATCH_ALERTS] = keys
+        }
+    }
+
+    /** Pre-match notification — posted whether the app is in the
+     *  foreground or not (unlike goal alerts, there is no in-app popup
+     *  for a match that has not started yet). */
+    private fun postPreMatchNotification(match: LiveMatch) {
+        runCatching {
+            val openIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val pending = PendingIntent.getActivity(
+                this,
+                ("pre:${match.id}").hashCode(),
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val text = "${match.homeTeam} vs ${match.awayTeam} • ${match.leagueName}"
+            val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.star_big_on)
+                .setContentTitle(getString(R.string.match_starts_soon_title))
+                .setContentText(text)
+                .setContentIntent(pending)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(("pre:${match.id}").hashCode(), notification)
         }
     }
 

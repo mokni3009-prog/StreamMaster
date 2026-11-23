@@ -54,6 +54,7 @@ import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.DownloadStatus
 import com.streammaster.tv.data.model.Episode
+import com.streammaster.tv.data.subtitles.SubtitleDownloadButton
 import com.streammaster.tv.ui.components.SectionHeader
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
@@ -298,6 +299,25 @@ fun DetailScreen(
                                         navController.navigate(Routes.player(kind, id))
                                     }
                                 }
+                                // §4.1 — "Reprendre" next to "Lecture" when a
+                                // saved progress point exists. Films resume
+                                // from recentProgress in the player; series
+                                // episode-level resume needs the engine's
+                                // resumeInfoFor (see report).
+                                item {
+                                    if (state.hasResume) {
+                                        HeroActionButton(
+                                            text = stringResource(
+                                                R.string.detail_resume_percent,
+                                                state.resumePercent
+                                            ),
+                                            primary = false, big = false,
+                                            iconRes = R.drawable.ic_play
+                                        ) {
+                                            navController.navigate(Routes.player(kind, id))
+                                        }
+                                    }
+                                }
                                 item {
                                     HeroActionButton(
                                         text = if (isFavorite) stringResource(R.string.favorite_remove)
@@ -350,6 +370,17 @@ fun DetailScreen(
                                         ) { viewModel.downloadFilm() }
                                     }
                                 }
+                                // §4.48 — real subtitle download button
+                                // (data/subtitles); takes itemType as a
+                                // String ("film" | "series") and a nullable year.
+                                item {
+                                    SubtitleDownloadButton(
+                                        itemType = if (isFilm) "film" else "series",
+                                        itemId = id,
+                                        title = title,
+                                        year = state.film?.year
+                                    )
+                                }
                             }
                             // Facts (prototype `.dt-facts`): label 14sp uppercase
                             // + value 19sp, gold top border. Only facts the data
@@ -395,6 +426,14 @@ fun DetailScreen(
                                             quality
                                         )
                                     }
+                                    // §4.49 — director, only when the
+                                    // provider actually supplied one.
+                                    if (state.director != null) {
+                                        DetailFact(
+                                            stringResource(R.string.detail_director),
+                                            state.director!!
+                                        )
+                                    }
                                     DetailFact(
                                         stringResource(R.string.fact_rating),
                                         "★ ${formatRating(rating)} / 10"
@@ -405,8 +444,32 @@ fun DetailScreen(
                     }
                 }
 
+                // §4.53 — user star rating (1-5), next to the provider
+                // rating shown above in the facts row.
+                item {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        SectionHeader(stringResource(R.string.detail_your_rating))
+                        StarRatingInput(stars = state.userStars) { viewModel.setUserRating(it) }
+                        Text(
+                            text = if (state.userStars > 0) {
+                                stringResource(R.string.detail_your_rating_set, state.userStars)
+                            } else {
+                                stringResource(R.string.detail_rate_hint)
+                            },
+                            fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = GoldSoft
+                        )
+                    }
+                }
+
                 // D08 — cast (prototype `.cast-card`: 180px card, 96px round avatar).
-                if (state.cast.isNotEmpty()) {
+                // §4.49 — REAL provider names only (no roles: the provider
+                // supplies none). Tapping an actor shows their other works.
+                // When the provider supplies no credits at all, the section
+                // says so instead of inventing names.
+                if (state.creditsLoaded) {
                     item {
                         val castShown = state.cast.take(6)
                         Column(
@@ -417,9 +480,146 @@ fun DetailScreen(
                                 stringResource(R.string.detail_cast_title),
                                 count = castShown.size
                             )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                                items(castShown) { (name, role) ->
-                                    CastCard(name, role)
+                            if (castShown.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    items(castShown) { name ->
+                                        CastCard(
+                                            name = name,
+                                            selected = name == state.selectedActor
+                                        ) { viewModel.selectActor(name) }
+                                    }
+                                }
+                            } else if (state.director == null) {
+                                Text(
+                                    text = stringResource(R.string.detail_cast_unavailable),
+                                    fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                    color = GoldSoft
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // §4.49 — similar titles: same genre from the catalog.
+                if (state.similarFilms.isNotEmpty() || state.similarSeries.isNotEmpty()) {
+                    item {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) {
+                            SectionHeader(
+                                stringResource(R.string.detail_similar_title),
+                                count = state.similarFilms.size + state.similarSeries.size
+                            )
+                            if (state.similarFilms.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    items(state.similarFilms) { film ->
+                                        PosterTile(
+                                            title = film.title,
+                                            hue = film.hue,
+                                            code = film.title.take(2).uppercase(),
+                                            progressPercent = film.recentProgress,
+                                            isFavorite = film.isFavorite,
+                                            quality = film.quality,
+                                            rating = film.rating,
+                                            year = film.year
+                                        ) {
+                                            navController.navigate(Routes.detail("film", film.id))
+                                        }
+                                    }
+                                }
+                            }
+                            if (state.similarSeries.isNotEmpty()) {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    items(state.similarSeries) { series ->
+                                        PosterTile(
+                                            title = series.title,
+                                            hue = series.hue,
+                                            code = series.title.take(2).uppercase(),
+                                            progressPercent = series.recentProgress,
+                                            isFavorite = series.isFavorite,
+                                            quality = series.quality,
+                                            rating = series.rating,
+                                            seasons = series.seasons
+                                        ) {
+                                            navController.navigate(Routes.detail("series", series.id))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // §4.49 — the tapped actor's other works in the catalog.
+                // Tapping the same actor again closes this section.
+                if (state.selectedActor != null) {
+                    item {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(18.dp),
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) {
+                            SectionHeader(
+                                stringResource(
+                                    R.string.detail_actor_works_title,
+                                    state.selectedActor!!
+                                )
+                            )
+                            when {
+                                state.actorWorksLoading &&
+                                    state.actorWorksFilms.isEmpty() &&
+                                    state.actorWorksSeries.isEmpty() -> {
+                                    Text(
+                                        text = stringResource(R.string.detail_actor_works_loading),
+                                        fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                        color = GoldSoft
+                                    )
+                                }
+                                state.actorWorksFilms.isEmpty() &&
+                                    state.actorWorksSeries.isEmpty() -> {
+                                    Text(
+                                        text = stringResource(R.string.detail_actor_works_empty),
+                                        fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                        color = GoldSoft
+                                    )
+                                }
+                                else -> {
+                                    if (state.actorWorksFilms.isNotEmpty()) {
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                            items(state.actorWorksFilms) { film ->
+                                                PosterTile(
+                                                    title = film.title,
+                                                    hue = film.hue,
+                                                    code = film.title.take(2).uppercase(),
+                                                    progressPercent = film.recentProgress,
+                                                    isFavorite = film.isFavorite,
+                                                    quality = film.quality,
+                                                    rating = film.rating,
+                                                    year = film.year
+                                                ) {
+                                                    navController.navigate(Routes.detail("film", film.id))
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (state.actorWorksSeries.isNotEmpty()) {
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                                            items(state.actorWorksSeries) { series ->
+                                                PosterTile(
+                                                    title = series.title,
+                                                    hue = series.hue,
+                                                    code = series.title.take(2).uppercase(),
+                                                    progressPercent = series.recentProgress,
+                                                    isFavorite = series.isFavorite,
+                                                    quality = series.quality,
+                                                    rating = series.rating,
+                                                    seasons = series.seasons
+                                                ) {
+                                                    navController.navigate(Routes.detail("series", series.id))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -530,9 +730,14 @@ private fun DetailFact(label: String, value: String) {
     }
 }
 
-/** Prototype `.cast-card` with a round initials avatar (no photos exist). */
+/**
+ * Prototype `.cast-card` with a round initials avatar (no photos exist).
+ * §4.49 — name only: the provider supplies no role, and the old invented
+ * roles were removed. Tapping a card shows that actor's other works;
+ * the selected actor gets a bright border.
+ */
 @Composable
-private fun CastCard(name: String, role: String) {
+private fun CastCard(name: String, selected: Boolean = false, onClick: (() -> Unit)? = null) {
     val hue = 30 + (kotlin.math.abs(name.hashCode()) % 45)
     val initials = name.split(" ").filter { it.isNotBlank() }.take(2)
         .joinToString("") { it.first().uppercase() }
@@ -540,7 +745,12 @@ private fun CastCard(name: String, role: String) {
         modifier = Modifier.width(180.dp)
             .clip(RoundedCornerShape(20.dp))
             .background(Color(0xD6191206))
-            .border(1.5.dp, BorderGold, RoundedCornerShape(20.dp))
+            .border(
+                1.5.dp,
+                if (selected) Color(0xFFFFF8D6) else BorderGold,
+                RoundedCornerShape(20.dp)
+            )
+            .then(if (onClick != null) Modifier.tvFocus().clickable { onClick() } else Modifier)
             .padding(horizontal = 12.dp, vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -562,11 +772,35 @@ private fun CastCard(name: String, role: String) {
             color = GoldWhite, textAlign = TextAlign.Center,
             maxLines = 2, overflow = TextOverflow.Ellipsis
         )
-        Text(
-            text = role, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-            color = GoldBright, textAlign = TextAlign.Center,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
-        )
+    }
+}
+
+/** §4.53 — five focusable stars (remote-friendly); filled = rated. */
+@Composable
+private fun StarRatingInput(stars: Int, onRate: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        (1..5).forEach { n ->
+            val filled = n <= stars
+            Box(
+                modifier = Modifier.size(56.dp)
+                    .clip(CircleShape)
+                    .then(if (filled) Modifier.background(GoldGradient) else Modifier.background(Color(0xE6161005)))
+                    .border(
+                        2.dp,
+                        if (filled) Color(0xFFFFF8D6) else BorderGold,
+                        CircleShape
+                    )
+                    .tvFocus()
+                    .clickable { onRate(n) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "★",
+                    fontSize = 30.sp, fontWeight = FontWeight.Black,
+                    color = if (filled) GoldDeep else GoldBright
+                )
+            }
+        }
     }
 }
 

@@ -9,14 +9,22 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.streammaster.tv.R
 import com.streammaster.tv.data.matchcenter.AppForeground
 import com.streammaster.tv.data.matchcenter.GoalAlertManager
+import com.streammaster.tv.data.update.UpdateCheckWorker
+import com.streammaster.tv.data.update.UpdateDownloader
+import com.streammaster.tv.data.update.UpdatePromptState
 import com.streammaster.tv.player.PlayerManager
 import com.streammaster.tv.player.remote.RemoteKeyDispatcher
 import com.streammaster.tv.player.remote.RemoteServerManager
+import com.streammaster.tv.ui.components.ConfirmDialog
 import com.streammaster.tv.ui.navigation.AppNavHost
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.ScaledContent
@@ -58,13 +66,43 @@ class MainActivity : ComponentActivity() {
         // Goal alerts (2026-11-22): the manager starts/stops the alert
         // service from the goalAlerts setting.
         goalAlertManager.bind()
+        // Automatic update check (§4.25b, 2026-11-23): every 24h, reads the
+        // public update.json; a newer version shows the popup on next launch.
+        UpdateCheckWorker.enqueue(this)
         handleDeepLink(intent)
         setContent {
             val navController = rememberNavController()
+            // Pending update (§4.25b): loaded from DataStore on every launch.
+            val pendingUpdate by UpdatePromptState.pending.collectAsState()
+            LaunchedEffect(Unit) { UpdatePromptState.loadPending(applicationContext) }
             StreamMasterTheme {
                 // UI scaling (2026-11-23): the whole nav graph is measured
                 // against the 1920×1080dp design canvas (see UiScale.kt).
-                ScaledContent { AppNavHost(navController) }
+                ScaledContent {
+                    AppNavHost(navController)
+                    // Update popup (§4.25b): a Dialog above every screen,
+                    // even while watching. "Update now" starts the
+                    // DownloadManager download (system notification, then
+                    // install over the old version); "Remind me later"
+                    // hides it until the next app launch. Never forced.
+                    val update = pendingUpdate
+                    if (update != null) {
+                        ConfirmDialog(
+                            title = stringResource(R.string.update_available_title),
+                            message = stringResource(
+                                R.string.update_available_message,
+                                update.version, update.changelog
+                            ),
+                            confirmText = stringResource(R.string.update_now),
+                            dismissText = stringResource(R.string.update_later),
+                            onConfirm = {
+                                UpdateDownloader.download(this@MainActivity, update.downloadUrl)
+                                UpdatePromptState.dismissForSession()
+                            },
+                            onDismiss = { UpdatePromptState.dismissForSession() }
+                        )
+                    }
+                }
             }
             // Navigate to a pending reminder deep link once the destination
             // settles on a main screen (not Splash/Login/Loading).
@@ -99,7 +137,21 @@ class MainActivity : ComponentActivity() {
         val channelId = pendingDeepLink.value ?: return
         val current = navController.currentDestination?.route ?: return
         if (current in listOf(Routes.SPLASH, Routes.LOGIN, Routes.LOADING)) return
-        if (current == Routes.PLAYER) return
+        if (current == Routes.PLAYER) {
+            // Channel-timer deep link while already in the player: switch
+            // immediately when it names a DIFFERENT channel (the old code
+            // returned here, so the timer's link stayed queued forever);
+            // the same channel is a no-op.
+            val currentId = navController.currentBackStackEntry
+                ?.arguments?.getString("id")
+            pendingDeepLink.value = null
+            if (currentId == channelId) return
+            navController.navigate(Routes.player("live", channelId)) {
+                popUpTo(Routes.PLAYER) { inclusive = true }
+                launchSingleTop = true
+            }
+            return
+        }
         pendingDeepLink.value = null
         navController.navigate(Routes.player("live", channelId))
     }

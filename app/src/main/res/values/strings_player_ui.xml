@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Player UI strings (§4.54 DND, §4.55 live-scores ticker). Owned by the
+     player-UI builder; shared strings stay in res/values/strings.xml
+     (e.g. change_channel is already there and is reused, not duplicated). -->
+<resources>
+    <string name="player_dnd">Ne pas déranger</string>
+    <string name="player_ticker">Résultats</string>
+    <string name="ticker_live_label">En direct :</string>
+</resources>

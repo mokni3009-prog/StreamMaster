@@ -17,6 +17,7 @@ import com.streammaster.tv.data.repository.DownloadRepository
 import com.streammaster.tv.data.repository.RecordingRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import com.streammaster.tv.player.DisplayMode
+import com.streammaster.tv.player.EpisodeResumeStore
 import com.streammaster.tv.player.INTRO_FILM_S
 import com.streammaster.tv.player.INTRO_SERIES_S
 import com.streammaster.tv.player.OUTRO_FILM_S
@@ -78,12 +79,16 @@ class PlayerViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val recordingManager: RecordingManager,
     private val remoteBus: RemoteBus,
+    private val episodeResumeStore: EpisodeResumeStore,
     @ApplicationContext private val appContext: Context,
     val playerManager: PlayerManager
 ) : ViewModel() {
     val playbackState: StateFlow<PlaybackState> = playerManager.state
     val positionMs: StateFlow<Long> = playerManager.positionMs
     val durationMs: StateFlow<Long> = playerManager.durationMs
+    /** Failure diagnosis (§4.36.7): plain text produced by the engine,
+     *  shown by ErrorScreen (other builder). "" when no failure. */
+    val lastErrorDiagnosis: StateFlow<String> = playerManager.lastErrorDiagnosis
     /** Instant DVR state (REC button + badge); Idle when nothing records. */
     val recordingState: StateFlow<RecordingState> = recordingManager.state
     /** Video frame rate reported by the engine (0 = unknown). */
@@ -162,6 +167,7 @@ class PlayerViewModel @Inject constructor(
     /** Back returns to the matching view standing on the same item (CONTRACT §6). */
     fun backRouteFor(kind: String): String = when (kind) {
         "live" -> Routes.LIVE
+        "catchup" -> Routes.LIVE
         "film" -> Routes.FILMS
         "series" -> Routes.SERIES
         "recording" -> Routes.RECORDINGS
@@ -181,6 +187,26 @@ class PlayerViewModel @Inject constructor(
                     _ui.update { it.copy(pinRequired = true) }
                 } else playLive(channel)
             }
+            "catchup" -> {
+                // §4.43 — encoded id "catchup:<channelId>:<startMillis>:<durationMin>"
+                // (built by EpgScreen's "Revoir"). The real channel supplies
+                // the metadata (name, EPG, PIN check, history); the timeshift
+                // URL comes from ContentRepository.getStreamUrls(id).
+                val realId = id.removePrefix("catchup:").split(":").getOrNull(0)
+                    ?.takeIf { it.isNotBlank() } ?: return@launch
+                val channel = contentRepository.getChannel(realId) ?: return@launch
+                _ui.update { it.copy(channel = channel) }
+                if (settingsRepository.isLocked(ContentKind.LIVE, realId)) {
+                    _ui.update { it.copy(pinRequired = true) }
+                } else {
+                    val catchupUrl = contentRepository.getStreamUrls(id).firstOrNull()
+                    if (catchupUrl == null) {
+                        _ui.update { it.copy(toastText = "Revoir indisponible pour cette chaîne") }
+                    } else {
+                        playCatchup(channel, id, catchupUrl)
+                    }
+                }
+            }
             "film" -> {
                 val film = contentRepository.getFilm(id) ?: return@launch
                 _ui.update { it.copy(film = film) }
@@ -190,8 +216,16 @@ class PlayerViewModel @Inject constructor(
             }
             "series" -> {
                 val series = contentRepository.getSeries(id) ?: return@launch
-                val episodes = contentRepository.getEpisodes(id, 1)
-                val episode = episodes.firstOrNull()
+                // §4.1 — resume the episode the user actually stopped on
+                // (EpisodeResumeStore), not always S1E1; fall back to S1E1
+                // when the saved episode is gone.
+                val resume = runCatching { episodeResumeStore.get(id) }.getOrNull()
+                val resumeEpisode = resume?.let { r ->
+                    contentRepository.getEpisodes(id, r.season)
+                        .firstOrNull { it.number == r.number }
+                }
+                val episode = resumeEpisode
+                    ?: contentRepository.getEpisodes(id, 1).firstOrNull()
                 _ui.update { it.copy(series = series, episode = episode) }
                 if (settingsRepository.isLocked(ContentKind.SERIES, id)) {
                     _ui.update { it.copy(pinRequired = true) }
@@ -218,6 +252,25 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch { contentRepository.recordHistory(ContentKind.LIVE, channel.id, channel.name) }
     }
 
+    /**
+     * Catchup playback (§4.43): the engine resolves a Live item's URLs via
+     * `contentRepository.getStreamUrls(channel.id)`, and that function only
+     * returns the Xtream timeshift URL for the ENCODED id
+     * ("catchup:<channelId>:<start>:<duration>") — so the played item
+     * carries a copy of the real channel whose id IS the encoded id (and
+     * whose streamUrl is the timeshift URL as fallback). `_ui.channel`
+     * stays the real channel, and EPG/history use the real id, so the
+     * screen, the programme panel and the history all show the channel —
+     * only the played stream is the past program.
+     */
+    private fun playCatchup(channel: Channel, encodedId: String, catchupUrl: String) {
+        playerManager.play(
+            PlaybackItem.Live(channel.copy(id = encodedId, streamUrl = catchupUrl))
+        )
+        observeEpgFor(channel.id)
+        viewModelScope.launch { contentRepository.recordHistory(ContentKind.LIVE, channel.id, channel.name) }
+    }
+
     private fun playFilm(film: Film) {
         val resumeMs = if (film.recentProgress in 1..94) {
             film.durationMin * 60_000L * film.recentProgress / 100
@@ -228,11 +281,52 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun playEpisode(series: Series, episode: Episode) {
-        playerManager.play(PlaybackItem.EpisodeItem(series, episode))
         viewModelScope.launch {
+            val resumeMs = episodeResumeMs(series, episode)
+            playerManager.play(PlaybackItem.EpisodeItem(series, episode), resumeMs)
             contentRepository.recordHistory(ContentKind.SERIES, series.id, series.title)
+            skipIntroIfNeeded(INTRO_SERIES_S.toLong(), resumeMs)
         }
-        skipIntroIfNeeded(INTRO_SERIES_S.toLong(), 0L)
+    }
+
+    /**
+     * Resume position for one episode (§4.1 / §4.40): the per-episode
+     * position saved by the engine in [EpisodeResumeStore], 5–94% of the
+     * episode duration only. The series-level `Series.recentProgress`
+     * percent is deliberately NOT used here: it cannot say which episode
+     * was playing, so applying it to a different episode would resume in
+     * the wrong place.
+     */
+    private suspend fun episodeResumeMs(series: Series, episode: Episode): Long {
+        val stored = runCatching { episodeResumeStore.get(series.id) }.getOrNull()
+            ?: return 0L
+        if (stored.season != episode.season || stored.number != episode.number) return 0L
+        val durationMs = episode.durationMin * 60_000L
+        if (durationMs <= 0) return 0L
+        val progress = (stored.positionMs * 100 / durationMs).toInt()
+        return if (progress in 5..94) stored.positionMs else 0L
+    }
+
+    /**
+     * Resume info for a series (§4.1 — used by the Detail builder for the
+     * «Reprendre» button): the episode the user stopped on + its position.
+     * Returns null when there is nothing to resume (no saved episode, or
+     * its progress is outside 5–94%). The episode id is "S{season}E{number}"
+     * inside this series (e.g. "S2E5"); resolve it with
+     * `contentRepository.getEpisodes(seriesId, season)`.
+     */
+    suspend fun resumeInfoFor(seriesId: String): Pair<String, Long>? {
+        val stored = runCatching { episodeResumeStore.get(seriesId) }.getOrNull()
+            ?: return null
+        val episodes = runCatching {
+            contentRepository.getEpisodes(seriesId, stored.season)
+        }.getOrNull().orEmpty()
+        val episode = episodes.firstOrNull { it.number == stored.number } ?: return null
+        val durationMs = episode.durationMin * 60_000L
+        if (durationMs <= 0) return null
+        val progress = (stored.positionMs * 100 / durationMs).toInt()
+        if (progress !in 5..94) return null
+        return "S${stored.season}E${stored.number}" to stored.positionMs
     }
 
     private fun skipIntroIfNeeded(introS: Long, startMs: Long) {
@@ -286,6 +380,10 @@ class PlayerViewModel @Inject constructor(
             val s = _ui.value
             when (s.kind) {
                 "live" -> s.channel?.let { playLive(it) }
+                "catchup" -> s.channel?.let { channel ->
+                    val catchupUrl = contentRepository.getStreamUrls(s.id).firstOrNull()
+                    if (catchupUrl != null) playCatchup(channel, s.id, catchupUrl)
+                }
                 "film" -> s.film?.let { playFilm(it) }
                 "series" -> s.series?.let { sr -> s.episode?.let { ep -> playEpisode(sr, ep) } }
             }
@@ -388,6 +486,7 @@ class PlayerViewModel @Inject constructor(
         val s = _ui.value
         val url = when (s.kind) {
             "live" -> s.channel?.streamUrl
+            "catchup" -> contentRepository.getStreamUrls(s.id).firstOrNull()
             "film" -> s.film?.streamUrl
             "series" -> s.episode?.streamUrl
             else -> null

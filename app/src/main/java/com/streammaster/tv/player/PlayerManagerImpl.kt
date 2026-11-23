@@ -1,6 +1,7 @@
 package com.streammaster.tv.player
 
 import android.content.Context
+import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -18,10 +19,14 @@ import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
+import com.streammaster.tv.R
 import com.streammaster.tv.data.db.ChannelDao
 import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.PlaybackItem
+import com.streammaster.tv.data.model.Recording
+import com.streammaster.tv.data.model.RecordingStatus
+import com.streammaster.tv.data.prefs.SettingsStore
 import com.streammaster.tv.data.repository.ContentRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -54,6 +59,16 @@ private const val TAG = "StreamMaster"
 private val RETRY_BACKOFF_MS = longArrayOf(1000L, 2000L, 4000L, 8000L)
 private const val TICKER_INTERVAL_MS = 500L
 private const val BITRATE_SAVE_INTERVAL_MS = 30_000L
+
+/** Predictive stall avoidance (§4.36.5): step the quality down when the
+ *  bandwidth has fallen 3 samples in a row AND the buffer is below this. */
+private const val PREDICTIVE_BUFFER_THRESHOLD_MS = 8_000L
+/** At most one predictive step-down per 30s (no ABR oscillation). */
+private const val PREDICTIVE_COOLDOWN_MS = 30_000L
+/** Loudness normalisation (§4.36): fixed target gain in millibels (+3 dB —
+ *  a conservative boost for quiet channels; tunable, see
+ *  applyLoudnessEnhancer). */
+private const val LOUDNESS_TARGET_GAIN_MB = 300
 
 private enum class ErrorKind { SOURCE, RENDERER, UNEXPECTED }
 
@@ -89,7 +104,14 @@ class PlayerManagerImpl @Inject constructor(
     private val networkStack: NetworkStack,
     private val qoeLogger: QoeLogger,
     private val bitrateStore: BitrateStore,
-    private val preloadHelper: PreloadHelper
+    private val preloadHelper: PreloadHelper,
+    // Point 2 — playback engine (2026-11-23). SettingsStore is injected
+    // directly for the §4.37 last-channel write: see the CONTRACT note on
+    // setLastChannelId in play() below.
+    private val settingsStore: SettingsStore,
+    private val channelQualityStore: ChannelQualityStore,
+    private val episodeResumeStore: EpisodeResumeStore,
+    private val timeshiftBuffer: TimeshiftBuffer
 ) : PlayerManager {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -106,11 +128,46 @@ class PlayerManagerImpl @Inject constructor(
     private val _videoFrameRate = MutableStateFlow(0f)
     override val videoFrameRate: StateFlow<Float> = _videoFrameRate.asStateFlow()
 
+    /** Failure diagnosis (§4.36.7): plain text + suggested fix, shown by
+     *  ErrorScreen (other builder). Set on terminal failure, cleared on
+     *  every new play(). */
+    private val _lastErrorDiagnosis = MutableStateFlow("")
+    override val lastErrorDiagnosis: StateFlow<String> = _lastErrorDiagnosis.asStateFlow()
+
     /** Current playback speed (0.5–2x), re-applied on every prepare. */
     private var currentSpeed: Float = 1f
 
     /** Current quality mode, re-applied when max speed flips (2026-11-22). */
     private var currentQualityMode: QualityMode = QualityMode.AUTO
+
+    /** True when the current quality was set by the predictive step-down
+     *  (§4.36.5) rather than by the user — the predictor may step down
+     *  again from Q1080/Q720, but never overrides a manual choice. */
+    private var qualitySetByPredictor: Boolean = false
+
+    /** Loudness normaliser (§4.36, ExoPlayer only — see
+     *  applyLoudnessEnhancer). */
+    private var loudnessEnhancer: LoudnessEnhancer? = null
+
+    /** Auto Arabic subtitles (§4.61): one attempt per play session, and
+     *  never after the user picked a subtitle track manually. */
+    private var arabicSubsAppliedForSession: Boolean = false
+    private var userChoseSubtitle: Boolean = false
+
+    /** Predictive stall avoidance (§4.36.5): recent bandwidth estimates. */
+    private val bandwidthSamples = ArrayDeque<Long>()
+    private var lastPredictiveStepDownMs: Long = 0L
+
+    /** Timeshift (§4.45): the live item being buffered, and whether the
+     *  player is currently playing the temp timeshift file (a RecordingItem)
+     *  instead of the live stream. */
+    private var timeshiftLiveItem: PlaybackItem.Live? = null
+    private var timeshiftStartedAtMs: Long = 0L
+    private var playingTimeshiftFile: Boolean = false
+
+    /** Reason of the failure currently being recovered / just failed —
+     *  feeds the diagnosis in showError(). */
+    private var lastFailureReason: String = ""
 
     /** Throttle for the live network-speed label (1 update / second). */
     private var lastSpeedLabelMs: Long = 0L
@@ -209,12 +266,12 @@ class PlayerManagerImpl @Inject constructor(
                 ErrorKind.RENDERER -> {
                     // Decoder fallback already ran inside the player (B10/A8);
                     // go straight to the other engine.
-                    handleFailure(playSessionId, "renderer: ${error.errorCodeName}", forceEngineSwitch = true)
+                    handleFailure(playSessionId, "renderer: ${error.errorCodeName}", forceEngineSwitch = true, errorCode = error.errorCode)
                 }
-                ErrorKind.SOURCE -> handleFailure(playSessionId, "source: ${error.errorCodeName}")
+                ErrorKind.SOURCE -> handleFailure(playSessionId, "source: ${error.errorCodeName}", errorCode = error.errorCode)
                 ErrorKind.UNEXPECTED -> {
                     qoeLogger.logError(currentItem, activeEngine, "unexpected: ${error.errorCodeName}")
-                    handleFailure(playSessionId, "unexpected: ${error.errorCodeName}", forceEngineSwitch = true)
+                    handleFailure(playSessionId, "unexpected: ${error.errorCodeName}", forceEngineSwitch = true, errorCode = error.errorCode)
                 }
             }
         }
@@ -222,6 +279,10 @@ class PlayerManagerImpl @Inject constructor(
         override fun onTracksChanged(tracks: Tracks) {
             refreshTrackLabels(tracks)
             exoPlayer?.videoFormat?.frameRate?.takeIf { it > 0f }?.let { _videoFrameRate.value = it }
+            // §4.61 — an Arabic subtitle track, when present, is enabled
+            // automatically for films/series (once per session, unless the
+            // user picked a subtitle manually).
+            maybeEnableArabicSubtitles()
         }
     }
 
@@ -243,6 +304,9 @@ class PlayerManagerImpl @Inject constructor(
                     _state.update { it.copy(networkSpeedLabel = label) }
                 }
             }
+            // §4.36.5 — predictive stall avoidance: step the quality down
+            // BEFORE the buffer runs dry (logcat only, no UI change).
+            onPredictiveBandwidth(bitrateEstimate)
         }
 
         override fun onDownstreamFormatChanged(
@@ -298,6 +362,16 @@ class PlayerManagerImpl @Inject constructor(
     override fun play(item: PlaybackItem, resumePositionMs: Long) {
         // Save the previous VOD position before switching away.
         saveResumeFor(currentItem)
+        // A new item drops any timeshift buffer — except the timeshift
+        // file itself (§4.45: the temp file must survive the play() that
+        // starts it; it is deleted by seekToLiveEdge / stop instead).
+        val isTimeshiftFile = item is PlaybackItem.RecordingItem &&
+            item.recording.id.startsWith("timeshift-")
+        if (!isTimeshiftFile) {
+            playingTimeshiftFile = false
+            timeshiftLiveItem = null
+            timeshiftBuffer.discard()
+        }
         stopInternal()
         PlaybackService.start(context)
         playSessionId++
@@ -308,6 +382,11 @@ class PlayerManagerImpl @Inject constructor(
         mirrorIndex = 0
         engineSwitched = false
         outroHandled = false
+        arabicSubsAppliedForSession = false
+        userChoseSubtitle = false
+        bandwidthSamples.clear()
+        lastFailureReason = ""
+        _lastErrorDiagnosis.value = ""
         networkStack.clearMirror()
         _state.update {
             it.copy(
@@ -324,6 +403,8 @@ class PlayerManagerImpl @Inject constructor(
             val urls = resolveUrls(item)
             if (session != playSessionId) return@launch
             if (urls.isEmpty()) {
+                lastFailureReason = "no stream url"
+                updateDiagnosis(lastFailureReason, null)
                 val message = if (item is PlaybackItem.Live) {
                     "Impossible de lire cette chaîne"
                 } else {
@@ -333,8 +414,30 @@ class PlayerManagerImpl @Inject constructor(
                 return@launch
             }
             currentUrls = urls
+            // §4.37 — remember the last live channel permanently, on every
+            // channel change (CONTRACT: SettingsStore.setLastChannelId is
+            // added by the settings builder — see the report; the call
+            // below is written against that contract).
+            if (item is PlaybackItem.Live) {
+                scope.launch(Dispatchers.IO) {
+                    runCatching { settingsStore.setLastChannelId(item.channel.id) }
+                        .onFailure { Log.w(TAG, "setLastChannelId failed", it) }
+                }
+            }
             activeEngine = resolveEngine(currentSettings)
             _state.update { it.copy(engine = activeEngine) }
+            if (item is PlaybackItem.Live) {
+                // §4.36 — per-channel smart quality: apply this channel's
+                // stored mode AFTER the engine is resolved (applyQualityMode
+                // only touches ExoPlayer params when ExoPlayer is active);
+                // no entry = AUTO = highest quality possible (the existing
+                // maxSpeed behaviour). Never persisted here.
+                val savedQuality = runCatching {
+                    channelQualityStore.getQuality(item.channel.id)
+                }.getOrNull()
+                qualitySetByPredictor = false
+                applyQualityMode(savedQuality ?: QualityMode.AUTO, persist = false)
+            }
             recordHistory(item)
             qoeLogger.logPlaybackStart(item, activeEngine)
             if (sleepJob == null && currentSettings.sleepMinutes > 0) {
@@ -356,23 +459,31 @@ class PlayerManagerImpl @Inject constructor(
         saveResumeFor(item)
         when (activeEngine) {
             Engine.EXOPLAYER -> exo?.pause()
-            Engine.VLC -> {
-                vlcEngine?.pause()
-                // Pausing a live stream freezes the playhead: that IS timeshift.
-                if (item is PlaybackItem.Live) {
-                    timeshiftAnchorMs = currentPositionMs()
-                    _state.update { it.copy(isTimeshift = true, atLiveEdge = false) }
-                }
-            }
+            Engine.VLC -> vlcEngine?.pause()
         }
-        if (item is PlaybackItem.Live && activeEngine == Engine.EXOPLAYER) {
+        if (item is PlaybackItem.Live) {
+            // Pausing a live stream freezes the playhead: that IS timeshift.
+            // §4.45: also start capturing the stream to the temp timeshift
+            // file, so the paused-away minutes are really watchable.
             timeshiftAnchorMs = currentPositionMs()
             _state.update { it.copy(isTimeshift = true, atLiveEdge = false) }
+            beginTimeshiftRecording(item)
         }
         _state.update { it.copy(isPlaying = false) }
     }
 
     override fun resume() {
+        // §4.45: resuming from a paused live channel plays the temp
+        // timeshift file from the pause point (when it captured anything);
+        // the freeze-only fallback resumes inside the DVR window instead.
+        if (_state.value.isTimeshift && timeshiftBuffer.active) {
+            finishTimeshiftAndPlayFile()
+            return
+        }
+        if (_state.value.isTimeshift && currentItem is PlaybackItem.Live) {
+            resumeFromTimeshiftAnchor()
+            return
+        }
         when (activeEngine) {
             Engine.EXOPLAYER -> exo?.play()
             Engine.VLC -> vlcEngine?.resume()
@@ -385,6 +496,10 @@ class PlayerManagerImpl @Inject constructor(
         saveResumeFor(item)
         stopInternal()
         clearSleepTimer()
+        // Leaving the player drops the timeshift buffer (§4.45).
+        playingTimeshiftFile = false
+        timeshiftLiveItem = null
+        timeshiftBuffer.discard()
         PlaybackService.stop(context)
         preloadHelper.clear()
         _state.update {
@@ -416,8 +531,24 @@ class PlayerManagerImpl @Inject constructor(
     }
 
     override fun seekToLiveEdge() {
+        // §4.45 — "Direct" while watching the temp timeshift file: back to
+        // the live channel and delete the temp file.
+        if (playingTimeshiftFile) {
+            val live = timeshiftLiveItem
+            playingTimeshiftFile = false
+            timeshiftLiveItem = null
+            timeshiftBuffer.discard()
+            _state.update { it.copy(isTimeshift = false, atLiveEdge = true) }
+            if (live != null) {
+                play(live)
+                return
+            }
+        }
         val item = currentItem ?: return
         if (item !is PlaybackItem.Live) return
+        // Leaving timeshift (freeze or recording) drops the temp buffer.
+        timeshiftLiveItem = null
+        timeshiftBuffer.discard()
         _state.update { it.copy(isTimeshift = false, atLiveEdge = true) }
         when (activeEngine) {
             Engine.EXOPLAYER -> {
@@ -433,8 +564,25 @@ class PlayerManagerImpl @Inject constructor(
         stallDetector.reset()
     }
 
+    /**
+     * Manual quality choice (player menu): applies the mode and, for a live
+     * channel, persists it for THAT channel only (§4.36 — per-channel smart
+     * quality). VOD choices are session-only.
+     */
     override fun setQuality(mode: QualityMode) {
+        applyQualityMode(mode, persist = true)
+    }
+
+    /**
+     * Applies [mode] to the engine. When [persist] is true the choice is a
+     * user decision: it clears the predictor flag and is stored for the
+     * current live channel only. Predictive step-downs (§4.36.5) and the
+     * per-channel restore at play() pass persist=false so a temporary
+     * downgrade never becomes the channel's stored quality.
+     */
+    private fun applyQualityMode(mode: QualityMode, persist: Boolean) {
         currentQualityMode = mode
+        if (persist) qualitySetByPredictor = false
         val label = when (mode) {
             QualityMode.AUTO -> "Auto"
             QualityMode.Q480 -> "480p"
@@ -457,6 +605,13 @@ class PlayerManagerImpl @Inject constructor(
             QualityMode.Q4K -> builder.setMaxVideoSize(3840, 2160).setMaxVideoBitrate(25_000_000)
         }
         exo.trackSelectionParameters = builder.build()
+        if (persist) {
+            val live = currentItem as? PlaybackItem.Live ?: return
+            scope.launch {
+                runCatching { channelQualityStore.setQuality(live.channel.id, mode) }
+                    .onFailure { Log.w(TAG, "Saving per-channel quality failed", it) }
+            }
+        }
     }
 
     /** Formats a bitrate as "12.5 Mb/s" for the live speed badge. */
@@ -487,6 +642,14 @@ class PlayerManagerImpl @Inject constructor(
     }
 
     override fun setSubtitleTrack(id: String?) {
+        // A manual subtitle choice disables the §4.61 auto-Arabic pick for
+        // this session (the auto path uses setSubtitleTrackInternal).
+        userChoseSubtitle = true
+        setSubtitleTrackInternal(id)
+    }
+
+    /** Subtitle selection without marking a manual user choice (§4.61). */
+    private fun setSubtitleTrackInternal(id: String?) {
         val exo = exo
         if (activeEngine == Engine.EXOPLAYER && exo != null) {
             val builder = exo.trackSelectionParameters.buildUpon()
@@ -537,22 +700,21 @@ class PlayerManagerImpl @Inject constructor(
         if (item !is PlaybackItem.Live) return
         if (!_state.value.isTimeshift) {
             // A6/B36: freeze the playhead; the stream keeps advancing behind it.
+            // §4.45: also start capturing the stream to the temp file.
             timeshiftAnchorMs = currentPositionMs()
             when (activeEngine) {
                 Engine.EXOPLAYER -> exo?.pause()
                 Engine.VLC -> vlcEngine?.pause()
             }
             _state.update { it.copy(isTimeshift = true, isPlaying = false, atLiveEdge = false) }
+            beginTimeshiftRecording(item)
+        } else if (timeshiftBuffer.active) {
+            // §4.45: resume by playing the temp file from the pause point.
+            finishTimeshiftAndPlayFile()
         } else {
-            // Resume inside the DVR window from the frozen position.
-            when (activeEngine) {
-                Engine.EXOPLAYER -> {
-                    exo?.seekTo(timeshiftAnchorMs)
-                    exo?.play()
-                }
-                Engine.VLC -> vlcEngine?.resume()
-            }
-            _state.update { it.copy(isPlaying = true) }
+            // Freeze-only fallback (recording could not start): resume
+            // inside the DVR window from the frozen position.
+            resumeFromTimeshiftAnchor()
         }
     }
 
@@ -628,6 +790,10 @@ class PlayerManagerImpl @Inject constructor(
     override fun release() {
         stopInternal()
         clearSleepTimer()
+        // Leaving the player for good drops the timeshift buffer (§4.45).
+        playingTimeshiftFile = false
+        timeshiftLiveItem = null
+        timeshiftBuffer.discard()
         PlaybackService.stop(context)
         preloadHelper.release()
         try {
@@ -788,6 +954,8 @@ class PlayerManagerImpl @Inject constructor(
             if (startPositionMs > 0) player.seekTo(startPositionMs)
             player.playWhenReady = true
             applySpeed()
+            // §4.36 — loudness normalisation on the ExoPlayer audio session.
+            applyLoudnessEnhancer()
         } catch (e: Exception) {
             Log.w(TAG, "ExoPlayer prepare failed", e)
             handleFailure(session, "prepare failed: ${e.message}")
@@ -800,6 +968,14 @@ class PlayerManagerImpl @Inject constructor(
         try {
             engine.play(url, startPositionMs)
             applySpeed()
+            // §4.61 (VLC): subtitle tracks appear asynchronously and VLC
+            // exposes no tracks-changed event — one delayed auto-Arabic
+            // attempt a few seconds after prepare (best effort; the
+            // TimeChanged attempt below is the second chance).
+            scope.launch {
+                delay(3000)
+                if (session == playSessionId) maybeEnableArabicSubtitles()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "VLC prepare failed", e)
             handleFailure(session, "vlc prepare failed: ${e.message}")
@@ -811,9 +987,11 @@ class PlayerManagerImpl @Inject constructor(
      * VLC events. Every step re-checks [playSessionId] so a stale retry can never
      * hijack a newer playback.
      */
-    private fun handleFailure(session: Int, reason: String, forceEngineSwitch: Boolean = false) {
+    private fun handleFailure(session: Int, reason: String, forceEngineSwitch: Boolean = false, errorCode: Int? = null) {
         if (session != playSessionId || currentItem == null) return
         val item = currentItem ?: return
+        lastFailureReason = reason
+        updateDiagnosis(reason, errorCode)
         scope.launch {
             if (session != playSessionId) return@launch
             qoeLogger.logError(item, activeEngine, reason)
@@ -862,6 +1040,10 @@ class PlayerManagerImpl @Inject constructor(
                     stopEnginesOnly()
                     activeEngine = to
                     _state.update { it.copy(engine = to, isBuffering = true) }
+                    // Re-apply the current quality mode on the new engine
+                    // (the per-channel restore at play() only touches the
+                    // engine that was active then).
+                    applyQualityMode(currentQualityMode, persist = false)
                     delay(300)
                     if (session != playSessionId) return@launch
                     prepareCurrent(session, resumeAt)
@@ -874,10 +1056,16 @@ class PlayerManagerImpl @Inject constructor(
     private fun showError(message: String) {
         // Terminal failure (every failure path funnels here — see callers):
         // the recovery chain is exhausted, so the live channel is broken.
+        // §4.36.7: keep the diagnosis of the failure that led here so
+        // ErrorScreen can explain it (set by handleFailure / play()).
+        if (_lastErrorDiagnosis.value.isBlank()) {
+            updateDiagnosis(lastFailureReason, null)
+        }
         markCurrentChannelBroken()
         stallDetector.stop()
         tickerJob?.cancel()
         tickerJob = null
+        releaseLoudnessEnhancer()
         stopEnginesOnly()
         _state.update { it.copy(showError = true, errorMessage = message, isPlaying = false, isBuffering = false) }
     }
@@ -945,7 +1133,12 @@ class PlayerManagerImpl @Inject constructor(
                 }
             }
             is VlcEvent.Error -> handleFailure(playSessionId, event.message)
-            is VlcEvent.TimeChanged -> _positionMs.value = event.timeMs
+            is VlcEvent.TimeChanged -> {
+                _positionMs.value = event.timeMs
+                // §4.61 (VLC): subtitle tracks arrive with playback — try
+                // the auto-Arabic pick once (guarded by the session flag).
+                if (!arabicSubsAppliedForSession) maybeEnableArabicSubtitles()
+            }
             is VlcEvent.LengthChanged -> _durationMs.value = event.lengthMs
         }
     }
@@ -1060,6 +1253,21 @@ class PlayerManagerImpl @Inject constructor(
                 Log.w(TAG, "recordResume failed", e)
             }
         }
+        // §4.1 — per-episode progress (EpisodeResumeStore): the series-level
+        // percent above cannot say WHICH episode was playing, so the engine
+        // also persists the episode + exact position. >=95% clears it.
+        if (item is PlaybackItem.EpisodeItem) {
+            val episode = item.episode
+            scope.launch {
+                runCatching {
+                    if (progress in 5..94) {
+                        episodeResumeStore.save(item.series.id, episode.season, episode.number, position)
+                    } else if (progress >= 95) {
+                        episodeResumeStore.clear(item.series.id)
+                    }
+                }.onFailure { Log.w(TAG, "Episode resume save failed", it) }
+            }
+        }
     }
 
     private fun recordHistory(item: PlaybackItem) {
@@ -1103,7 +1311,10 @@ class PlayerManagerImpl @Inject constructor(
                     if (atEdge != _state.value.atLiveEdge) {
                         _state.update { it.copy(atLiveEdge = atEdge) }
                     }
-                } else if (!_state.value.atLiveEdge) {
+                } else if (!playingTimeshiftFile && !_state.value.atLiveEdge) {
+                    // While the temp timeshift file is playing, the player
+                    // is deliberately behind the live edge — do not flip
+                    // it back (§4.45).
                     _state.update { it.copy(atLiveEdge = true) }
                 }
                 // B3: persist the last measured bandwidth for the next session.
@@ -1184,6 +1395,10 @@ class PlayerManagerImpl @Inject constructor(
     }
 
     private fun stopEnginesOnly() {
+        // The loudness effect belongs to the ExoPlayer audio session: drop
+        // it whenever the engines stop (a fresh one is attached on the
+        // next Exo prepare; VLC never gets one).
+        releaseLoudnessEnhancer()
         try {
             exo?.stop()
         } catch (e: Exception) {
@@ -1200,6 +1415,7 @@ class PlayerManagerImpl @Inject constructor(
         stallDetector.stop()
         tickerJob?.cancel()
         tickerJob = null
+        releaseLoudnessEnhancer()
         stopEnginesOnly()
         _state.update { it.copy(isPlaying = false, isBuffering = false) }
     }
@@ -1297,5 +1513,268 @@ class PlayerManagerImpl @Inject constructor(
                 Log.w(TAG, "Neighbour preload failed (best-effort)", e)
             }
         }
+    }
+
+    // ---- Point 2 helpers (2026-11-23) ------------------------------------------
+
+    // -- §4.36.7 failure diagnosis (logic only; ErrorScreen displays it) --
+
+    private fun updateDiagnosis(reason: String, errorCode: Int?) {
+        _lastErrorDiagnosis.value = buildDiagnosis(reason, errorCode)
+    }
+
+    private fun buildDiagnosis(reason: String, errorCode: Int?): String {
+        val r = reason.lowercase(Locale.US)
+        val res = when {
+            errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ||
+                errorCode == PlaybackException.ERROR_CODE_TIMEOUT ||
+                "timeout" in r || "timed out" in r -> R.string.diag_timeout
+            errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+                "404" in r || "file not found" in r || "no stream url" in r ->
+                R.string.diag_dead_link
+            errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                "connection failed" in r || "unable to connect" in r ||
+                "network connection failed" in r -> R.string.diag_weak_network
+            errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                "bad http status" in r || "http 5" in r -> R.string.diag_server_down
+            errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW ||
+                "behind live window" in r -> R.string.diag_behind_live
+            errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES ||
+                errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+                errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_AUDIO_TRACK_WRITE_FAILED ||
+                errorCode == PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED ||
+                "renderer" in r || "decoder" in r -> R.string.diag_decoder
+            "stall" in r || "stuck" in r -> R.string.diag_stalled
+            "encrypted" in r -> R.string.diag_dead_link
+            else -> R.string.diag_unknown
+        }
+        return runCatching { context.getString(res) }.getOrElse {
+            "Lecture impossible. Vérifiez votre connexion ou essayez une autre chaîne."
+        }
+    }
+
+    // -- §4.61 auto Arabic subtitles --
+
+    private fun isArabicTrack(language: String?, label: String?): Boolean {
+        if (language != null && language.lowercase(Locale.US).startsWith("ar")) return true
+        val l = label ?: return false
+        if (l.contains(Regex("[\\u0600-\\u06FF]"))) return true
+        val lower = l.lowercase(Locale.US)
+        return "arab" in lower || "عربي" in l
+    }
+
+    /**
+     * Enables the Arabic subtitle track automatically for films/series when
+     * one exists (§4.61), unless the user turned the option off
+     * (`AppSettings.autoArabicSubs`, default true — CONTRACT: added by the
+     * settings builder) or picked a subtitle manually this session. One
+     * attempt per play session (tracks load async, so the Exo
+     * onTracksChanged path, the VLC TimeChanged path and the delayed VLC
+     * attempt all funnel here and the flag stops repeats).
+     */
+    private fun maybeEnableArabicSubtitles() {
+        if (arabicSubsAppliedForSession || userChoseSubtitle) return
+        val item = currentItem
+        if (item !is PlaybackItem.Movie && item !is PlaybackItem.EpisodeItem) return
+        // CONTRACT: AppSettings.autoArabicSubs (default true) is added by
+        // the settings builder.
+        if (!currentSettings.autoArabicSubs) {
+            arabicSubsAppliedForSession = true
+            return
+        }
+        if (activeEngine == Engine.EXOPLAYER) {
+            val player = exo ?: return
+            val tracks = player.currentTracks
+            for ((groupIndex, group) in tracks.groups.withIndex()) {
+                if (group.type != C.TRACK_TYPE_TEXT) continue
+                for (trackIndex in 0 until group.length) {
+                    val format = group.getTrackFormat(trackIndex)
+                    if (isArabicTrack(format.language, format.label)) {
+                        arabicSubsAppliedForSession = true
+                        setSubtitleTrackInternal("s${groupIndex}t$trackIndex")
+                        Log.i(TAG, "Auto Arabic subtitles enabled (${format.language ?: format.label})")
+                        return
+                    }
+                }
+            }
+            // No Arabic track in this (possibly early) tracks snapshot:
+            // mark applied so a second onTracksChanged does not loop; a
+            // later user action can still pick subtitles manually.
+            arabicSubsAppliedForSession = true
+        } else {
+            val subs = vlcEngine?.subtitleTracks().orEmpty()
+            val arabic = subs.firstOrNull { isArabicTrack(null, it.label) }
+            arabicSubsAppliedForSession = true
+            if (arabic != null) {
+                setSubtitleTrackInternal(arabic.id)
+                Log.i(TAG, "Auto Arabic subtitles enabled (VLC: ${arabic.label})")
+            }
+        }
+    }
+
+    // -- §4.36 loudness normalisation (ExoPlayer only) --
+
+    /**
+     * Enables a [LoudnessEnhancer] on the ExoPlayer audio session so quiet
+     * channels are lifted toward a fixed target gain (§4.36 — unify the
+     * volume between channels). Read from
+     * `AppSettings.volumeNormalization` (default true — CONTRACT: added by
+     * the settings builder). Best effort: any failure (no audio session
+     * yet, offloaded/passthrough audio where effects do not apply, device
+     * without the effect) only logs and leaves playback untouched.
+     *
+     * VLC: libVLC exposes no loudness API through MediaPlayer, so VLC is
+     * NOT normalised here. The VLC-side equivalent is the `--audio-filter=
+     * normvol` libVLC option in `createLibVlc` (PlayerFactory.kt — owned
+     * by the factory builder, not this file); see the report.
+     */
+    private fun applyLoudnessEnhancer() {
+        releaseLoudnessEnhancer()
+        // CONTRACT: AppSettings.volumeNormalization (default true) is added
+        // by the settings builder.
+        if (!currentSettings.volumeNormalization) return
+        if (activeEngine != Engine.EXOPLAYER) return
+        val sessionId = exo?.audioSessionId ?: 0
+        if (sessionId == 0 || sessionId == C.AUDIO_SESSION_ID_UNSET) return
+        try {
+            loudnessEnhancer = LoudnessEnhancer(sessionId).apply {
+                setTargetGain(LOUDNESS_TARGET_GAIN_MB)
+                enabled = true
+            }
+            Log.i(TAG, "LoudnessEnhancer enabled (session=$sessionId, target=${LOUDNESS_TARGET_GAIN_MB}mB)")
+        } catch (e: Exception) {
+            Log.w(TAG, "LoudnessEnhancer unavailable (session=$sessionId)", e)
+            loudnessEnhancer = null
+        }
+    }
+
+    private fun releaseLoudnessEnhancer() {
+        val enhancer = loudnessEnhancer ?: return
+        loudnessEnhancer = null
+        try {
+            enhancer.enabled = false
+            enhancer.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "LoudnessEnhancer release failed", e)
+        }
+    }
+
+    // -- §4.36.5 predictive stall avoidance --
+
+    /**
+     * Called on every bandwidth estimate. When the estimate has fallen 3
+     * samples in a row (latest <= 80% of the first of the three) AND the
+     * ExoPlayer buffer is below [PREDICTIVE_BUFFER_THRESHOLD_MS], the
+     * quality steps down ONE notch BEFORE the buffer runs dry — a stall
+     * that never happens needs no recovery. Logcat only, no UI change.
+     * Only when the quality is AUTO or was already stepped down by the
+     * predictor: a manual user choice is never overridden. At most one
+     * step per [PREDICTIVE_COOLDOWN_MS].
+     */
+    private fun onPredictiveBandwidth(estimateBps: Long) {
+        if (activeEngine != Engine.EXOPLAYER) return
+        if (currentQualityMode != QualityMode.AUTO && !qualitySetByPredictor) return
+        if (currentItem == null) return
+        if (estimateBps <= 0) return
+        bandwidthSamples.addLast(estimateBps)
+        while (bandwidthSamples.size > 4) bandwidthSamples.removeFirst()
+        if (bandwidthSamples.size < 3) return
+        val s = bandwidthSamples.toList()
+        val n = s.size
+        val first = s[n - 3]
+        val second = s[n - 2]
+        val latest = s[n - 1]
+        if (!(latest < second && second < first)) return
+        if (latest > (first * 0.8).toLong()) return
+        val player = exo ?: return
+        val bufferedMs = (player.bufferedPosition - player.currentPosition).coerceAtLeast(0L)
+        if (bufferedMs >= PREDICTIVE_BUFFER_THRESHOLD_MS) return
+        val now = System.currentTimeMillis()
+        if (now - lastPredictiveStepDownMs < PREDICTIVE_COOLDOWN_MS) return
+        val next = when (currentQualityMode) {
+            QualityMode.AUTO -> QualityMode.Q1080
+            QualityMode.Q1080 -> QualityMode.Q720
+            QualityMode.Q720 -> QualityMode.Q480
+            else -> return
+        }
+        val fromLabel = _state.value.qualityLabel
+        lastPredictiveStepDownMs = now
+        bandwidthSamples.clear()
+        applyQualityMode(next, persist = false)
+        qualitySetByPredictor = true
+        Log.i(
+            TAG,
+            "Predictive ABR: bandwidth falling ${first}->${second}->${latest} bps, " +
+                "buffer ${bufferedMs}ms — stepping down $fromLabel -> ${_state.value.qualityLabel} before stall"
+        )
+        qoeLogger.logAbrSwitch(currentItem, activeEngine, fromLabel, _state.value.qualityLabel)
+    }
+
+    // -- §4.45 timeshift with on-device storage --
+
+    /** Starts capturing the live stream to the temp timeshift file. */
+    private fun beginTimeshiftRecording(item: PlaybackItem.Live) {
+        if (timeshiftBuffer.active) return
+        if (playingTimeshiftFile) return
+        val url = currentUrls.getOrNull(mirrorIndex) ?: item.channel.streamUrl
+        timeshiftLiveItem = item
+        timeshiftStartedAtMs = System.currentTimeMillis()
+        scope.launch(Dispatchers.IO) {
+            val ok = runCatching { timeshiftBuffer.start(url) }.getOrDefault(false)
+            if (ok) {
+                Log.i(TAG, "Timeshift recording started for ${item.channel.id}")
+            } else {
+                Log.w(TAG, "Timeshift recording could not start; freeze fallback only")
+            }
+        }
+    }
+
+    /**
+     * Stops the capture and plays the temp file from its start (= the pause
+     * point) as a RecordingItem. When nothing usable was captured
+     * (encrypted HLS, single-connection provider, fetch failure) the file
+     * is empty and the player returns to the live edge instead.
+     */
+    private fun finishTimeshiftAndPlayFile() {
+        val live = timeshiftLiveItem ?: return
+        scope.launch {
+            val file = runCatching { timeshiftBuffer.stop() }.getOrNull()
+            if (file == null || !file.exists() || file.length() == 0L) {
+                Log.w(TAG, "Timeshift buffer empty; returning to live edge")
+                timeshiftLiveItem = null
+                seekToLiveEdge()
+                return@launch
+            }
+            val recording = Recording(
+                id = "timeshift-${live.channel.id}-$timeshiftStartedAtMs",
+                channelId = live.channel.id,
+                channelName = live.channel.name,
+                title = "${live.channel.name} — Timeshift",
+                startMillis = timeshiftStartedAtMs,
+                durationMs = 0L,
+                filePath = file.absolutePath,
+                sizeBytes = file.length(),
+                status = RecordingStatus.DONE
+            )
+            playingTimeshiftFile = true
+            play(PlaybackItem.RecordingItem(recording))
+            _state.update { it.copy(isTimeshift = true, atLiveEdge = false) }
+        }
+    }
+
+    /** Freeze-only fallback: resume inside the DVR window from the anchor. */
+    private fun resumeFromTimeshiftAnchor() {
+        when (activeEngine) {
+            Engine.EXOPLAYER -> {
+                exo?.seekTo(timeshiftAnchorMs)
+                exo?.play()
+            }
+            Engine.VLC -> vlcEngine?.resume()
+        }
+        _state.update { it.copy(isPlaying = true) }
     }
 }

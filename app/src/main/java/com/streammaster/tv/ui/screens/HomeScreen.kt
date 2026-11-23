@@ -52,6 +52,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.navigation.Routes
+import com.streammaster.tv.ui.screens.WATCH_TONIGHT_ROUTE
+import com.streammaster.tv.ui.viewmodel.SmartListsViewModel
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.Gold
@@ -93,6 +95,10 @@ fun HomeScreen(
     // exceed the viewport even at the reference, and the Shell does not
     // scroll its content — so Home scrolls vertically (LazyRows inside
     // still scroll horizontally; D-pad focus scrolls into view).
+    // "Quoi regarder ce soir ?" (§4.36): button on Accueil opening the
+    // tonight screen (asks how much time, offers 3-4 picks).
+    val smartListsViewModel: SmartListsViewModel = hiltViewModel()
+    val smartLists by smartListsViewModel.lists.collectAsState()
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(36.dp)
@@ -112,6 +118,12 @@ fun HomeScreen(
                 Text(text = stringResource(R.string.app_version), fontSize = 16.sp, color = TextMuted)
             }
         }
+
+        // Watch Tonight button (§4.36) — right under the expiry card.
+        com.streammaster.tv.ui.components.GoldButton(
+            text = stringResource(R.string.ns_tonight_button),
+            modifier = Modifier.fillMaxWidth()
+        ) { navController.navigate(WATCH_TONIGHT_ROUTE) }
 
         // Subscription-expiry alert (2026-11-22): warn when <= 7 days remain.
         val daysLeft = state.expiryDaysLeft
@@ -370,6 +382,38 @@ fun HomeScreen(
                         quality = series.quality, rating = series.rating,
                         seasons = series.seasons, unstable = series.isBroken
                     ) { navController.navigate(Routes.detail("series", series.id)) }
+                }
+            }
+        }
+
+        // Smart lists (§4.51): auto-generated groups (genre / year / recency)
+        // from SmartListsProvider — no manual ordering. Each item opens with
+        // its normal route (player for a channel, detail for VOD).
+        smartLists.forEach { list ->
+            SectionHeader(list.title, list.subtitle.ifBlank { null })
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                items(list.films) { film ->
+                    PosterTile(
+                        title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),
+                        isFavorite = film.isFavorite, progressPercent = film.recentProgress,
+                        quality = film.quality, rating = film.rating, year = film.year,
+                        unstable = film.isBroken
+                    ) { navController.navigate(Routes.detail("film", film.id)) }
+                }
+                items(list.series) { series ->
+                    PosterTile(
+                        title = series.title, hue = series.hue, code = series.title.take(2).uppercase(),
+                        isFavorite = series.isFavorite, progressPercent = series.recentProgress,
+                        quality = series.quality, rating = series.rating,
+                        seasons = series.seasons, unstable = series.isBroken
+                    ) { navController.navigate(Routes.detail("series", series.id)) }
+                }
+                items(list.channels) { channel ->
+                    PosterTile(
+                        title = channel.name, hue = channel.hue, code = channel.name.take(2).uppercase(),
+                        subtitle = channel.nowTitle.ifBlank { null },
+                        unstable = channel.isBroken
+                    ) { navController.navigate(Routes.player("live", channel.id)) }
                 }
             }
         }

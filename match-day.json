@@ -1,0 +1,1233 @@
+{
+  "generated_at": "2026-11-23T17:57:33.246340+01:00",
+  "generated_at_utc": "2026-11-23T16:57:33.246354+00:00",
+  "today": {
+    "date": "2026-11-23",
+    "leagues": [
+      {
+        "league": "كأس العالم تحت 17",
+        "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+        "matches": [
+          {
+            "id": "m-yala:1345",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "طاجيكستان",
+            "away_team": "كرواتيا",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/tajikistan-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/croatia-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T13:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1347",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "إسبانيا",
+            "away_team": "فيجي",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/spain-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/fiji-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T13:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1349",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "أوزبكستان",
+            "away_team": "جامايكا",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/uzbekistan-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/jamaica-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T14:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1351",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "السنغال",
+            "away_team": "كوبا",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/senegal-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/cuba-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T14:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1353",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "إيطاليا",
+            "away_team": "كوت ديفوار",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/italy-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/ivory-coast-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T15:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1355",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "المغرب",
+            "away_team": "الصين",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/morocco-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/china-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T16:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "live",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1357",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "مالي",
+            "away_team": "بلجيكا",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/mali-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/belgium-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T16:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "live",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "m-yala:1359",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "فيتنام",
+            "away_team": "نيوزيلندا",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/vietnam-u17.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/new-zealand-u17.png?v=2",
+            "kickoff_tunis": "2026-11-23T16:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "live",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "دوري أبطال آسيا",
+        "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+        "matches": [
+          {
+            "id": "m-yala:1325",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/images16-9-2024-18-53-21.jpg",
+            "home_team": "نيفتشي فرجانة",
+            "away_team": "الهلال",
+            "home_logo": "https://m-yala.com/wp-content/uploads/koora-logos/neftchi-fargona.png?v=2",
+            "away_logo": "https://m-yala.com/wp-content/uploads/koora-logos/al-hilal-riyadh.png?v=2",
+            "kickoff_tunis": "2026-11-23T14:45:00+01:00",
+            "stadium": null,
+            "channels": [
+              "بين سبورت HD 1",
+              "beIN SPORTS 1"
+            ],
+            "status": "finished",
+            "source": "yallakora",
+            "sources": [
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818324",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "العين",
+            "away_team": "استقلال",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8353.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/9358.png",
+            "kickoff_tunis": "2026-11-23T17:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "بين سبورت HD2",
+              "beIN SPORTS 2"
+            ],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818325",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "تراکتورسازي",
+            "away_team": "الوصل",
+            "home_logo": "https://api.lsfrstudio.com/img/team/9353.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8346.png",
+            "kickoff_tunis": "2026-11-23T17:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 3",
+              "بين سبورت 3 HD"
+            ],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818326",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "الشمال",
+            "away_team": "الأهلي",
+            "home_logo": "https://api.lsfrstudio.com/img/team/7081.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8946.png",
+            "kickoff_tunis": "2026-11-23T17:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "بين سبورت HD 1",
+              "beIN SPORTS 1"
+            ],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818327",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "الاتحاد",
+            "away_team": "باختاكور",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8593.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/10345.png",
+            "kickoff_tunis": "2026-11-23T19:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "بين سبورت 3 HD",
+              "beIN SPORTS 3"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818328",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "القوة الجوية",
+            "away_team": "الغرافة",
+            "home_logo": "https://api.lsfrstudio.com/img/team/11283.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/6993.png",
+            "kickoff_tunis": "2026-11-23T19:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 1",
+              "بين سبورت HD 1"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري المصري",
+        "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+        "matches": [
+          {
+            "id": "jdwal:4804735",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "الجونة",
+            "away_team": "الزمالك",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8308.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8201.png",
+            "kickoff_tunis": "2026-11-23T16:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "ON Sport MAX",
+              "أون سبورت ماكس"
+            ],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4804741",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "وادي دجلة",
+            "away_team": "الاتحاد السكندري",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8311.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8312.png",
+            "kickoff_tunis": "2026-11-23T16:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "أون سبورت بلس",
+              "ON Sport PLUS"
+            ],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4804736",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "الأهلي",
+            "away_team": "بيراميدز",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8200.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/22143.png",
+            "kickoff_tunis": "2026-11-23T19:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "ON Sport",
+              "أون سبورت"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري الجزائري",
+        "league_logo": "https://api.lsfrstudio.com/img/league/560.png",
+        "matches": [
+          {
+            "id": "jdwal:4890783",
+            "league": "الدوري الجزائري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/560.png",
+            "home_team": "شباب بلوزداد",
+            "away_team": "أولمبي أقبو",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8225.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/55758.png",
+            "kickoff_tunis": "2026-11-23T17:45:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal"
+            ]
+          },
+          {
+            "id": "jdwal:4890782",
+            "league": "الدوري الجزائري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/560.png",
+            "home_team": "نجم بن عكنون",
+            "away_team": "اتحاد العاصمة",
+            "home_logo": "https://api.lsfrstudio.com/img/team/17033.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8220.png",
+            "kickoff_tunis": "2026-11-23T17:45:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "live",
+            "source": "jdwal",
+            "sources": [
+              "jdwal"
+            ]
+          },
+          {
+            "id": "jdwal:4890784",
+            "league": "الدوري الجزائري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/560.png",
+            "home_team": "شبيبة القبائل",
+            "away_team": "مولودية الجزائر",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8223.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8218.png",
+            "kickoff_tunis": "2026-11-23T19:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "كأس الكونفدرالية الأفريقية",
+        "league_logo": "https://api.lsfrstudio.com/img/league/627.png",
+        "matches": [
+          {
+            "id": "jdwal:4859966",
+            "league": "كأس الكونفدرالية الأفريقية",
+            "league_logo": "https://api.lsfrstudio.com/img/league/627.png",
+            "home_team": "الجمعية الرياضية للجمارك",
+            "away_team": "شباب بلوزداد",
+            "home_logo": "https://api.lsfrstudio.com/img/team/76766.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8225.png",
+            "kickoff_tunis": "2026-11-23T18:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "m-yala"
+            ]
+          },
+          {
+            "id": "yallakora:4%d8%a3%d9%81%d8%b1%d9%8a%d9%82%d9%8a%d8%a9#MC_MatcheDetails",
+            "league": "كأس الكونفدرالية الأفريقية",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/576229894_25484069324544446_513137027842226473_n (1)3-11-2025-19-26-29.webp",
+            "home_team": "الجمارك الموريتاني",
+            "away_team": "شباب بلوزداد",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/9/30/AS_Douane_(Mauritania)2026_9_30_23_25.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/1/12/Belouizdad112025_1_12_17_11.webp",
+            "kickoff_tunis": "2026-11-23T18:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري الإنجليزي الممتاز",
+        "league_logo": "https://api.lsfrstudio.com/img/league/7.png",
+        "matches": [
+          {
+            "id": "espn:401879237",
+            "league": "الدوري الإنجليزي الممتاز",
+            "league_logo": "https://api.lsfrstudio.com/img/league/7.png",
+            "home_team": "برينتفورد",
+            "away_team": "إيفرتون",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/337.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/368.png",
+            "kickoff_tunis": "2026-11-23T21:00:00+01:00",
+            "stadium": "Gtech Community Stadium",
+            "channels": [
+              "beIN SPORTS",
+              "بين سبورت HD2",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري الإسباني",
+        "league_logo": "https://api.lsfrstudio.com/img/league/11.png",
+        "matches": [
+          {
+            "id": "espn:401882802",
+            "league": "الدوري الإسباني",
+            "league_logo": "https://api.lsfrstudio.com/img/league/11.png",
+            "home_team": "ليفانتي",
+            "away_team": "إلتشي",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/1538.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/3751.png",
+            "kickoff_tunis": "2026-11-23T21:00:00+01:00",
+            "stadium": "Estadi Ciutat de València",
+            "channels": [
+              "beIN SPORTS",
+              "بين سبورت HD 4",
+              "beIN SPORTS 4"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري الإيطالي",
+        "league_logo": "https://api.lsfrstudio.com/img/league/17.png",
+        "matches": [
+          {
+            "id": "espn:401875009",
+            "league": "الدوري الإيطالي",
+            "league_logo": "https://api.lsfrstudio.com/img/league/17.png",
+            "home_team": "مونزا",
+            "away_team": "فيورنتينا",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/4007.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/109.png",
+            "kickoff_tunis": "2026-11-23T20:45:00+01:00",
+            "stadium": "U-Power Stadium",
+            "channels": [
+              "beIN SPORTS",
+              "Starzplay - تطبيق شاشا",
+              "Starz Play App"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "m-yala",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري التركي",
+        "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/Super-Lig113-2-2021-3-39-5.png",
+        "matches": [
+          {
+            "id": "yallakora:%d9%8a-%d8%a7%d9%84%d8%aa%d8%b1%d9%83%d9%8a#MC_MatcheDetails",
+            "league": "الدوري التركي",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/Super-Lig113-2-2021-3-39-5.png",
+            "home_team": "إسطنبول باشاكشهير",
+            "away_team": "كوروم",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2021/7/14/IstanbulBasaksehir2021_7_14_17_28.jpg",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/8/5/Corum_FK_Logo112026_8_5_14_27.webp",
+            "kickoff_tunis": "2026-11-23T18:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "tomorrow": {
+    "date": "2026-11-24",
+    "leagues": [
+      {
+        "league": "دوري أبطال أوروبا",
+        "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+        "matches": [
+          {
+            "id": "espn:401915380",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "بودو جليمت",
+            "away_team": "لاسك لينز",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2980.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/4411.png",
+            "kickoff_tunis": "2026-11-24T18:45:00+01:00",
+            "stadium": "Aspmyra Stadion",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 4"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915300",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "جلطة سراي",
+            "away_team": "أستون فيلا",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/432.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/362.png",
+            "kickoff_tunis": "2026-11-24T18:45:00+01:00",
+            "stadium": "RAMS Park",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 3"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915295",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "أرسنال",
+            "away_team": "بوروسيا دورتموند",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/359.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/124.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Emirates Stadium",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 4"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915296",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "كومو",
+            "away_team": "أيك أثينا",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/2572.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/887.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Giuseppe Sinigaglia",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 5"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915294",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "فاينورد",
+            "away_team": "بورتو",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/142.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/437.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "De Kuip",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 6"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915379",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "مانشستر سيتي",
+            "away_team": "نابولي",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/382.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/114.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Etihad Stadium",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 3"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915299",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "لايبزيج",
+            "away_team": "لانس",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/11420.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/175.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Red Bull Arena",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 8"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915298",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "ريال مدريد",
+            "away_team": "آيندهوفن",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/86.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/148.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Santiago Bernabéu",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 1"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "espn:401915297",
+            "league": "دوري أبطال أوروبا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/572.png",
+            "home_team": "سلوفان براتيسلافا",
+            "away_team": "ريال بيتيس",
+            "home_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/521.png",
+            "away_logo": "https://a.espncdn.com/i/teamlogos/soccer/500/244.png",
+            "kickoff_tunis": "2026-11-24T21:00:00+01:00",
+            "stadium": "Národny Futbalovy Stadión",
+            "channels": [
+              "beIN SPORTS",
+              "beIN SPORTS 9"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "espn",
+              "jdwal",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "دوري أبطال آسيا",
+        "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+        "matches": [
+          {
+            "id": "jdwal:4818592",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "نيوكاسل جيتس",
+            "away_team": "كاشيوا ريسول",
+            "home_logo": "https://api.lsfrstudio.com/img/team/2203.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/2145.png",
+            "kickoff_tunis": "2026-11-24T08:45:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818590",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "كيوتو سانغا",
+            "away_team": "بوهانغ ستيليرز",
+            "home_logo": "https://api.lsfrstudio.com/img/team/2154.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/9822.png",
+            "kickoff_tunis": "2026-11-24T11:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 3"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818591",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "دايجيون سيتيزن",
+            "away_team": "بكين كوان",
+            "home_logo": "https://api.lsfrstudio.com/img/team/9816.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/2182.png",
+            "kickoff_tunis": "2026-11-24T11:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818588",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "راتشابوري",
+            "away_team": "جوهور",
+            "home_logo": "https://api.lsfrstudio.com/img/team/10318.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/10080.png",
+            "kickoff_tunis": "2026-11-24T13:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 4"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818589",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "شنغهاي بورت",
+            "away_team": "بوريرام يونايتد",
+            "home_logo": "https://api.lsfrstudio.com/img/team/10300.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/7747.png",
+            "kickoff_tunis": "2026-11-24T13:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4853978",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "كونغ آن هانوي",
+            "away_team": "فيسيل كوبي",
+            "home_logo": "https://api.lsfrstudio.com/img/team/72909.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/2151.png",
+            "kickoff_tunis": "2026-11-24T13:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 3"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818329",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "شباب الاهلي",
+            "away_team": "القادسية",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8347.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/8947.png",
+            "kickoff_tunis": "2026-11-24T17:00:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4818330",
+            "league": "دوري أبطال آسيا",
+            "league_logo": "https://api.lsfrstudio.com/img/league/623.png",
+            "home_team": "النصر",
+            "away_team": "السد",
+            "home_logo": "https://api.lsfrstudio.com/img/team/7549.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/6992.png",
+            "kickoff_tunis": "2026-11-24T19:15:00+01:00",
+            "stadium": null,
+            "channels": [
+              "SSC",
+              "beIN SPORTS 2"
+            ],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "كأس العالم تحت 17",
+        "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+        "matches": [
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "كوستاريكا",
+            "away_team": "أيرلندا",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/27/costa_rica_square_icon_6402025_10_27_0_32.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/29/ireland_square_icon_6402025_10_29_18_5.webp",
+            "kickoff_tunis": "2026-11-24T13:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "فنزويلا",
+            "away_team": "رومانيا",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/27/venezuela_square_icon_6402025_10_27_0_51.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/11/12/romania_square_icon_640 (1)2026_11_12_18_16.webp",
+            "kickoff_tunis": "2026-11-24T13:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "اليابان",
+            "away_team": "صربيا",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/25/japan_square_icon_6402025_10_25_1_54.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/11/12/serbia_square_icon_640 (1)2026_11_12_17_25.webp",
+            "kickoff_tunis": "2026-11-24T14:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "المكسيك",
+            "away_team": "الكاميرون",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/29/mexico_square_icon_640 (2)2025_10_29_15_54.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/3/23/cameroon_square_icon_6402025_3_23_15_34.webp",
+            "kickoff_tunis": "2026-11-24T14:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "الدومينيكان",
+            "away_team": "تشيلي",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/11/13/dominican_republic_square_icon_640 (1)2026_11_13_20_4.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/11/1/chile_square_icon_640 (3)2025_11_1_16_30.webp",
+            "kickoff_tunis": "2026-11-24T15:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "البرازيل",
+            "away_team": "تنزانيا",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/29/brazil_square_icon_640 (1)2025_10_29_16_37.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/5/28/22026_5_28_0_3.webp",
+            "kickoff_tunis": "2026-11-24T16:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "الجزائر",
+            "away_team": "مونتينجرو",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2022/8/23/32022_8_23_16_18.jpg",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2026/11/12/montenegro_square_icon_640 (1)2026_11_12_17_15.webp",
+            "kickoff_tunis": "2026-11-24T16:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          },
+          {
+            "id": "yallakora:%aa%d8%ad%d8%aa-17-%d8%b9%d8%a7%d9%85%d8%a7#MC_MatcheDetails",
+            "league": "كأس العالم تحت 17",
+            "league_logo": "https://mediayk.gemini.media/img/yallakora/tourlogo/212-11-2026-1-14-8.webp",
+            "home_team": "هندوراس",
+            "away_team": "كولومبيا",
+            "home_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/29/honduras_square_icon_6402025_10_29_16_47.webp",
+            "away_logo": "https://mediayk.gemini.media/img/yallakora/iosteams/120/2025/10/29/colombia_square_icon_640 (1)2025_10_29_16_17.webp",
+            "kickoff_tunis": "2026-11-24T16:30:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "yallakora",
+            "sources": [
+              "yallakora"
+            ]
+          }
+        ]
+      },
+      {
+        "league": "الدوري المصري",
+        "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+        "matches": [
+          {
+            "id": "jdwal:4804737",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "زد",
+            "away_team": "ابو قير للاسمدة",
+            "home_logo": "https://api.lsfrstudio.com/img/team/29732.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/19480.png",
+            "kickoff_tunis": "2026-11-24T16:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4804739",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "سموحة",
+            "away_team": "البنك الاهلي",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8309.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/50527.png",
+            "kickoff_tunis": "2026-11-24T16:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4804740",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "المصري",
+            "away_team": "بترول اسيوط",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8303.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/12254.png",
+            "kickoff_tunis": "2026-11-24T19:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          },
+          {
+            "id": "jdwal:4804742",
+            "league": "الدوري المصري",
+            "league_logo": "https://api.lsfrstudio.com/img/league/552.png",
+            "home_team": "المقاولون العرب",
+            "away_team": "القناة",
+            "home_logo": "https://api.lsfrstudio.com/img/team/8310.png",
+            "away_logo": "https://api.lsfrstudio.com/img/team/12252.png",
+            "kickoff_tunis": "2026-11-24T19:00:00+01:00",
+            "stadium": null,
+            "channels": [],
+            "status": "scheduled",
+            "source": "jdwal",
+            "sources": [
+              "jdwal",
+              "yallakora"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "sources": {
+    "espn": {
+      "status": "ok",
+      "raw_matches": 12,
+      "kept": 12,
+      "note": "public JSON API, ?dates= works for both days"
+    },
+    "jdwal": {
+      "status": "ok",
+      "raw_matches": 36,
+      "kept": 36,
+      "note": "league pages, initialMatches RSC payload, filtered by Tunis date"
+    },
+    "m-yala": {
+      "status": "ok",
+      "raw_matches": 22,
+      "kept": 22,
+      "note": "static .match-card; channels+league from .match-meta; tomorrow page is manually curated by the site's editors and is often still empty early in the day"
+    },
+    "yallakora": {
+      "status": "ok",
+      "raw_matches": 51,
+      "kept": 51,
+      "note": "static .matchCard; Cairo time -> Tunis; logos need backslash fix"
+    },
+    "kooora": {
+      "status": "skipped",
+      "raw_matches": 0,
+      "kept": 0,
+      "note": "v1: homepage + competition pages are news/results pages; no 'matches of the day' fixtures table found in static HTML. Fixtures route still to be discovered (or via Gemini fallback)."
+    },
+    "flashscore": {
+      "status": "failed",
+      "raw_matches": 0,
+      "kept": 0,
+      "note": "v1: page is a JS shell; data feed https://www.flashscore.com/x/feed/... answers 401 Unauthorized without a browser session. No heavy browser is used by design."
+    }
+  },
+  "gemini_used": [],
+  "stats": {
+    "today_matches": 26,
+    "tomorrow_matches": 29,
+    "today_cancelled": 0,
+    "tomorrow_cancelled": 0
+  }
+}

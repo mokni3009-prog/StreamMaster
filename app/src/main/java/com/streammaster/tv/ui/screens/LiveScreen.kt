@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -66,7 +67,9 @@ import androidx.navigation.NavHostController
 import coil.compose.AsyncImage
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
+import com.streammaster.tv.data.model.Bouquet
 import com.streammaster.tv.data.model.Channel
+import com.streammaster.tv.data.repository.toBouquet
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
@@ -79,6 +82,8 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocusBorderless
 import com.streammaster.tv.ui.viewmodel.LiveViewModel
+import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -109,11 +114,81 @@ import java.util.Locale
 @Composable
 fun LiveScreen(
     navController: NavHostController,
-    viewModel: LiveViewModel = hiltViewModel()
+    viewModel: LiveViewModel = hiltViewModel(),
+    myPlaylistViewModel: MyPlaylistViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val epg by viewModel.epg.collectAsState()
     val context = LocalContext.current
+    // §4.62 — "My Playlist" (virtual #11) vs the active subscription.
+    val myLiveBouquets by myPlaylistViewModel.liveBouquets.collectAsState()
+    val myChannelsAll by myPlaylistViewModel.myChannels.collectAsState()
+    val myChannelBouquet by myPlaylistViewModel.myChannelBouquet.collectAsState()
+    val activePlaylist by myPlaylistViewModel.activePlaylist.collectAsState()
+    val allActiveChannels by myPlaylistViewModel.allActiveChannels.collectAsState()
+    // One source is browsed at a time; the flèche sections below switch it.
+    var mySectionOpen by remember { mutableStateOf(true) }
+    var activeSectionOpen by remember { mutableStateOf(false) }
+    var mySource by remember { mutableStateOf(false) }
+    var myBouquetId by remember { mutableStateOf<Long?>(null) }
+    var myChannelId by remember { mutableStateOf<String?>(null) }
+    // Displayed bouquets/channels follow the selected source.
+    val displayBouquets: List<Bouquet> =
+        if (mySource) myLiveBouquets.map { it.toBouquet() } else state.bouquets
+    val displayChannels: List<Channel> = if (mySource) {
+        if (myBouquetId == null) myChannelsAll
+        else myChannelsAll.filter { myChannelBouquet[it.id] == myBouquetId }
+    } else state.channels
+    val displaySelectedChannel: Channel? = if (mySource) {
+        displayChannels.firstOrNull { it.id == myChannelId } ?: displayChannels.firstOrNull()
+    } else state.selectedChannel
+    // Focus restore (§4.1): PlayerScreen writes "focusedId" into this
+    // entry's savedStateHandle when leaving the player.
+    val listState = rememberLazyListState()
+    val channelFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val focusedId = savedStateHandle?.get<String>("focusedId")
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(focusedId, displayChannels, myChannelsAll, allActiveChannels) {
+        if (focusedId == null || focusRestored) return@LaunchedEffect
+        // Switching source changes displayChannels, so the effect restarts
+        // with the new list; never conclude on the stale list.
+        var switched = false
+        if (myChannelsAll.any { it.id == focusedId }) {
+            if (!mySource || myBouquetId != myChannelBouquet[focusedId] || myChannelId != focusedId) switched = true
+            mySource = true
+            myBouquetId = myChannelBouquet[focusedId]
+            myChannelId = focusedId
+            viewModel.selectChannel(focusedId) // feeds the EPG flow
+        } else {
+            val sourceChannel = allActiveChannels.firstOrNull { it.id == focusedId }
+            if (sourceChannel != null) {
+                if (mySource || state.selectedBouquetId != sourceChannel.bouquetId) switched = true
+                mySource = false
+                viewModel.selectBouquet(sourceChannel.bouquetId)
+                viewModel.selectChannel(focusedId)
+            }
+        }
+        if (switched) return@LaunchedEffect
+        val idx = displayChannels.indexOfFirst { it.id == focusedId }
+        if (idx >= 0) {
+            listState.scrollToItem(idx)
+            delay(120)
+            channelFocusRequesters[focusedId]?.requestFocus()
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        } else if (myChannelsAll.isNotEmpty() && allActiveChannels.isNotEmpty()) {
+            // Both lists loaded and the id is in neither: nothing to restore.
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        }
+    }
+    // Keep the EPG flow on the displayed channel when the browsed source
+    // (or bouquet) changes — otherwise the panel would show the previous
+    // source's programs under a My Playlist channel.
+    LaunchedEffect(mySource, myBouquetId, displaySelectedChannel?.id) {
+        displaySelectedChannel?.let { viewModel.selectChannel(it.id) }
+    }
     val narrow = LocalConfiguration.current.screenWidthDp < 700
     val scope = rememberCoroutineScope()
     var digitBuffer by remember { mutableStateOf("") }
@@ -132,6 +207,7 @@ fun LiveScreen(
             lastClickMillis = 0L
             openChannel(channel.id)
         } else {
+            if (mySource) myChannelId = channel.id
             viewModel.selectChannel(channel.id)
             lastClickChannelId = channel.id
             lastClickMillis = nowMs
@@ -160,13 +236,66 @@ fun LiveScreen(
                     true
                 }
         ) {
+            // §4.62 — two named sections with a flèche (▸/▾): "My Playlist"
+            // first, then the active subscription by name. The first click
+            // opens the bouquet dropdown, the second hides it; picking a
+            // bouquet browses that playlist's content (the strip below
+            // follows the selected source).
+            PlaylistSectionHeader(
+                title = stringResource(R.string.my_playlist_name),
+                count = myLiveBouquets.size,
+                expanded = mySectionOpen,
+                modifier = Modifier.padding(bottom = 10.dp),
+                onToggle = { mySectionOpen = !mySectionOpen }
+            )
+            if (mySectionOpen) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        SortPill(stringResource(R.string.live_all), mySource && myBouquetId == null) {
+                            mySource = true; myBouquetId = null; myChannelId = null
+                        }
+                    }
+                    items(myLiveBouquets) { bouquet ->
+                        SortPill(bouquet.name, mySource && myBouquetId == bouquet.id) {
+                            mySource = true; myBouquetId = bouquet.id; myChannelId = null
+                        }
+                    }
+                }
+            }
+            PlaylistSectionHeader(
+                title = activePlaylist?.name.orEmpty(),
+                count = state.bouquets.size,
+                expanded = activeSectionOpen,
+                modifier = Modifier.padding(bottom = 10.dp),
+                onToggle = { activeSectionOpen = !activeSectionOpen }
+            )
+            if (activeSectionOpen) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    item {
+                        SortPill(stringResource(R.string.live_all), !mySource && state.selectedBouquetId == null) {
+                            mySource = false; viewModel.selectAll()
+                        }
+                    }
+                    items(state.bouquets) { bouquet ->
+                        SortPill(bouquet.name, !mySource && bouquet.id == state.selectedBouquetId) {
+                            mySource = false; viewModel.selectBouquet(bouquet.id)
+                        }
+                    }
+                }
+            }
             // V02 — bouquet strip (.cat-pill): 50dp high, radius 25, 19sp ExtraBold.
             LazyRow(
                 modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    val allSelected = state.selectedBouquetId == null
+                    val allSelected = if (mySource) myBouquetId == null else state.selectedBouquetId == null
                     Box(
                         modifier = Modifier.height(50.dp)
                             .focusRequester(firstFocus)
@@ -178,7 +307,10 @@ fun LiveScreen(
                                     .border(2.dp, BorderGold, RoundedCornerShape(25.dp))
                             )
                             .tvFocusBorderless()
-                            .clickable { viewModel.selectAll() }
+                            .clickable {
+                                if (mySource) { myBouquetId = null; myChannelId = null }
+                                else viewModel.selectAll()
+                            }
                             .padding(horizontal = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -189,8 +321,10 @@ fun LiveScreen(
                         )
                     }
                 }
-                itemsIndexed(state.bouquets) { _, bouquet ->
-                    val selected = bouquet.id == state.selectedBouquetId
+                itemsIndexed(displayBouquets) { _, bouquet ->
+                    // Strip bouquets are §3 Bouquet (String id); My Playlist
+                    // row ids are Long, stringified by toBouquet().
+                    val selected = if (mySource) bouquet.id == myBouquetId?.toString() else bouquet.id == state.selectedBouquetId
                     Box(
                         modifier = Modifier.height(50.dp)
                             .clip(RoundedCornerShape(25.dp))
@@ -201,7 +335,10 @@ fun LiveScreen(
                                     .border(2.dp, BorderGold, RoundedCornerShape(25.dp))
                             )
                             .tvFocusBorderless()
-                            .clickable { viewModel.selectBouquet(bouquet.id) }
+                            .clickable {
+                                if (mySource) { myBouquetId = bouquet.id.toLongOrNull(); myChannelId = null }
+                                else viewModel.selectBouquet(bouquet.id)
+                            }
                             .padding(horizontal = 24.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -236,16 +373,20 @@ fun LiveScreen(
                         )
                     }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(
                             start = 6.dp, end = 12.dp, bottom = 16.dp
                         )
                     ) {
-                        items(state.channels) { channel ->
+                        items(displayChannels) { channel ->
                             ChannelCard(
                                 channel = channel,
-                                selected = channel.id == state.selectedChannel?.id,
+                                selected = channel.id == displaySelectedChannel?.id,
+                                modifier = Modifier.focusRequester(
+                                    channelFocusRequesters.getOrPut(channel.id) { FocusRequester() }
+                                ),
                                 onClick = { onChannelClick(channel) }
                             )
                         }
@@ -259,7 +400,7 @@ fun LiveScreen(
                 // 420dp and the panel fills the rest (~402dp); on the
                 // narrow screen the weights (viewport 0.55 / panel 0.45)
                 // give the panel ~208dp.
-                val channel = state.selectedChannel
+                val channel = displaySelectedChannel
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -272,7 +413,10 @@ fun LiveScreen(
                             it.startMillis <= System.currentTimeMillis() && it.endMillis > System.currentTimeMillis()
                         }?.title ?: channel?.nowTitle.orEmpty(),
                         onLaunch = { channel?.let { openChannel(it.id) } },
-                        onToggleFavorite = { viewModel.toggleFavorite() }
+                        onToggleFavorite = {
+                            if (mySource) channel?.let { myPlaylistViewModel.toggleChannelFavorite(it) }
+                            else viewModel.toggleFavorite()
+                        }
                     )
                     if (channel != null) {
                         LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().then(if (narrow) Modifier.weight(0.45f) else Modifier.weight(1f)))
@@ -300,18 +444,61 @@ fun LiveScreen(
     }
 }
 
+/** §4.62 — named playlist section header with a flèche (▸ collapsed /
+ *  ▾ expanded). First click opens the bouquet dropdown, second click
+ *  hides it. Shared by Live / Films / Series (same package). */
+@Composable
+internal fun PlaylistSectionHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    modifier: Modifier = Modifier,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xEB1A1205))
+            .border(2.dp, BorderGold, RoundedCornerShape(16.dp))
+            .tvFocusBorderless()
+            .clickable { onToggle() }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = if (expanded) "▾" else "▸", fontSize = 22.sp,
+            fontWeight = FontWeight.Black, color = GoldBright
+        )
+        Text(
+            text = title, fontSize = 20.sp, fontWeight = FontWeight.Black,
+            color = GoldWhite, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Text(
+            text = "$count", fontSize = 16.sp, fontWeight = FontWeight.Black,
+            color = GoldDeep,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                .background(GoldGradient)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+    }
+}
+
 /** V04/V05 — channel card (.chan-card): number 21sp + 66×66 logo box +
  *  title 22sp + quality badge + ★ + current program 18sp + 6dp progress
  *  bar + «EN LECTURE» tag (visible only when selected). Selected: full
  *  gold gradient + white border + scale 1.02 / translateX 5dp + 4dp
  *  #FFF8D6 halo + 42dp glow, all text turned black. */
 @Composable
-private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit) {
+private fun ChannelCard(channel: Channel, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val black = Color(0xFF171000)
     val density = LocalDensity.current
     val translateX = with(density) { 5.dp.toPx() }
     Row(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
             .graphicsLayer {
                 if (selected) { scaleX = 1.02f; scaleY = 1.02f; translationX = translateX }
             }

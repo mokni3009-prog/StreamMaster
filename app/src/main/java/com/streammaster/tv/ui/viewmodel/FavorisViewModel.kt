@@ -25,10 +25,11 @@ data class FavorisUiState(
 class FavorisViewModel @Inject constructor(
     private val contentRepository: ContentRepository
 ) : ViewModel() {
+    // §4.40 — favourites from ALL playlists, not just the active one.
     val state: StateFlow<FavorisUiState> = combine(
-        contentRepository.observeChannels(),
-        contentRepository.observeFilms(),
-        contentRepository.observeSeries()
+        contentRepository.observeAllChannels(),
+        contentRepository.observeAllFilms(),
+        contentRepository.observeAllSeries()
     ) { channels, films, series ->
         FavorisUiState(
             channels = channels.filter { it.isFavorite && !it.hidden },

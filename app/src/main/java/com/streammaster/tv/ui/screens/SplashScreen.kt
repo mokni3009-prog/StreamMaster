@@ -75,16 +75,34 @@ fun SplashScreen(
     val lockRequired by viewModel.lockRequired.collectAsState()
     val unlocked by viewModel.unlocked.collectAsState()
     val pinError by viewModel.pinError.collectAsState()
+    val startupTarget by viewModel.startupTarget.collectAsState()
     var skipRequested by remember { mutableStateOf(false) }
     // Initial focus: the skip button (only when no app lock — the PIN
     // dialog owns focus then).
     val skipFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { if (!lockRequired) skipFocus.requestFocus() }
-    LaunchedEffect(hasPlaylist, unlocked, skipRequested) {
+    LaunchedEffect(hasPlaylist, unlocked, skipRequested, startupTarget) {
         if (lockRequired && !unlocked) return@LaunchedEffect
+        // Wait for the startup decision (Onboarding / ResumeChannel /
+        // Normal) before leaving the splash.
+        val target = startupTarget ?: return@LaunchedEffect
         if (!skipRequested) delay(1800)
-        navController.navigate(if (hasPlaylist) Routes.LOADING else Routes.LOGIN) {
-            popUpTo(Routes.SPLASH) { inclusive = true }
+        when (target) {
+            SplashViewModel.StartupTarget.Onboarding -> {
+                navController.navigate(Routes.ONBOARDING_WIZARD) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
+                }
+            }
+            is SplashViewModel.StartupTarget.ResumeChannel -> {
+                navController.navigate(Routes.player("live", target.channelId)) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
+                }
+            }
+            SplashViewModel.StartupTarget.Normal -> {
+                navController.navigate(if (hasPlaylist) Routes.LOADING else Routes.LOGIN) {
+                    popUpTo(Routes.SPLASH) { inclusive = true }
+                }
+            }
         }
     }
     if (lockRequired && !unlocked) {

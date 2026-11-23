@@ -1,15 +1,26 @@
 package com.streammaster.tv.data.repository
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import com.streammaster.tv.R
 import com.streammaster.tv.data.api.M3uParser
 import com.streammaster.tv.data.api.StalkerApi
 import com.streammaster.tv.data.api.XtreamApi
 import com.streammaster.tv.data.db.Converters
+import com.streammaster.tv.data.db.GenreFollow
+import com.streammaster.tv.data.db.SeriesFollow
 import com.streammaster.tv.data.db.StreamMasterDatabase
 import com.streammaster.tv.data.model.Playlist
 import com.streammaster.tv.data.model.PlaylistType
 import com.streammaster.tv.data.prefs.SettingsStore
 import com.streammaster.tv.data.util.TitleNormalizer
+import com.streammaster.tv.data.work.ReminderScheduler
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -31,7 +42,10 @@ class PlaylistRepositoryImpl @Inject constructor(
     private val okHttpClient: OkHttpClient,
     private val xtreamApi: XtreamApi,
     private val stalkerApi: StalkerApi,
-    private val settingsStore: SettingsStore
+    private val settingsStore: SettingsStore,
+    /** §4.50/§4.57 — notifications need a Context; AppModule must pass
+     *  it (providePlaylistRepository gains the @ApplicationContext arg). */
+    @ApplicationContext private val context: Context
 ) : PlaylistRepository {
 
     override fun observePlaylists(): Flow<List<Playlist>> =
@@ -79,7 +93,7 @@ class PlaylistRepositoryImpl @Inject constructor(
     override suspend fun refreshPlaylist(id: String): Boolean {
         val playlist = db.playlistDao().getById(id)?.toModel() ?: return false
         val format = runCatching { settingsStore.settings.first().format }.getOrDefault("auto")
-        return try {
+        val ok = try {
             when (playlist.type) {
                 PlaylistType.XTREAM -> refreshXtream(playlist, format)
                 PlaylistType.STALKER -> refreshStalker(playlist)
@@ -88,6 +102,116 @@ class PlaylistRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "refreshPlaylist($id) failed", e)
             false
+        }
+        // §4.50 + §4.57 — after every successful sync, diff the followed
+        // series/genres against their stored baselines and notify about
+        // what is new. Never fails the refresh itself.
+        if (ok) runCatching { checkFollowedUpdates() }
+            .onFailure { Log.w(TAG, "followed-content check failed", it) }
+        return ok
+    }
+
+    // ------------------------------------------------------------------
+    // §4.50 new-episode alerts + §4.57 new-film-by-genre alerts.
+    // Followed rows live in series_follows / genre_follows (DAOs wired by
+    // the coordinator into StreamMasterDatabase). Following snapshots the
+    // CURRENT state, so the first refresh after following stays silent
+    // and only genuinely new items alert afterwards.
+    // ------------------------------------------------------------------
+
+    override suspend fun followSeries(seriesId: String, title: String) {
+        val count = db.episodeDao().getAllForSeries(seriesId).size
+        db.seriesFollowDao().upsert(
+            SeriesFollow(seriesId, title, count, System.currentTimeMillis())
+        )
+    }
+
+    override suspend fun unfollowSeries(seriesId: String) {
+        db.seriesFollowDao().deleteById(seriesId)
+    }
+
+    override suspend fun followGenre(genre: String) {
+        db.genreFollowDao().upsert(
+            GenreFollow(genre, genreFilmIdsHash(genre), System.currentTimeMillis())
+        )
+    }
+
+    override suspend fun unfollowGenre(genre: String) {
+        db.genreFollowDao().deleteById(genre)
+    }
+
+    override fun observeFollowedSeriesIds(): Flow<Set<String>> =
+        db.seriesFollowDao().observeAll().map { list -> list.map { it.seriesId }.toSet() }
+
+    override fun observeFollowedGenres(): Flow<Set<String>> =
+        db.genreFollowDao().observeAll().map { list -> list.map { it.genre }.toSet() }
+
+    /** Sorted film ids of one genre, hashed — the §4.57 baseline. */
+    private suspend fun genreFilmIdsHash(genre: String): String =
+        db.filmDao().getAllFilms()
+            .filter { it.genre == genre }
+            .map { it.id }.sorted()
+            .joinToString("|").hashCode().toString()
+
+    private suspend fun checkFollowedUpdates() {
+        val now = System.currentTimeMillis()
+        // Series: episode count grew since the stored baseline.
+        for (follow in db.seriesFollowDao().getAll()) {
+            val count = db.episodeDao().getAllForSeries(follow.seriesId).size
+            if (count > follow.lastEpisodeCount) {
+                val newCount = count - follow.lastEpisodeCount
+                postFollowNotification(
+                    context.getString(R.string.follow_new_episodes_title),
+                    context.getString(R.string.follow_new_episodes_text, newCount, follow.title),
+                    ("series|" + follow.seriesId).hashCode()
+                )
+            }
+            if (count != follow.lastEpisodeCount) {
+                db.seriesFollowDao().upsert(follow.copy(lastEpisodeCount = count, lastChecked = now))
+            }
+        }
+        // Genres: the set of film ids changed since the stored hash.
+        for (follow in db.genreFollowDao().getAll()) {
+            val hash = genreFilmIdsHash(follow.genre)
+            if (follow.lastFilmIdsHash.isNotEmpty() && hash != follow.lastFilmIdsHash) {
+                postFollowNotification(
+                    context.getString(R.string.follow_new_films_title),
+                    context.getString(R.string.follow_new_films_text, follow.genre),
+                    ("genre|" + follow.genre).hashCode()
+                )
+            }
+            if (hash != follow.lastFilmIdsHash) {
+                db.genreFollowDao().upsert(follow.copy(lastFilmIdsHash = hash, lastChecked = now))
+            }
+        }
+    }
+
+    /** Posts on the "reminders" channel (created at app start by
+     *  ReminderScheduler.initialize; created defensively here too). */
+    private fun postFollowNotification(title: String, text: String, id: Int) {
+        runCatching {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                nm.getNotificationChannel(ReminderScheduler.CHANNEL_ID) == null
+            ) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        ReminderScheduler.CHANNEL_ID,
+                        context.getString(R.string.follow_alerts_channel),
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = context.getString(R.string.follow_alerts_channel_desc)
+                    }
+                )
+            }
+            val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            NotificationManagerCompat.from(context).notify(id, notification)
         }
     }
 

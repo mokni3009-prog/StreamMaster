@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings strings added 2026-11-23 (§4.42 / §4.47 / §4.54 / §4.56 /
+     §4.59 / §4.61 / §4.36.8 / §4.36 batch 2). French is the app default;
+     other locales fall back to these values. Kept in its own file so the
+     shared strings.xml is untouched. -->
+<resources>
+    <!-- §4.54 — Do not disturb -->
+    <string name="dnd_title">Ne pas déranger</string>
+    <string name="st_dnd_desc">Aucune fenêtre pendant la lecture (alertes de buts exceptées)</string>
+    <string name="st_dnd_detail">Pendant la lecture, aucune fenêtre ni notification ne s’affiche, sauf les alertes de buts (§4.33) qui restent actives. Le réglage lui-même est ici ; le bouton du lecteur et le filtrage des fenêtres sont du côté du lecteur.</string>
+
+    <!-- §4.56 — Subtitle format -->
+    <string name="subtitle_size_title">Taille des sous-titres</string>
+    <string name="st_subtitle_size_desc">Petite, moyenne ou grande</string>
+    <string name="st_subtitle_size_detail">Choisissez la taille d’affichage des sous-titres. Le moteur de lecture applique ce réglage aux sous-titres ExoPlayer et VLC.</string>
+    <string name="subtitle_color_title">Couleur des sous-titres</string>
+    <string name="st_subtitle_color_desc">Blanc, jaune, cyan ou vert</string>
+    <string name="st_subtitle_color_detail">Choisissez la couleur des sous-titres. Le moteur de lecture applique ce réglage aux sous-titres ExoPlayer et VLC.</string>
+    <string name="subtitle_position_title">Position des sous-titres</string>
+    <string name="st_subtitle_position_desc">En bas ou en haut de l’écran</string>
+    <string name="st_subtitle_position_detail">Choisissez où s’affichent les sous-titres : en bas (par défaut) ou en haut de l’écran.</string>
+    <string name="sub_size_small">Petite (75 %)</string>
+    <string name="sub_size_medium">Moyenne (100 %)</string>
+    <string name="sub_size_large">Grande (125 %)</string>
+    <string name="sub_size_xlarge">Très grande (150 %)</string>
+    <string name="sub_color_white">Blanc</string>
+    <string name="sub_color_yellow">Jaune</string>
+    <string name="sub_color_cyan">Cyan</string>
+    <string name="sub_color_green">Vert</string>
+    <string name="sub_pos_bottom">En bas</string>
+    <string name="sub_pos_top">En haut</string>
+
+    <!-- §4.61 / §4.36 batch 2 / §4.36.8 — toggles -->
+    <string name="auto_arabic_subs_title">Sous-titres arabes automatiques</string>
+    <string name="st_auto_arabic_subs_desc">Activer la piste arabe quand elle existe</string>
+    <string name="volume_normalization_title">Volume uniforme entre les chaînes</string>
+    <string name="st_volume_norm_desc">Même niveau sonore d’une chaîne à l’autre</string>
+    <string name="smart_match_alerts_title">Alertes intelligentes des matchs</string>
+    <string name="st_smart_match_alerts_desc">Être alerté avant chaque match du jour</string>
+
+    <!-- §4.59 — Automatic weekly backup -->
+    <string name="auto_backup_weekly_title">Sauvegarde automatique hebdomadaire</string>
+    <string name="st_auto_backup_desc">Une copie chaque semaine, sans rien faire</string>
+    <string name="st_auto_backup_detail">Stream Master enregistre automatiquement une copie de sauvegarde (réglages et playlists, en clair) chaque semaine dans un dossier privé de l’application. Les 4 dernières copies sont gardées.</string>
+
+    <!-- §4.42 — Encrypted backup password -->
+    <string name="backup_password_title">Mot de passe de sauvegarde</string>
+    <string name="st_backup_password_desc">Chiffre les sauvegardes exportées (optionnel)</string>
+    <string name="st_backup_password_detail">Si un mot de passe est saisi ici, les sauvegardes exportées sont chiffrées (AES/GCM) et la restauration demandera ce même mot de passe. Sans mot de passe, la sauvegarde reste en JSON clair comme avant. Le mot de passe n’est jamais enregistré.</string>
+    <string name="backup_password_empty">Aucun (JSON clair)</string>
+    <string name="backup_password_set">Mot de passe défini ••••••••</string>
+
+    <!-- §4.42 — PIN recovery code -->
+    <string name="pin_recovery_title">Code de récupération</string>
+    <string name="pin_recovery_msg">Notez ce code à 6 chiffres et gardez-le en lieu sûr. Il vous permettra de définir un nouveau code PIN si vous oubliez l’actuel. Il ne sera plus jamais affiché.</string>
+    <string name="pin_recovery_saved">J’ai noté le code</string>
+    <string name="pin_forgot">Mot de passe oublié ?</string>
+    <string name="pin_recovery_entry_title">Code de récupération</string>
+    <string name="pin_recovery_entry_subtitle">Saisissez le code à 6 chiffres noté lors de la création du code PIN</string>
+    <string name="pin_recovery_wrong">Code de récupération incorrect.</string>
+
+    <!-- §4.47 — Speed test -->
+    <string name="speed_test_title">Test de vitesse</string>
+    <string name="st_speed_test_desc">Mesurer la vitesse de téléchargement</string>
+    <string name="st_speed_test_detail">Télécharge un fichier de test public (Cloudflare, gratuit) et affiche votre vitesse de téléchargement. Utile pour savoir si les coupures viennent d’Internet ou de la chaîne.</string>
+    <string name="speed_test_not_run">Non testé</string>
+    <string name="speed_test_running">Test en cours…</string>
+    <string name="speed_test_failed">Échec du test</string>
+    <string name="speed_test_result">%1$.1f Mb/s</string>
+    <string name="speed_test_action">Tester</string>
+</resources>

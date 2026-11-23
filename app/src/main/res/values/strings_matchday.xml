@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Match Day (§4.35) + automatic update prompt (§4.25b). -->
+<resources>
+    <string name="match_day_title">يوم المباراة</string>
+    <string name="match_day_today">مباريات اليوم</string>
+    <string name="match_day_tomorrow">مباريات الغد</string>
+    <string name="match_day_last_update">آخر تحديث: %1$s</string>
+    <string name="match_day_channels">القنوات الناقلة: %1$s</string>
+    <string name="match_day_watch">شاهد المباراة</string>
+    <string name="match_day_remind">تذكير</string>
+    <string name="match_day_reminded">تم التذكير ✓</string>
+    <string name="match_day_cancelled">ألغيت</string>
+    <string name="match_day_live">مباشرة الآن</string>
+    <string name="match_day_finished">انتهت</string>
+    <string name="match_day_started">بدأت</string>
+    <string name="match_day_no_channel">القناة الناقلة غير متوفرة في اشتراكاتك</string>
+    <string name="match_day_no_matches">لا توجد مباريات</string>
+    <string name="match_day_error">تعذّر تحميل مباريات اليوم — تحقّق من الإنترنت وحاول مجددًا</string>
+    <string name="match_day_stadium">الملعب: %1$s</string>
+    <string name="match_day_reminder_set">سيتم تذكيرك قبل المباراة بـ 15 دقيقة</string>
+    <string name="match_day_reminder_needs_channel">التذكير يحتاج قناة ناقلة في اشتراكاتك</string>
+    <string name="update_available_title">تحديث متوفر</string>
+    <string name="update_available_message">النسخة %1$s متوفرة.\n%2$s</string>
+    <string name="update_now">حدّث الآن</string>
+    <string name="update_later">ذكّرني لاحقًا</string>
+</resources>

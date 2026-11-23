@@ -2,6 +2,7 @@ package com.streammaster.tv.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streammaster.tv.data.repository.ContentRepository
 import com.streammaster.tv.data.repository.PlaylistRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,7 +22,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SplashViewModel @Inject constructor(
     playlistRepository: PlaylistRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val contentRepository: ContentRepository
 ) : ViewModel() {
     val hasPlaylist: StateFlow<Boolean> = playlistRepository.observePlaylists()
         .map { it.isNotEmpty() }
@@ -36,6 +38,71 @@ class SplashViewModel @Inject constructor(
 
     private val _pinError = MutableStateFlow(false)
     val pinError: StateFlow<Boolean> = _pinError.asStateFlow()
+
+    /**
+     * Where the app should go after the splash (§4.37 + §4.39, 2026-11-23).
+     * Decided once at startup from the settings + the saved last channel:
+     * - [StartupTarget.Onboarding] — first run (`AppSettings.firstRunDone
+     *   == false`, CONTRACT: added by the settings builder): the UI must
+     *   navigate to the "onboarding_wizard" route.
+     * - [StartupTarget.ResumeChannel] — `autoResume` is on AND a last
+     *   channel id was saved AND the channel still exists in the lists:
+     *   the UI must navigate straight to the player
+     *   (`Routes.player("live", channelId)`).
+     * - [StartupTarget.Normal] — anything else (option off, no channel
+     *   saved, or the saved channel was deleted / the subscription ended):
+     *   the existing Splash -> Loading/Home or Login flow.
+     *
+     * Null until the decision is made. SplashScreen (other builder) must
+     * collect this flow and navigate once it is non-null (after the PIN
+     * unlock when the app lock is on, as today).
+     */
+    sealed interface StartupTarget {
+        data object Normal : StartupTarget
+        data object Onboarding : StartupTarget
+        data class ResumeChannel(val channelId: String) : StartupTarget
+    }
+
+    private val _startupTarget = MutableStateFlow<StartupTarget?>(null)
+    val startupTarget: StateFlow<StartupTarget?> = _startupTarget.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            val settings = settingsRepository.settings.first()
+            // firstRunDone trap: the default is false, so a user who
+            // installed before the wizard existed (playlists already
+            // present) would be sent to Onboarding on every launch.
+            // A returning user is never a first run: persist
+            // firstRunDone = true BEFORE deciding, so the wizard only
+            // ever shows on a genuinely fresh install.
+            val hasPlaylists = runCatching {
+                playlistRepository.observePlaylists().first().isNotEmpty()
+            }.getOrDefault(false)
+            val effectiveFirstRunDone = if (!settings.firstRunDone && hasPlaylists) {
+                runCatching {
+                    settingsRepository.update { it.copy(firstRunDone = true) }
+                }
+                true
+            } else {
+                settings.firstRunDone
+            }
+            // CONTRACT: AppSettings.firstRunDone (default false) and
+            // AppSettings.lastChannelId (default null, written by
+            // SettingsStore.setLastChannelId on every channel change) are
+            // added by the settings builder.
+            _startupTarget.value = when {
+                !effectiveFirstRunDone -> StartupTarget.Onboarding
+                settings.autoResume -> {
+                    val lastId = settings.lastChannelId
+                    val exists = lastId != null && runCatching {
+                        contentRepository.getChannel(lastId)
+                    }.getOrNull() != null
+                    if (exists) StartupTarget.ResumeChannel(lastId!!) else StartupTarget.Normal
+                }
+                else -> StartupTarget.Normal
+            }
+        }
+    }
 
     fun checkPin(pin: String) = viewModelScope.launch {
         val settings = settingsRepository.settings.first()

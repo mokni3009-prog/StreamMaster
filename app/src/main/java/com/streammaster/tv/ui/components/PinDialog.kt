@@ -31,6 +31,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.streammaster.tv.R
 import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
@@ -66,6 +68,14 @@ import kotlinx.coroutines.delay
  * confirm) and the wrong-PIN error are the caller's job (Settings screen):
  * pass [errorMessage] (e.g. "Code incorrect") to show it, and on mismatch
  * the caller simply re-opens the dialog. [onCancel] closes without a PIN.
+ *
+ * §4.42 (2026-11-23) — PIN recovery: [codeLength] lets the same pad
+ * collect the 6-digit recovery code (pass 6 with a recovery title; the
+ * dots and the auto-complete follow it). [showForgotPinLink] +
+ * [onForgotPin] show a "Mot de passe oublié ?" link under the pad — the
+ * caller switches the dialog to recovery mode and verifies the code
+ * against AppSettings.pinRecoveryHash (see PinRecovery.verify); on
+ * success it re-opens the dialog in setup mode to define a new PIN.
  */
 @Composable
 fun PinDialog(
@@ -74,7 +84,12 @@ fun PinDialog(
     errorMessage: String? = null,
     onComplete: (String) -> Unit,
     onCancel: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Digits expected before auto-complete (4 = PIN, 6 = recovery code). */
+    codeLength: Int = 4,
+    /** §4.42: show the "forgot PIN" link (verify mode only). */
+    showForgotPinLink: Boolean = false,
+    onForgotPin: (() -> Unit)? = null
 ) {
     var entry by remember { mutableStateOf("") }
     val firstKeyFocus = remember { FocusRequester() }
@@ -85,9 +100,9 @@ fun PinDialog(
         } catch (_: Exception) {
         }
     }
-    // Auto-complete at 4 digits (prototype: setTimeout(handlePinComplete, 180)).
+    // Auto-complete at [codeLength] digits (prototype: setTimeout(handlePinComplete, 180)).
     LaunchedEffect(entry.length) {
-        if (entry.length == 4) {
+        if (entry.length == codeLength) {
             delay(180)
             onComplete(entry)
         }
@@ -142,9 +157,9 @@ fun PinDialog(
                 )
             }
 
-            // Dots UI: 4 dots of 62dp, filled gold as digits are entered.
+            // Dots UI: [codeLength] dots of 62dp, filled gold as digits are entered.
             Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                repeat(4) { i ->
+                repeat(codeLength) { i ->
                     val filled = i < entry.length
                     Box(
                         modifier = Modifier
@@ -208,13 +223,26 @@ fun PinDialog(
                                 when (key) {
                                     "clear" -> entry = ""
                                     "back" -> entry = entry.dropLast(1)
-                                    else -> if (entry.length < 4) entry += key
+                                    else -> if (entry.length < codeLength) entry += key
                                 }
                             },
                             modifier = Modifier.width(110.dp)
                         )
                     }
                 }
+            }
+
+            // §4.42 — "forgot PIN" link (verify mode only): the caller
+            // switches to the 6-digit recovery entry.
+            if (showForgotPinLink && onForgotPin != null) {
+                Text(
+                    text = stringResource(R.string.pin_forgot),
+                    color = Gold,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.tvFocus().clickable { onForgotPin() }
+                )
             }
 
             Spacer(modifier = Modifier.height(2.dp))

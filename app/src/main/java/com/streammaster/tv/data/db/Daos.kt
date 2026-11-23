@@ -22,6 +22,11 @@ interface ChannelDao {
     @Query("SELECT * FROM channels")
     suspend fun getAllChannels(): List<ChannelEntity>
 
+    /** §4.40 — all channels across ALL playlists, as a Flow (favourites
+     *  screen only; every other screen keeps the active playlist). */
+    @Query("SELECT * FROM channels ORDER BY name ASC")
+    fun observeAllChannels(): Flow<List<ChannelEntity>>
+
     @Query("UPDATE channels SET backupUrlsEncoded = :encoded WHERE id = :id")
     suspend fun updateBackupUrls(id: String, encoded: String)
 
@@ -76,6 +81,20 @@ interface FilmDao {
     @Query("SELECT * FROM films WHERE playlistId = :playlistId ORDER BY orderIndex ASC")
     suspend fun getAll(playlistId: String): List<FilmEntity>
 
+    /** §4.40 — all films across ALL playlists, as a Flow (favourites only). */
+    @Query("SELECT * FROM films ORDER BY title ASC")
+    fun observeAllFilms(): Flow<List<FilmEntity>>
+
+    /** §4.50/§4.57 — all films across ALL playlists (follow checks). */
+    @Query("SELECT * FROM films")
+    suspend fun getAllFilms(): List<FilmEntity>
+
+    /** §4.36.2 — films of one genre (null = all), newest first: by year
+     *  (0 = unknown from the provider), ties broken by insertion order
+     *  (rowid — the most recently synced rows first). */
+    @Query("SELECT * FROM films WHERE (:genre IS NULL OR genre LIKE '%' || :genre || '%') ORDER BY year DESC, rowid DESC LIMIT 100")
+    suspend fun getByGenreNewest(genre: String?): List<FilmEntity>
+
     @Query("SELECT * FROM films WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): FilmEntity?
 
@@ -100,6 +119,10 @@ interface FilmDao {
     @Query("DELETE FROM films WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
 
+    /** §4.36.6 — cleanup merge/delete executes per film (was deleteByPlaylist only). */
+    @Query("DELETE FROM films WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("SELECT COUNT(*) FROM films")
     suspend fun count(): Int
 }
@@ -111,6 +134,21 @@ interface SeriesDao {
 
     @Query("SELECT * FROM series WHERE playlistId = :playlistId ORDER BY orderIndex ASC")
     suspend fun getAll(playlistId: String): List<SeriesEntity>
+
+    /** §4.40 — all series across ALL playlists, as a Flow (favourites only). */
+    @Query("SELECT * FROM series ORDER BY title ASC")
+    fun observeAllSeries(): Flow<List<SeriesEntity>>
+
+    /** §4.50/§4.57 — all series across ALL playlists. */
+    @Query("SELECT * FROM series")
+    suspend fun getAllSeries(): List<SeriesEntity>
+
+    /** §4.36.2 — series of one genre (null = all), "newest" first.
+     *  SeriesEntity carries no year/added date, so newest = most recently
+     *  synced (rowid desc) — a true recency order needs an added-date
+     *  column on the series table. */
+    @Query("SELECT * FROM series WHERE (:genre IS NULL OR genre LIKE '%' || :genre || '%') ORDER BY rowid DESC LIMIT 100")
+    suspend fun getByGenreNewest(genre: String?): List<SeriesEntity>
 
     @Query("SELECT * FROM series WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): SeriesEntity?
@@ -136,6 +174,10 @@ interface SeriesDao {
     @Query("DELETE FROM series WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
 
+    /** §4.36.6 — cleanup merge/delete executes per series (was deleteByPlaylist only). */
+    @Query("DELETE FROM series WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("SELECT COUNT(*) FROM series")
     suspend fun count(): Int
 }
@@ -157,6 +199,14 @@ interface EpisodeDao {
      *  so code alone cannot identify an episode. */
     @Query("SELECT * FROM episodes WHERE seriesId = :seriesId AND code = :code LIMIT 1")
     suspend fun getBySeriesAndCode(seriesId: String, code: String): EpisodeEntity?
+
+    /** §4.40 — resume point inside one episode (ms). Read by the player
+     *  agent on playEpisode, written on pause/stop. */
+    @Query("SELECT progressMs FROM episodes WHERE seriesId = :seriesId AND season = :season AND number = :number")
+    suspend fun getProgress(seriesId: String, season: Int, number: Int): Long?
+
+    @Query("UPDATE episodes SET progressMs = :progressMs WHERE seriesId = :seriesId AND season = :season AND number = :number")
+    suspend fun setProgress(seriesId: String, season: Int, number: Int, progressMs: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(items: List<EpisodeEntity>)
@@ -410,4 +460,134 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads WHERE id = :id")
     suspend fun deleteById(id: String)
+}
+
+/** Followed series (§4.50). NEW DAO — the coordinator wires it into
+ *  StreamMasterDatabase (abstract fun + entity + migration). */
+@Dao
+interface SeriesFollowDao {
+    @Query("SELECT * FROM series_follows ORDER BY title ASC")
+    fun observeAll(): Flow<List<SeriesFollow>>
+
+    @Query("SELECT * FROM series_follows ORDER BY title ASC")
+    suspend fun getAll(): List<SeriesFollow>
+
+    @Query("SELECT * FROM series_follows WHERE seriesId = :seriesId LIMIT 1")
+    suspend fun getById(seriesId: String): SeriesFollow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: SeriesFollow)
+
+    @Query("DELETE FROM series_follows WHERE seriesId = :seriesId")
+    suspend fun deleteById(seriesId: String)
+}
+
+/** Followed film genres (§4.57). NEW DAO — coordinator wires it into
+ *  StreamMasterDatabase (abstract fun + entity + migration). */
+@Dao
+interface GenreFollowDao {
+    @Query("SELECT * FROM genre_follows ORDER BY genre ASC")
+    fun observeAll(): Flow<List<GenreFollow>>
+
+    @Query("SELECT * FROM genre_follows ORDER BY genre ASC")
+    suspend fun getAll(): List<GenreFollow>
+
+    @Query("SELECT * FROM genre_follows WHERE genre = :genre LIMIT 1")
+    suspend fun getById(genre: String): GenreFollow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: GenreFollow)
+
+    @Query("DELETE FROM genre_follows WHERE genre = :genre")
+    suspend fun deleteById(genre: String)
+}
+
+/** Channel timers (§4.58). NEW DAO — coordinator wires it into
+ *  StreamMasterDatabase (abstract fun + entity + migration). The §4.58
+ *  builder owns the UI + AlarmManager scheduling. */
+@Dao
+interface ChannelTimerDao {
+    @Query("SELECT * FROM channel_timers ORDER BY triggerAtMillis ASC")
+    fun observeAll(): Flow<List<ChannelTimer>>
+
+    @Query("SELECT * FROM channel_timers ORDER BY triggerAtMillis ASC")
+    suspend fun getAll(): List<ChannelTimer>
+
+    @Query("SELECT * FROM channel_timers WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): ChannelTimer?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: ChannelTimer)
+
+    @Update
+    suspend fun update(item: ChannelTimer)
+
+    @Query("DELETE FROM channel_timers WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+/** "My Playlist" bouquets (§4.62). NEW DAO — coordinator wires it into
+ *  StreamMasterDatabase (abstract fun + entity + migration). */
+@Dao
+interface MyPlaylistBouquetDao {
+    @Query("SELECT * FROM myplaylist_bouquets ORDER BY sortOrder ASC")
+    fun observeAll(): Flow<List<MyPlaylistBouquet>>
+
+    @Query("SELECT * FROM myplaylist_bouquets ORDER BY sortOrder ASC")
+    suspend fun getAll(): List<MyPlaylistBouquet>
+
+    @Query("SELECT * FROM myplaylist_bouquets WHERE type = :type ORDER BY sortOrder ASC")
+    suspend fun getByType(type: String): List<MyPlaylistBouquet>
+
+    @Query("SELECT * FROM myplaylist_bouquets WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): MyPlaylistBouquet?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: MyPlaylistBouquet)
+
+    @Update
+    suspend fun update(item: MyPlaylistBouquet)
+
+    @Query("DELETE FROM myplaylist_bouquets WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+/** Items inside "My Playlist" bouquets (§4.62). NEW DAO — coordinator
+ *  wires it into StreamMasterDatabase (abstract fun + entity + migration). */
+@Dao
+interface MyPlaylistItemDao {
+    @Query("SELECT * FROM myplaylist_items WHERE bouquetId = :bouquetId")
+    fun observeByBouquet(bouquetId: Long): Flow<List<MyPlaylistItem>>
+
+    @Query("SELECT * FROM myplaylist_items WHERE bouquetId = :bouquetId")
+    suspend fun getByBouquet(bouquetId: Long): List<MyPlaylistItem>
+
+    @Query("SELECT * FROM myplaylist_items WHERE bouquetId = :bouquetId AND itemType = :itemType AND itemId = :itemId LIMIT 1")
+    suspend fun getByBouquetAndItem(bouquetId: Long, itemType: String, itemId: String): MyPlaylistItem?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: MyPlaylistItem)
+
+    @Query("DELETE FROM myplaylist_items WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM myplaylist_items WHERE bouquetId = :bouquetId")
+    suspend fun deleteByBouquet(bouquetId: Long)
+}
+
+/** User star ratings (§4.53). NEW DAO — coordinator wires it into
+ *  StreamMasterDatabase (abstract fun + entity + migration). */
+@Dao
+interface UserRatingDao {
+    @Query("SELECT * FROM user_ratings ORDER BY updatedAt DESC")
+    fun getAll(): Flow<List<UserRating>>
+
+    @Query("INSERT OR REPLACE INTO user_ratings (itemType, itemId, stars, updatedAt) VALUES (:itemType, :itemId, :stars, :updatedAt)")
+    suspend fun setRating(itemType: String, itemId: String, stars: Int, updatedAt: Long)
+
+    @Query("SELECT stars FROM user_ratings WHERE itemType = :itemType AND itemId = :itemId LIMIT 1")
+    fun getRating(itemType: String, itemId: String): Flow<Int?>
+
+    @Query("DELETE FROM user_ratings WHERE itemType = :itemType AND itemId = :itemId")
+    suspend fun deleteRating(itemType: String, itemId: String)
 }

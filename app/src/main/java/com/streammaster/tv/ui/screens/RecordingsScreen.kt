@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,6 +76,16 @@ fun RecordingsScreen(
     // re-tried (once) when the target section appears.
     val firstFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
+    // §4.1 — return to the same item: PlayerScreen writes the played id
+    // into this entry's savedStateHandle ("focusedId") when exiting the
+    // player (PlayerScreen.kt:194). When it names a recording still in the
+    // list, focus that row (scrolling it into view) instead of the default
+    // first focusable element. Null on a fresh entry (not a return).
+    val restoreId = navController.currentBackStackEntry?.savedStateHandle?.get<String>("focusedId")
+    val hasRestoreTarget = restoreId != null && recordings.any { it.id == restoreId }
+    val restoreFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(id: String) = restoreFocusRequesters.getOrPut(id) { FocusRequester() }
+    val listState = rememberLazyListState()
     val focusTarget = when {
         hasActiveRecording -> "active"
         focusOnScheduled -> "scheduled"
@@ -83,10 +94,30 @@ fun RecordingsScreen(
         else -> null
     }
     LaunchedEffect(focusTarget) {
-        if (focusTarget != null && !initialFocusDone) {
+        if (focusTarget != null && !initialFocusDone && !hasRestoreTarget) {
             firstFocus.requestFocus()
             initialFocusDone = true
         }
+    }
+    LaunchedEffect(recordings, restoreId) {
+        if (initialFocusDone) return@LaunchedEffect
+        val target = restoreId?.takeIf { id -> recordings.any { it.id == id } } ?: return@LaunchedEffect
+        val index = recordings.indexOfFirst { it.id == target }
+        if (index > 0) {
+            // Absolute LazyColumn index: title (1) + active-recording row
+            // (0/1) + scheduled section (header + rows) + rules section
+            // (header + rows) + the recording's own position.
+            val lazyIndex = 1 +
+                (if (recState is RecordingState.Active) 1 else 0) +
+                (if (scheduled.isNotEmpty()) 1 + scheduled.size else 0) +
+                (if (seriesRules.isNotEmpty()) 1 + seriesRules.size else 0) +
+                index
+            listState.scrollToItem(lazyIndex)
+            delay(100) // let the row compose after the scroll before focusing it
+        }
+        if (index == 0 && focusOnRecording) firstFocus.requestFocus()
+        else focusFor(target).requestFocus()
+        initialFocusDone = true
     }
 
     val active = recState as? RecordingState.Active
@@ -94,7 +125,11 @@ fun RecordingsScreen(
     // with three nested LazyColumns). The first nested list took all remaining
     // height, so when two sections were populated the later ones got zero
     // height and were unreachable — on 1080p as well as on 720p.
-    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
@@ -225,7 +260,13 @@ fun RecordingsScreen(
                     modifier = Modifier.fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
                         .background(CardSurface)
-                        .then(if (focusOnRecording && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        .then(
+                            when {
+                                focusOnRecording && index == 0 -> Modifier.focusRequester(firstFocus)
+                                recording.id == restoreId -> Modifier.focusRequester(focusFor(recording.id))
+                                else -> Modifier
+                            }
+                        )
                         .tvFocus()
                         .clickable {
                             if (recording.status != RecordingStatus.RECORDING) {

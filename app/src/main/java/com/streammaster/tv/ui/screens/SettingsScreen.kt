@@ -33,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +81,7 @@ import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
 import com.streammaster.tv.ui.viewmodel.ProfilesViewModel
 import com.streammaster.tv.ui.viewmodel.SettingsDraft
 import com.streammaster.tv.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.launch
 
 /**
  * Settings — ST01 two columns (660dp list + detail panel), ST02 detail
@@ -105,6 +107,11 @@ fun SettingsScreen(
     val serverChecking by viewModel.serverChecking.collectAsState()
     val updateInfo by viewModel.updateInfo.collectAsState()
     val checkingUpdate by viewModel.checkingUpdate.collectAsState()
+    val recoveryCode by viewModel.recoveryCode.collectAsState()
+    val speedTestResult by viewModel.speedTestResult.collectAsState()
+    val speedTesting by viewModel.speedTesting.collectAsState()
+    val speedTestError by viewModel.speedTestError.collectAsState()
+    val scope = rememberCoroutineScope()
     val profilesViewModel: ProfilesViewModel = hiltViewModel()
     val profiles by profilesViewModel.profiles.collectAsState()
     val activeProfileId by profilesViewModel.activeProfileId.collectAsState()
@@ -112,11 +119,16 @@ fun SettingsScreen(
     val playlists by playlistsViewModel.playlists.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
-    var selector by remember { mutableStateOf<String?>(null) } // dns | ua | format | engine | epg | sleep | lang | externalPlayer | autoResume
+    var selector by remember { mutableStateOf<String?>(null) } // dns | ua | format | engine | epg | sleep | lang | externalPlayer | autoResume | subtitleSize | subtitleColor | subtitlePosition
     var pinDialog by remember { mutableStateOf(false) }
+    var pinRecoveryMode by remember { mutableStateOf(false) }
+    var pinRecoveryError by remember { mutableStateOf(false) }
+    // §4.42 — backup password, typed via the built-in keyboard; kept in
+    // UI state only, NEVER stored (used for export/import while on screen).
+    var backupPassword by remember { mutableStateOf("") }
     var profilePinTarget by remember { mutableStateOf<String?>(null) }
     var confirmDeleteProfileId by remember { mutableStateOf<String?>(null) }
-    var keyboardTarget by remember { mutableStateOf<String?>(null) } // "dnsCustom" | "uaCustom" | "updateUrl" | "newProfile"
+    var keyboardTarget by remember { mutableStateOf<String?>(null) } // "dnsCustom" | "uaCustom" | "updateUrl" | "newProfile" | "backupPassword"
     // Return focus after the keyboard closes: the focused KbKey is disposed
     // with the keyboard, so without this the D-pad is left with no focus.
     var lastKeyboardTarget by remember { mutableStateOf<String?>(null) }
@@ -154,10 +166,10 @@ fun SettingsScreen(
     }
     val backupExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
-    ) { uri -> if (uri != null) viewModel.exportBackup(uri) }
+    ) { uri -> if (uri != null) viewModel.exportBackup(uri, backupPassword.ifBlank { null }) }
     val backupImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) viewModel.importBackup(uri) }
+    ) { uri -> if (uri != null) viewModel.importBackup(uri, backupPassword.ifBlank { null }) }
 
     LaunchedEffect(messageRes) {
         messageRes?.let {
@@ -193,6 +205,18 @@ fun SettingsScreen(
     )
     val langOptions = listOf("fr" to label(R.string.language_fr), "en" to label(R.string.language_en), "ar" to label(R.string.language_ar))
     val autoResumeOptions = listOf("yes" to label(R.string.st_yes), "no" to label(R.string.st_no))
+    // §4.56 — subtitle format options (values stored in AppSettings).
+    val subtitleSizeOptions = listOf(
+        "75" to label(R.string.sub_size_small), "100" to label(R.string.sub_size_medium),
+        "125" to label(R.string.sub_size_large), "150" to label(R.string.sub_size_xlarge)
+    )
+    val subtitleColorOptions = listOf(
+        "#FFFFFF" to label(R.string.sub_color_white), "#FFFF00" to label(R.string.sub_color_yellow),
+        "#00FFFF" to label(R.string.sub_color_cyan), "#00FF00" to label(R.string.sub_color_green)
+    )
+    val subtitlePositionOptions = listOf(
+        "bottom" to label(R.string.sub_pos_bottom), "top" to label(R.string.sub_pos_top)
+    )
     val externalPlayerOptions = buildList {
         add("" to label(R.string.external_internal))
         if (viewModel.vlcInstalled) add("org.videolan.vlc" to label(R.string.external_vlc))
@@ -217,6 +241,14 @@ fun SettingsScreen(
         update == null -> stringResource(R.string.update_not_checked)
         !update.available -> stringResource(R.string.update_up_to_date)
         else -> stringResource(R.string.update_available, update.version)
+    }
+    // §4.47 — speed-test row value.
+    val speedResult = speedTestResult
+    val speedTestText = when {
+        speedTesting -> stringResource(R.string.speed_test_running)
+        speedTestError -> stringResource(R.string.speed_test_failed)
+        speedResult != null -> stringResource(R.string.speed_test_result, speedResult.mbps)
+        else -> stringResource(R.string.speed_test_not_run)
     }
 
     // ST04 — the 12 prototype rows, in prototype order.
@@ -267,6 +299,31 @@ fun SettingsScreen(
             if (draft.goalAlerts) onText else offText, null, R.string.st_choose) { viewModel.setGoalAlerts(!draft.goalAlerts) },
         SettingRowDef("maxSpeed", R.drawable.ic_wifi, R.string.max_speed, R.string.st_toggle_desc, R.string.st_toggle_desc,
             if (draft.maxSpeed) onText else offText, null, R.string.st_choose) { viewModel.setMaxSpeed(!draft.maxSpeed) },
+        // §4.54 — do-not-disturb toggle (player button + popup gate: player builder).
+        SettingRowDef("dnd", R.drawable.ic_bell, R.string.dnd_title, R.string.st_dnd_desc, R.string.st_dnd_detail,
+            if (draft.dndEnabled) onText else offText, null, R.string.st_choose) { viewModel.setDndEnabled(!draft.dndEnabled) },
+        // §4.36 (batch 2/1) — loudness normalisation toggle.
+        SettingRowDef("volumeNorm", R.drawable.ic_volume_2, R.string.volume_normalization_title, R.string.st_volume_norm_desc, R.string.st_volume_norm_desc,
+            if (draft.volumeNormalization) onText else offText, null, R.string.st_choose) { viewModel.setVolumeNormalization(!draft.volumeNormalization) },
+        // §4.61 — auto Arabic subtitles toggle.
+        SettingRowDef("autoArabicSubs", R.drawable.ic_file_text, R.string.auto_arabic_subs_title, R.string.st_auto_arabic_subs_desc, R.string.st_auto_arabic_subs_desc,
+            if (draft.autoArabicSubs) onText else offText, null, R.string.st_choose) { viewModel.setAutoArabicSubs(!draft.autoArabicSubs) },
+        // §4.36.8 — smart match alerts toggle.
+        SettingRowDef("smartMatchAlerts", R.drawable.ic_alert, R.string.smart_match_alerts_title, R.string.st_smart_match_alerts_desc, R.string.st_smart_match_alerts_desc,
+            if (draft.smartMatchAlerts) onText else offText, null, R.string.st_choose) { viewModel.setSmartMatchAlerts(!draft.smartMatchAlerts) },
+        // §4.56 — subtitle format (size / colour / position).
+        SettingRowDef("subtitleSize", R.drawable.ic_file_text, R.string.subtitle_size_title, R.string.st_subtitle_size_desc, R.string.st_subtitle_size_detail,
+            subtitleSizeOptions.firstOrNull { it.first == draft.subtitleSize.toString() }?.second ?: "${draft.subtitleSize} %",
+            null, R.string.st_choose) { selector = "subtitleSize" },
+        SettingRowDef("subtitleColor", R.drawable.ic_file_text, R.string.subtitle_color_title, R.string.st_subtitle_color_desc, R.string.st_subtitle_color_detail,
+            subtitleColorOptions.firstOrNull { it.first == draft.subtitleColor }?.second ?: draft.subtitleColor,
+            null, R.string.st_choose) { selector = "subtitleColor" },
+        SettingRowDef("subtitlePosition", R.drawable.ic_file_text, R.string.subtitle_position_title, R.string.st_subtitle_position_desc, R.string.st_subtitle_position_detail,
+            subtitlePositionOptions.firstOrNull { it.first == draft.subtitlePosition }?.second ?: draft.subtitlePosition,
+            null, R.string.st_choose) { selector = "subtitlePosition" },
+        // §4.59 — automatic weekly backup toggle.
+        SettingRowDef("autoBackupWeekly", R.drawable.ic_download, R.string.auto_backup_weekly_title, R.string.st_auto_backup_desc, R.string.st_auto_backup_detail,
+            if (draft.autoBackupWeekly) onText else offText, null, R.string.st_choose) { viewModel.setAutoBackupWeekly(!draft.autoBackupWeekly) },
         SettingRowDef("externalPlayer", R.drawable.ic_play, R.string.external_player, R.string.st_external_desc, R.string.st_external_desc,
             externalPlayerOptions.firstOrNull { it.first == draft.externalPlayer }?.second ?: draft.externalPlayer,
             null, R.string.st_choose) { selector = "externalPlayer" },
@@ -284,6 +341,13 @@ fun SettingsScreen(
             if (info?.available == true && info.downloadUrl.isNotBlank()) viewModel.downloadUpdate(info.downloadUrl)
             else viewModel.checkForUpdate()
         },
+        // §4.47 — download speed test (Cloudflare public endpoint).
+        SettingRowDef("speedTest", R.drawable.ic_trending_up, R.string.speed_test_title, R.string.st_speed_test_desc, R.string.st_speed_test_detail,
+            speedTestText, null, R.string.speed_test_action) { if (!speedTesting) viewModel.runSpeedTest() },
+        // §4.42 — backup password (built-in keyboard; never stored).
+        SettingRowDef("backupPassword", R.drawable.ic_lock, R.string.backup_password_title, R.string.st_backup_password_desc, R.string.st_backup_password_detail,
+            if (backupPassword.isBlank()) stringResource(R.string.backup_password_empty)
+            else stringResource(R.string.backup_password_set), null, R.string.st_choose) { openKeyboard("backupPassword") },
         SettingRowDef("backupExport", R.drawable.ic_download, R.string.backup_export, R.string.st_backup_desc, R.string.st_backup_desc,
             openText, null, R.string.st_open) { backupExportLauncher.launch("stream-master-backup.json") },
         SettingRowDef("backupImport", R.drawable.ic_upload, R.string.backup_import, R.string.st_backup_desc, R.string.st_backup_desc,
@@ -389,7 +453,7 @@ fun SettingsScreen(
                 items(extraRows) { def ->
                     SettingRow(
                         def = def, selected = def.key == selectedKey,
-                        modifier = if (def.key == "updateUrl" && lastKeyboardTarget == "updateUrl") Modifier.focusRequester(keyboardReturnFocus) else Modifier,
+                        modifier = if ((def.key == "updateUrl" || def.key == "backupPassword") && lastKeyboardTarget == def.key) Modifier.focusRequester(keyboardReturnFocus) else Modifier,
                         onSelect = { selectedKey = it }
                     )
                 }
@@ -513,14 +577,83 @@ fun SettingsScreen(
             onSelect = { id -> viewModel.setAutoResume(id == "yes"); selector = null },
             onDismiss = { selector = null }
         )
+        "subtitleSize" -> SelectorDialog(
+            title = stringResource(R.string.subtitle_size_title),
+            options = subtitleSizeOptions.map { SelectorOption(it.first, it.second) },
+            selectedId = draft.subtitleSize.toString(),
+            onSelect = { id -> viewModel.setSubtitleSize(id.toInt()); selector = null },
+            onDismiss = { selector = null }
+        )
+        "subtitleColor" -> SelectorDialog(
+            title = stringResource(R.string.subtitle_color_title),
+            options = subtitleColorOptions.map { SelectorOption(it.first, it.second) },
+            selectedId = draft.subtitleColor,
+            onSelect = { id -> viewModel.setSubtitleColor(id); selector = null },
+            onDismiss = { selector = null }
+        )
+        "subtitlePosition" -> SelectorDialog(
+            title = stringResource(R.string.subtitle_position_title),
+            options = subtitlePositionOptions.map { SelectorOption(it.first, it.second) },
+            selectedId = draft.subtitlePosition,
+            onSelect = { id -> viewModel.setSubtitlePosition(id); selector = null },
+            onDismiss = { selector = null }
+        )
     }
 
     if (pinDialog) {
         PinDialog(
             title = stringResource(R.string.set_pin),
             onComplete = { pin -> viewModel.setPin(pin); pinDialog = false },
-            onCancel = { pinDialog = false }
+            onCancel = { pinDialog = false },
+            // §4.42: when a PIN already exists, offer the recovery path.
+            showForgotPinLink = settings.pin.isNotEmpty(),
+            onForgotPin = { pinDialog = false; pinRecoveryError = false; pinRecoveryMode = true }
         )
+    }
+
+    // §4.42 — recovery-code entry (6 digits): a correct code re-opens
+    // the PIN setup dialog so the user defines a new PIN (which issues
+    // a fresh recovery code); a wrong code shows the error in the pad.
+    if (pinRecoveryMode) {
+        PinDialog(
+            title = stringResource(R.string.pin_recovery_entry_title),
+            subtitle = stringResource(R.string.pin_recovery_entry_subtitle),
+            errorMessage = if (pinRecoveryError) stringResource(R.string.pin_recovery_wrong) else null,
+            codeLength = 6,
+            onComplete = { code ->
+                scope.launch {
+                    if (viewModel.verifyRecoveryCode(code)) {
+                        pinRecoveryMode = false
+                        pinRecoveryError = false
+                        pinDialog = true
+                    } else {
+                        pinRecoveryError = true
+                    }
+                }
+            },
+            onCancel = { pinRecoveryMode = false; pinRecoveryError = false }
+        )
+    }
+
+    // §4.42 — one-time recovery-code display after a new PIN is set.
+    // The code is shown once only: dismissing it hides it forever.
+    recoveryCode?.let { code ->
+        Box(modifier = Modifier.fillMaxSize().padding(120.dp), contentAlignment = Alignment.Center) {
+            CardSurface {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(text = stringResource(R.string.pin_recovery_title), fontSize = 24.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite)
+                    Text(text = stringResource(R.string.pin_recovery_msg), fontSize = 17.sp, color = GoldSoft)
+                    Text(text = code, fontSize = 44.sp, fontWeight = FontWeight.Black, color = GoldBright)
+                    GoldButton(text = stringResource(R.string.pin_recovery_saved)) {
+                        viewModel.dismissRecoveryCode()
+                    }
+                }
+            }
+        }
     }
 
     if (profilePinTarget != null) {
@@ -559,17 +692,23 @@ fun SettingsScreen(
             "dnsCustom" -> draft.dnsCustom
             "uaCustom" -> draft.uaCustom
             "updateUrl" -> draft.updateUrl
+            "backupPassword" -> backupPassword
             else -> newProfileName // newProfile: typed name lives in local state
         }
         val setValue: (String) -> Unit = when (target) {
             "dnsCustom" -> viewModel::setDnsCustom
             "uaCustom" -> viewModel::setUaCustom
             "updateUrl" -> viewModel::setUpdateUrl
+            "backupPassword" -> { v -> backupPassword = v }
             else -> { v -> newProfileName = v }
         }
         Box(modifier = Modifier.fillMaxSize().padding(48.dp), contentAlignment = Alignment.BottomCenter) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = current, color = GoldWhite, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+                // §4.42: the backup password is masked on screen.
+                Text(
+                    text = if (target == "backupPassword") "•".repeat(current.length) else current,
+                    color = GoldWhite, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp)
+                )
                 // ST14 — IPv4 check for a custom DNS value.
                 if (target == "dnsCustom") {
                     Text(
@@ -642,7 +781,13 @@ private fun draftFromSettings(s: AppSettings) = SettingsDraft(
     kidsMode = s.kidsMode, frameRateSwitch = s.frameRateSwitch,
     externalPlayer = s.externalPlayer,
     recordingFolderUri = s.recordingFolderUri, updateUrl = s.updateUrl,
-    goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed
+    goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed,
+    volumeNormalization = s.volumeNormalization,
+    autoArabicSubs = s.autoArabicSubs, dndEnabled = s.dndEnabled,
+    smartMatchAlerts = s.smartMatchAlerts,
+    autoBackupWeekly = s.autoBackupWeekly,
+    subtitleSize = s.subtitleSize, subtitleColor = s.subtitleColor,
+    subtitlePosition = s.subtitlePosition
 )
 
 /** ST14 — strict IPv4 check for a custom DNS value. */

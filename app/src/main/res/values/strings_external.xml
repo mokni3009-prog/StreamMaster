@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- External services (§4.46 Chromecast, §4.48 subtitles, §4.63 Drive).
+     French = default locale, like strings.xml. These strings belong to the
+     external-services builder only; shared strings stay in strings.xml. -->
+<resources>
+    <!-- §4.63 Google Drive -->
+    <string name="drive_title">Google Drive</string>
+    <string name="drive_description">Enregistrez vos réglages et votre sauvegarde sur votre compte Google Drive (petits fichiers JSON uniquement).</string>
+    <string name="drive_status_linked">Lié à %1$s</string>
+    <string name="drive_status_not_linked">Non lié</string>
+    <string name="drive_status_need_oauth">Configuration OAuth requise : entrez d’abord votre Client ID Google.</string>
+    <string name="drive_status_token_expired">Lié, mais le jeton a expiré — reconnectez-vous.</string>
+    <string name="drive_client_set">Client ID enregistré.</string>
+    <string name="drive_link">Lier Google Drive</string>
+    <string name="drive_unlink">Délier Google Drive</string>
+    <string name="drive_unlinked">Google Drive délié.</string>
+    <string name="drive_enter_client_id">Saisir le Client ID OAuth</string>
+    <string name="drive_client_id_title">Client ID OAuth Google</string>
+    <string name="drive_client_id_hint">Client ID Android de votre projet Google Cloud Console (créez-le dans votre compte Google, puis collez-le ici).</string>
+    <string name="drive_client_saved">Client ID enregistré.</string>
+    <string name="drive_need_oauth">Il faut d’abord configurer OAuth depuis votre compte Google : créez un projet dans Google Cloud Console, activez l’API Drive (portée drive.file) et copiez le Client ID Android ici.</string>
+    <string name="drive_signin_pending">Client ID enregistré. La connexion Google sur l’appareil n’est pas encore branchée : elle sera activée une fois la bibliothèque d’authentification ajoutée.</string>
+    <string name="drive_not_linked">Google Drive n’est pas lié.</string>
+    <string name="drive_backup_title">Sauvegarde sur Drive</string>
+    <string name="drive_backup_now">Sauvegarder sur Drive</string>
+    <string name="drive_restore_now">Restaurer depuis Drive</string>
+    <string name="drive_backup_ok">Sauvegarde envoyée sur Drive.</string>
+    <string name="drive_restore_ok">Sauvegarde restaurée depuis Drive.</string>
+    <string name="drive_restore_failed">Restauration impossible.</string>
+    <string name="drive_no_backup">Aucune sauvegarde sur Drive.</string>
+    <string name="drive_error">Erreur Google Drive. Réessayez.</string>
+    <string name="drive_backup_not_wired">Sauvegarde Drive non branchée au gestionnaire de sauvegarde pour l’instant.</string>
+    <string name="drive_never_apk">L’APK et les mises à jour restent sur GitHub Releases — jamais sur Drive.</string>
+
+    <!-- §4.46 Chromecast -->
+    <string name="cast_button">Cast</string>
+    <string name="cast_unavailable">Cast indisponible</string>
+    <string name="cast_pick_device">Choisir un appareil Cast</string>
+    <string name="cast_no_device">Aucun appareil Chromecast trouvé.</string>
+    <string name="cast_play">Lecture</string>
+    <string name="cast_pause">Pause</string>
+    <string name="cast_disconnect">Déconnecter</string>
+
+    <!-- §4.48 Arabic subtitles (OpenSubtitles) -->
+    <string name="sub_dl_button">Sous-titres AR</string>
+    <string name="sub_dl_downloading">Téléchargement…</string>
+    <string name="sub_dl_done">Sous-titres AR ✓</string>
+    <string name="sub_dl_not_found">Aucun sous-titre arabe trouvé</string>
+    <string name="sub_dl_need_key">Clé API requise</string>
+    <string name="sub_dl_need_login">Connexion OpenSubtitles requise</string>
+    <string name="sub_dl_error">Échec du téléchargement</string>
+    <string name="sub_api_key_title">Clé API OpenSubtitles</string>
+    <string name="sub_api_key_hint">Créez un compte gratuit sur opensubtitles.com, copiez votre clé API (API consumers) et collez-la ici. La clé n’est envoyée qu’à api.opensubtitles.com.</string>
+</resources>

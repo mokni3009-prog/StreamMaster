@@ -33,6 +33,13 @@ data class BackupData(
  * watch-later and custom channel numbers. Recordings (.ts files) and the
  * app database are NOT included. Restore replaces playlists and settings,
  * and merges favourites, history, watch-later and custom numbers.
+ *
+ * §4.42 (2026-11-23): encrypted backup. [export] with a non-blank
+ * [password] wraps the JSON in the AES/GCM envelope of [BackupCrypto];
+ * without a password the file stays plain JSON (as before, for
+ * compatibility). [import] detects the format itself: an encrypted file
+ * needs its password, a plain file imports as before. The password is
+ * never stored anywhere.
  */
 @Singleton
 class BackupManager @Inject constructor(
@@ -43,7 +50,7 @@ class BackupManager @Inject constructor(
 ) {
     private val gson = Gson()
 
-    suspend fun export(): String {
+    suspend fun export(password: String? = null): String {
         val settings = settingsRepository.settings.first()
         val playlists = playlistRepository.observePlaylists().first()
         val channels = contentRepository.observeChannels().first()
@@ -57,7 +64,7 @@ class BackupManager @Inject constructor(
         val history = contentRepository.observeHistory().first()
         val watchLater = db.watchLaterDao().getAll().map { it.toModel() }
         val customNumbers = channels.mapNotNull { c -> c.customNum?.let { c.id to it } }.toMap()
-        return gson.toJson(
+        val json = gson.toJson(
             BackupData(
                 version = 1,
                 exportedAt = System.currentTimeMillis(),
@@ -69,9 +76,16 @@ class BackupManager @Inject constructor(
                 customNumbers = customNumbers
             )
         )
+        return if (password.isNullOrBlank()) json else BackupCrypto.encrypt(json, password)
     }
 
-    suspend fun import(json: String): Boolean {
+    suspend fun import(text: String, password: String? = null): Boolean {
+        val json = if (BackupCrypto.isEncrypted(text)) {
+            if (password.isNullOrBlank()) return false
+            runCatching { BackupCrypto.decrypt(text, password) }.getOrNull() ?: return false
+        } else {
+            text
+        }
         val data = runCatching { gson.fromJson(json, BackupData::class.java) }.getOrNull()
             ?: return false
         data.settings?.let { settings ->

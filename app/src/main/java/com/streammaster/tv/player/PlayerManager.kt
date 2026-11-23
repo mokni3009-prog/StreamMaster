@@ -73,6 +73,13 @@ interface PlayerManager {
      *  switching (2026-11-22). */
     val videoFrameRate: StateFlow<Float>
 
+    /** Last playback-failure diagnosis (§4.36.7, 2026-11-23): plain
+     *  French text explaining why the last playback failed (dead link /
+     *  server down / weak internet / timeout) + the suggested fix. "" when
+     *  no failure has happened (yet) in this session. ErrorScreen (other
+     *  builder) displays it; the engine only produces the text. */
+    val lastErrorDiagnosis: StateFlow<String>
+
     /** Non-null on API >= 23 (Media3 minSdk is 23). */
     val exoPlayer: ExoPlayer?
 

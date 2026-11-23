@@ -27,6 +27,15 @@ interface ContentRepository {
     fun observeChannels(): Flow<List<Channel>>
     fun observeFilms(): Flow<List<Film>>
     fun observeSeries(): Flow<List<Series>>
+    /** §4.40 — same content across ALL playlists (favourites screen only;
+     *  every other screen keeps the active playlist). */
+    fun observeAllChannels(): Flow<List<Channel>>
+    fun observeAllFilms(): Flow<List<Film>>
+    fun observeAllSeries(): Flow<List<Series>>
+    /** §4.36.2 — natural-language search: films/series of one genre
+     *  (null = any), newest first when asked. */
+    suspend fun searchFilmsByGenre(genre: String?, newestFirst: Boolean): List<Film>
+    suspend fun searchSeriesByGenre(genre: String?, newestFirst: Boolean): List<Series>
     fun observeBouquets(kind: BouquetKind): Flow<List<Bouquet>>
     fun observeEpg(channelId: String, fromMillis: Long, toMillis: Long): Flow<List<EpgProgram>>
     fun observeHistory(): Flow<List<HistoryEntry>>
@@ -66,6 +75,16 @@ interface PlaylistRepository {
     suspend fun activatePlaylist(id: String)
     suspend fun refreshPlaylist(id: String): Boolean
     suspend fun getActive(): Playlist?
+
+    /** §4.50 / §4.57 — follow a series / genre for new-episode /
+     *  new-film alerts. Following snapshots the current state, so the
+     *  next refresh only alerts about what is REALLY new. */
+    suspend fun followSeries(seriesId: String, title: String)
+    suspend fun unfollowSeries(seriesId: String)
+    suspend fun followGenre(genre: String)
+    suspend fun unfollowGenre(genre: String)
+    fun observeFollowedSeriesIds(): Flow<Set<String>>
+    fun observeFollowedGenres(): Flow<Set<String>>
 }
 
 interface SettingsRepository {

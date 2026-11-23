@@ -48,6 +48,7 @@ import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.Playlist
+import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.components.BuiltInKeyboard
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.ConfirmDialog
@@ -66,6 +67,7 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.MAX_PLAYLISTS
+import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
 
 /**
@@ -77,16 +79,21 @@ import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
  * error box + keyboard sheet; save = addPlaylist then refresh, like
  * Login), Y08 delete confirmation dialog.
  *
- * Y09 "My Playlist" is NOT built here: approved after the prototype, it
- * is built after the first APK per the task log — a planned remainder,
- * not a gap.
+ * Y09 "My Playlist" (§4.62): the virtual playlist #11 — always first,
+ * permanent, empty at first, no server, no expiry date, no refresh
+ * button, never counted in MAX_PLAYLISTS (10 real subscriptions).
  */
 @Composable
 fun PlaylistsScreen(
     navController: NavHostController,
-    viewModel: PlaylistsViewModel = hiltViewModel()
+    viewModel: PlaylistsViewModel = hiltViewModel(),
+    myPlaylistViewModel: MyPlaylistViewModel = hiltViewModel()
 ) {
     val playlists by viewModel.playlists.collectAsState()
+    val myLiveBouquets by myPlaylistViewModel.liveBouquets.collectAsState()
+    val myFilmBouquets by myPlaylistViewModel.filmBouquets.collectAsState()
+    val mySeriesBouquets by myPlaylistViewModel.seriesBouquets.collectAsState()
+    val myBouquetCount = myLiveBouquets.size + myFilmBouquets.size + mySeriesBouquets.size
     val form by viewModel.form.collectAsState()
     // Initial focus: the Add card (first focusable).
     val firstFocus = remember { FocusRequester() }
@@ -143,7 +150,8 @@ fun PlaylistsScreen(
                         Text(
                             text = "${stringResource(R.string.status_label)}: ${active.status} • " +
                                 "${stringResource(R.string.expiry_label_short)}: ${active.expiryDate} • " +
-                                "${stringResource(R.string.connections_label)}: ${active.connections}",
+                                "${stringResource(R.string.connections_label)}: ${active.connections} • " +
+                                "${stringResource(R.string.last_update_label)}: ${active.lastUpdate.ifBlank { "—" }}",
                             fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldBright
                         )
                     }
@@ -159,6 +167,14 @@ fun PlaylistsScreen(
             horizontalArrangement = Arrangement.spacedBy(22.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
+            // §4.62 — "My Playlist" first: the virtual playlist #11, always
+            // present, never counted in the "n / 10" real subscriptions.
+            item {
+                MyPlaylistCard(
+                    bouquetCount = myBouquetCount,
+                    onManage = { navController.navigate(Routes.MANAGE) }
+                )
+            }
             items(playlists) { playlist ->
                 PlaylistCard(
                     playlist = playlist,
@@ -323,6 +339,85 @@ fun PlaylistsScreen(
             onConfirm = { viewModel.deleteConfirmed() },
             onDismiss = { viewModel.cancelDelete() }
         )
+    }
+}
+
+/** §4.62 — the "My Playlist" card: always first in Profil, permanent
+ *  (no delete, no edit of the subscription itself), no server, no expiry
+ *  date and no refresh button. Its only action opens Gérer la playlist,
+ *  where its bouquets are filled (ManageScreen). */
+@Composable
+private fun MyPlaylistCard(
+    bouquetCount: Int,
+    onManage: () -> Unit
+) {
+    // R-B2: same CardSurface treatment as the real playlist cards.
+    CardSurface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        background = Brush.linearGradient(listOf(Color(0xFF1E1606), Color(0xFF0D0903))),
+        border = BorderStroke(2.dp, BorderStrong)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            GoldIconBox(iconRes = R.drawable.ic_list, boxSize = 54.dp, iconSize = 26.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.my_playlist_name), fontSize = 22.sp, fontWeight = FontWeight.Black, color = GoldWhite)
+                Text(
+                    text = "${stringResource(R.string.my_playlist_local)} • $bouquetCount ${stringResource(R.string.my_playlist_bouquets)}",
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldBright
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(GoldGradient)
+                    .border(1.dp, Color(0xFFFFFFFF), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.my_playlist_always_available),
+                    fontSize = 12.sp, fontWeight = FontWeight.Black, color = GoldDeep
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0x29FFE89E)))
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column {
+                    Text(text = stringResource(R.string.my_playlist_no_server), fontSize = 14.sp, color = TextMuted)
+                    Text(
+                        text = stringResource(R.string.my_playlist_local),
+                        fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldWhite
+                    )
+                }
+                Column {
+                    Text(text = stringResource(R.string.expiry_label_short), fontSize = 14.sp, color = TextMuted)
+                    Text(
+                        text = stringResource(R.string.my_playlist_no_expiry),
+                        fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldWhite
+                    )
+                }
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0x29FFE89E)))
+        }
+        if (bouquetCount == 0) {
+            Text(
+                text = stringResource(R.string.my_playlist_empty),
+                fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldSoft
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GoldButton(text = stringResource(R.string.my_playlist_manage), modifier = Modifier.weight(1f)) { onManage() }
+        }
+        }
     }
 }
 

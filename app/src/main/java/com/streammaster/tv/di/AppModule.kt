@@ -116,6 +116,24 @@ object AppModule {
     fun provideDownloadDao(db: StreamMasterDatabase) = db.downloadDao()
 
     @Provides
+    fun provideSeriesFollowDao(db: StreamMasterDatabase) = db.seriesFollowDao()
+
+    @Provides
+    fun provideGenreFollowDao(db: StreamMasterDatabase) = db.genreFollowDao()
+
+    @Provides
+    fun provideChannelTimerDao(db: StreamMasterDatabase) = db.channelTimerDao()
+
+    @Provides
+    fun provideMyPlaylistBouquetDao(db: StreamMasterDatabase) = db.myPlaylistBouquetDao()
+
+    @Provides
+    fun provideMyPlaylistItemDao(db: StreamMasterDatabase) = db.myPlaylistItemDao()
+
+    @Provides
+    fun provideUserRatingDao(db: StreamMasterDatabase) = db.userRatingDao()
+
+    @Provides
     @Singleton
     fun provideRecordingRepository(
         db: StreamMasterDatabase
@@ -187,9 +205,10 @@ object AppModule {
         okHttpClient: OkHttpClient,
         xtreamApi: XtreamApi,
         stalkerApi: StalkerApi,
-        settingsStore: SettingsStore
+        settingsStore: SettingsStore,
+        @ApplicationContext context: Context
     ): PlaylistRepository =
-        PlaylistRepositoryImpl(db, okHttpClient, xtreamApi, stalkerApi, settingsStore)
+        PlaylistRepositoryImpl(db, okHttpClient, xtreamApi, stalkerApi, settingsStore, context)
 
     @Provides
     @Singleton

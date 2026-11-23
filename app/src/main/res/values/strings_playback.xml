@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Playback strings owned by the player agent (point 2 — playback engine).
+  Default language is French (app default). Arabic / English in values-ar /
+  values-en. Diagnosis strings feed PlayerManager.lastErrorDiagnosis (§4.36.7)
+  and are shown by ErrorScreen (other builder).
+-->
+<resources>
+    <string name="diag_dead_link">Lien mort : cette chaîne ne répond plus. Essayez une autre chaîne ou actualisez la playlist.</string>
+    <string name="diag_server_down">Serveur du fournisseur injoignable. Réessayez dans quelques minutes.</string>
+    <string name="diag_weak_network">Connexion Internet faible ou instable. Vérifiez votre connexion Wi-Fi ou rapprochez-vous du routeur.</string>
+    <string name="diag_timeout">Délai dépassé : le serveur met trop de temps à répondre. Réessayez.</string>
+    <string name="diag_stalled">Le flux s\u2019est figé (mémoire tampon vide). Vérifiez votre connexion.</string>
+    <string name="diag_decoder">Décodeur incompatible avec ce flux. Essayez le moteur VLC dans les paramètres.</string>
+    <string name="diag_behind_live">Le direct a redémarré côté serveur. Retour au direct.</string>
+    <string name="diag_unknown">Lecture impossible. Vérifiez votre connexion ou essayez une autre chaîne.</string>
+</resources>

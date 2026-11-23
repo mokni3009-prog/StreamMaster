@@ -338,6 +338,15 @@ fun EpgScreen(
 
     programAction?.let { (channel, program) ->
         val isReminder = viewModel.isReminder(state.reminders, channel.id, program.title, program.startMillis)
+        // §4.43 Catchup — "Revoir" on ENDED programs, Xtream only: the
+        // timeshift URL exists only for Xtream (StalkerApi.supportsCatchup()
+        // is false, M3U has no server API), so the button is hidden for
+        // "st-…" and "m3u-…" channels. The player agent handles
+        // kind="catchup": it resolves the URL via
+        // ContentRepository.getStreamUrls("catchup:<channelId>:<startMillis>:<durationMin>")
+        // and plays it with this channel's metadata.
+        val isEnded = program.endMillis <= now
+        val isCatchupChannel = channel.id.startsWith("xt-")
         // EPG enrichment (2026-11-22): poster + synopsis + rating from the
         // VOD catalog when the same title exists there; the program's own
         // EPG description is the fallback.
@@ -363,7 +372,11 @@ fun EpgScreen(
                 SelectorOption("weekly", stringResource(R.string.record_weekly)),
                 SelectorOption("series", stringResource(R.string.record_series)),
                 SelectorOption("trailer", stringResource(R.string.trailer))
-            ),
+            ) + if (isEnded && isCatchupChannel) {
+                listOf(SelectorOption("revoir", stringResource(R.string.catchup_revoir)))
+            } else {
+                emptyList()
+            },
             selectedId = null,
             subtitle = subtitle,
             posterUrl = enrichment?.posterUrl,
@@ -387,6 +400,16 @@ fun EpgScreen(
                         // Trailer opens YouTube on top; the dialog stays so
                         // the user can still set a reminder/recording after.
                         TrailerOpener.open(context, program.title, enrichment?.trailerUrl)
+                    }
+                    "revoir" -> {
+                        val durationMin = ((program.endMillis - program.startMillis) / 60_000L)
+                            .toInt().coerceAtLeast(1)
+                        navController.navigate(
+                            Routes.player(
+                                "catchup",
+                                "catchup:${channel.id}:${program.startMillis}:$durationMin"
+                            )
+                        )
                     }
                 }
                 if (id != "trailer") programAction = null

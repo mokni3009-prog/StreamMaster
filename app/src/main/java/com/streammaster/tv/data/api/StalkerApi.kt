@@ -238,6 +238,15 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
         }
     }
 
+    /**
+     * Catchup (§4.43): NOT supported for Stalker in this client — no
+     * archive/timeshift endpoint is wired (no `tv_archive` handling, no
+     * timeshift `create_link`). The EPG hides the "Revoir" button for
+     * Stalker channels ("st-…"). If a portal later exposes timeshift,
+     * wire it here and flip this to a per-channel check.
+     */
+    fun supportsCatchup(): Boolean = false
+
     @Suppress("unused")
     data class StalkerProfile(
         @SerializedName("id") val id: String?,

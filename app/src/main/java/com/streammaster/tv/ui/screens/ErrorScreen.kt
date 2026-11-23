@@ -42,6 +42,18 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.viewmodel.ErrorViewModel
 
 /**
+ * Failure diagnosis (§4.36.7).
+ *
+ * CONTRACT (landed by the engine builder): the engine produces the
+ * diagnosis as plain French text — `PlayerViewModel.lastErrorDiagnosis:
+ * StateFlow<String>` (backed by `PlayerManager.lastErrorDiagnosis`) —
+ * one string holding the cause (dead link / server down / weak
+ * internet / timeout) + the suggested fix, `""` when no failure has
+ * happened (yet) in this session. ErrorScreen only displays it; the
+ * engine owns the text.
+ */
+
+/**
  * Error dialog — dlg-error from the model (stream-master.html s.1687-1700):
  * a dialog over the player, NOT a fullscreen screen (PL18 + K09).
  * Gold danger icon 100dp + error code ERR-STREAM-503 + hint +
@@ -49,11 +61,17 @@ import com.streammaster.tv.ui.viewmodel.ErrorViewModel
  * (its route is not in NavRoutes; the player shows it when
  * PlayerManager.state.showError). The `message` variant is the one the
  * player uses; the no-arg retry falls back to ErrorViewModel.retry().
+ * When a `diagnosis` is supplied (§4.36.7) its text (cause + suggested
+ * fix, from the engine) replaces the generic hint; `onChangeChannel`
+ * adds the "Changer de chaîne" button that returns to the Direct
+ * channel list.
  */
 @Composable
 fun ErrorScreen(
     message: String = "",
+    diagnosis: String? = null,
     onRetry: (() -> Unit)? = null,
+    onChangeChannel: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     viewModel: ErrorViewModel = hiltViewModel()
 ) {
@@ -103,14 +121,30 @@ fun ErrorScreen(
                 fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = GoldBright,
                 letterSpacing = 2.sp, textAlign = TextAlign.Center
             )
-            Text(
-                text = stringResource(R.string.error_hint),
-                fontSize = 17.sp, color = TextMuted,
-                textAlign = TextAlign.Center
-            )
+            // §4.36.7: a real diagnosis (cause + suggested fix, one
+            // plain-text string from the engine) replaces the generic
+            // hint; without one the hint stays as before.
+            if (!diagnosis.isNullOrBlank()) {
+                Text(
+                    text = diagnosis,
+                    fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.error_hint),
+                    fontSize = 17.sp, color = TextMuted,
+                    textAlign = TextAlign.Center
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 GoldButton(text = stringResource(R.string.retry), modifier = Modifier.focusRequester(retryFocus)) {
                     onRetry?.invoke() ?: viewModel.retry()
+                }
+                if (onChangeChannel != null) {
+                    GhostButton(text = stringResource(R.string.change_channel)) {
+                        onChangeChannel()
+                    }
                 }
                 GhostButton(text = stringResource(R.string.close)) {
                     onBack?.invoke()

@@ -48,6 +48,8 @@ import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.BouquetKind
+import com.streammaster.tv.data.model.ContentKind
+import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.ui.components.BuiltInKeyboard
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.KeyboardAction
@@ -66,6 +68,7 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.ManageKind
 import com.streammaster.tv.ui.viewmodel.ManageViewModel
+import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.SettingsViewModel
 import com.streammaster.tv.ui.components.GoldButton
 
@@ -84,10 +87,16 @@ import com.streammaster.tv.ui.components.GoldButton
 @Composable
 fun ManageScreen(
     navController: NavHostController,
-    viewModel: ManageViewModel = hiltViewModel()
+    viewModel: ManageViewModel = hiltViewModel(),
+    myPlaylistViewModel: MyPlaylistViewModel = hiltViewModel()
 ) {
     val draft by viewModel.draft.collectAsState()
     val isDirty by viewModel.dirty.collectAsState()
+    // §4.62 — My Playlist (add the selected item(s) to one of its bouquets).
+    val myLiveBouquets by myPlaylistViewModel.liveBouquets.collectAsState()
+    val myFilmBouquets by myPlaylistViewModel.filmBouquets.collectAsState()
+    val mySeriesBouquets by myPlaylistViewModel.seriesBouquets.collectAsState()
+    val activePlaylist by myPlaylistViewModel.activePlaylist.collectAsState()
     // Locks (for the "Verrouillé" badge, M04) come from Settings.
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val settings by settingsViewModel.settings.collectAsState()
@@ -106,6 +115,9 @@ fun ManageScreen(
     var numberTarget by remember { mutableStateOf<String?>(null) }
     var newBouquetName by remember { mutableStateOf("") }
     var newBouquetDialog by remember { mutableStateOf(false) }
+    // §4.62 — add-to-My-Playlist dialog + new My Playlist bouquet name.
+    var addToMyDialog by remember { mutableStateOf(false) }
+    var newMyBouquetName by remember { mutableStateOf("") }
     var moveTargetBouquet by remember { mutableStateOf<String?>(null) }
     var keyboardTarget by remember { mutableStateOf<String?>(null) } // "newBouquet" | "rename"
     var keyboardLang by remember { mutableStateOf(KeyboardLanguage.FR) }
@@ -114,18 +126,19 @@ fun ManageScreen(
     // overlays, so focus must move into them on open and back to the first
     // tab on close; the keyboard closes back into the dialog's field.
     val dialogFocus = remember { FocusRequester() }
-    LaunchedEffect(newBouquetDialog, renameTarget) {
-        if (newBouquetDialog || renameTarget != null) dialogFocus.requestFocus()
+    LaunchedEffect(newBouquetDialog, renameTarget, addToMyDialog) {
+        if (newBouquetDialog || renameTarget != null || addToMyDialog) dialogFocus.requestFocus()
         else firstFocus.requestFocus()
     }
     LaunchedEffect(keyboardTarget) {
         if (keyboardTarget == null && (newBouquetDialog || renameTarget != null)) dialogFocus.requestFocus()
     }
     // Back closes the keyboard, then the dialog, instead of leaving the screen.
-    BackHandler(enabled = keyboardTarget != null || newBouquetDialog || renameTarget != null) {
+    BackHandler(enabled = keyboardTarget != null || newBouquetDialog || renameTarget != null || addToMyDialog) {
         when {
             keyboardTarget != null -> keyboardTarget = null
             renameTarget != null -> renameTarget = null
+            addToMyDialog -> addToMyDialog = false
             newBouquetDialog -> newBouquetDialog = false
         }
     }
@@ -134,6 +147,15 @@ fun ManageScreen(
         if (draft.saved) {
             showToast(context, context.getString(R.string.manage_saved))
             viewModel.clearSavedFlag()
+        }
+    }
+
+    // §4.62 — toast for add-to-My-Playlist results.
+    val myMessageRes by myPlaylistViewModel.messageRes.collectAsState()
+    LaunchedEffect(myMessageRes) {
+        myMessageRes?.let {
+            showToast(context, context.getString(it))
+            myPlaylistViewModel.clearMessage()
         }
     }
 
@@ -154,6 +176,26 @@ fun ManageScreen(
     val focusId = selectedIds.firstOrNull()
     val focusChannel = draft.channels.firstOrNull { it.id == focusId }
     val focusItem = items.firstOrNull { it.first == focusId }
+    // §4.62 — the items the add-to-My-Playlist action targets (the
+    // multi-selection when non-empty, else the focused item), their kind,
+    // and this tab's My Playlist bouquets. The source subscription is the
+    // active one: the draft only ever holds the active playlist's content.
+    val addTargetIds = if (selectedIds.isNotEmpty()) selectedIds.toList() else listOfNotNull(focusId)
+    val bouquetKind = when (draft.kind) {
+        ManageKind.LIVE -> BouquetKind.LIVE
+        ManageKind.FILMS -> BouquetKind.FILMS
+        ManageKind.SERIES -> BouquetKind.SERIES
+    }
+    val itemKind = when (draft.kind) {
+        ManageKind.LIVE -> ContentKind.LIVE
+        ManageKind.FILMS -> ContentKind.FILM
+        ManageKind.SERIES -> ContentKind.SERIES
+    }
+    val myBouquets = when (draft.kind) {
+        ManageKind.LIVE -> myLiveBouquets
+        ManageKind.FILMS -> myFilmBouquets
+        ManageKind.SERIES -> mySeriesBouquets
+    }
     val itemsTitleRes = when (draft.kind) {
         ManageKind.LIVE -> R.string.channels
         ManageKind.FILMS -> R.string.stats_films
@@ -334,6 +376,14 @@ fun ManageScreen(
                         gold = true
                     ) { newBouquetDialog = true }
                 }
+                // §4.62 — add the selected item(s) to a My Playlist bouquet
+                // (reference: the original stays in its subscription).
+                MgActRow(
+                    label = stringResource(R.string.my_playlist_add),
+                    iconRes = R.drawable.ic_plus,
+                    gold = true,
+                    enabled = addTargetIds.isNotEmpty() && activePlaylist != null
+                ) { addToMyDialog = true }
                 MgActRow(
                     label = stringResource(if (focusItem?.third == true) R.string.show else R.string.hide),
                     iconRes = if (focusItem?.third == true) R.drawable.ic_eye else R.drawable.ic_eye_off,
@@ -535,6 +585,61 @@ fun ManageScreen(
         }
     }
 
+    // §4.62 — add to My Playlist: pick one of this kind's bouquets, or
+    // create a new bouquet and add the item(s) to it in one step.
+    if (addToMyDialog) {
+        Box(modifier = Modifier.fillMaxSize().padding(120.dp), contentAlignment = Alignment.Center) {
+            // R-B2: plain CardSurface (20dp, theme colour) with the shadow.
+            CardSurface {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                Text(text = stringResource(R.string.my_playlist_add), fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite)
+                Text(
+                    text = focusItem?.second ?: kindBouquets.firstOrNull { it.id == draft.selectedBouquetId }?.name ?: "—",
+                    fontSize = 16.sp, color = GoldSoft
+                )
+                if (myBouquets.isEmpty()) {
+                    Text(text = stringResource(R.string.my_playlist_no_bouquet), fontSize = 16.sp, color = GoldSoft)
+                } else {
+                    Text(text = stringResource(R.string.my_playlist_choose_bouquet), fontSize = 16.sp, color = GoldSoft)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        itemsIndexed(myBouquets) { _, bouquet ->
+                            GhostButton(text = bouquet.name, modifier = Modifier.fillMaxWidth()) {
+                                activePlaylist?.let {
+                                    myPlaylistViewModel.addToBouquet(bouquet.id, itemKind, it.id, addTargetIds)
+                                }
+                                addToMyDialog = false
+                            }
+                        }
+                    }
+                }
+                ReadOnlyField(stringResource(R.string.new_bouquet_name), newMyBouquetName, modifier = Modifier.focusRequester(dialogFocus)) {
+                    keyboardTarget = "newMyBouquet"
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GoldButton(text = stringResource(R.string.my_playlist_create_and_add)) {
+                        activePlaylist?.let {
+                            if (newMyBouquetName.isNotBlank()) {
+                                myPlaylistViewModel.createBouquetAndAdd(
+                                    newMyBouquetName, bouquetKind, it.id, itemKind, addTargetIds
+                                )
+                                newMyBouquetName = ""
+                            }
+                        }
+                        addToMyDialog = false
+                    }
+                    GhostButton(text = stringResource(R.string.cancel)) { addToMyDialog = false }
+                }
+                }
+            }
+        }
+    }
+
     // Number assignment (components agent NumberPadDialog)
     numberTarget?.let { channelId ->
         val channel = draft.channels.firstOrNull { it.id == channelId }
@@ -552,10 +657,18 @@ fun ManageScreen(
             onCancel = { numberTarget = null }
         )
     }
-    // Built-in keyboard sheet for rename / new bouquet.
+    // Built-in keyboard sheet for rename / new bouquet / new My Playlist bouquet.
     keyboardTarget?.let { target ->
-        val current = if (target == "rename") renameValue else newBouquetName
-        val setValue: (String) -> Unit = if (target == "rename") { { renameValue = it } } else { { newBouquetName = it } }
+        val current = when (target) {
+            "rename" -> renameValue
+            "newMyBouquet" -> newMyBouquetName
+            else -> newBouquetName
+        }
+        val setValue: (String) -> Unit = when (target) {
+            "rename" -> { { renameValue = it } }
+            "newMyBouquet" -> { { newMyBouquetName = it } }
+            else -> { { newBouquetName = it } }
+        }
         Box(modifier = Modifier.fillMaxSize().padding(48.dp), contentAlignment = Alignment.BottomCenter) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(text = current, color = GoldWhite, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))

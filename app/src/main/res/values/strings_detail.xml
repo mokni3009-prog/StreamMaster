@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.1 / §4.48 / §4.49 / §4.53 — Detail screen strings (2026-11-23). -->
+<resources>
+    <string name="detail_resume_percent">Reprendre • %1$d%%</string>
+    <string name="detail_director">Réalisateur</string>
+    <string name="detail_your_rating">Votre note</string>
+    <string name="detail_your_rating_set">Votre note : %1$d / 5</string>
+    <string name="detail_rate_hint">Touchez une étoile pour noter ce titre (1 à 5).</string>
+    <string name="detail_similar_title">Œuvres similaires</string>
+    <string name="detail_actor_works_title">Avec %1$s</string>
+    <string name="detail_actor_works_loading">Recherche de ses autres œuvres…</string>
+    <string name="detail_actor_works_empty">Aucune autre œuvre trouvée dans vos listes.</string>
+    <string name="detail_cast_unavailable">Casting non disponible pour ce titre.</string>
+    <string name="detail_subtitle_download">Sous-titres</string>
+    <string name="detail_subtitle_soon">Téléchargement des sous-titres bientôt disponible.</string>
+</resources>

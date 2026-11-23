@@ -16,7 +16,9 @@ data class UpdateInfo(
     val available: Boolean,
     val version: String,
     val changelog: String,
-    val downloadUrl: String
+    val downloadUrl: String,
+    /** Remote versionCode (0 when the JSON carries none). */
+    val versionCode: Int = 0
 )
 
 private data class UpdateJson(
@@ -28,15 +30,18 @@ private data class UpdateJson(
 )
 
 /**
- * Checks for a newer app version. The update URL is configurable and empty
- * by default (check disabled). NEVER forces an update — the user is only
- * informed, per SPEC §10.
+ * Checks for a newer app version. The update URL defaults to the public
+ * `update.json` at the repo root (§4.25b); NEVER forces an update — the
+ * user is only informed, per SPEC §10.
  *
  * Expected JSON at the update URL:
  *   {"version": "1.3.0", "versionCode": 130, "changelog": "...", "url": "https://...apk"}
  */
-// TODO: set a real update URL (e.g. a JSON file on the provider's server) to enable update checks.
-const val DEFAULT_UPDATE_URL = ""
+// §4.25b (2026-11-23): public update file on GitHub (raw). The file
+// lives at the repo root as `update.json`; its versionCode must stay in
+// sync with the latest published Release.
+const val DEFAULT_UPDATE_URL =
+    "https://raw.githubusercontent.com/mokni3009-prog/StreamMaster/main/update.json"
 
 @Singleton
 class AppUpdateChecker @Inject constructor(
@@ -64,7 +69,8 @@ class AppUpdateChecker @Inject constructor(
                     available = true,
                     version = json.version ?: remoteCode.toString(),
                     changelog = json.changelog ?: "",
-                    downloadUrl = json.downloadUrl ?: json.url ?: ""
+                    downloadUrl = json.downloadUrl ?: json.url ?: "",
+                    versionCode = remoteCode
                 )
             }
         }

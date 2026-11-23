@@ -26,9 +26,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ScheduledRecordingEntity::class,
         SeriesRecordingRuleEntity::class,
         DownloadEntity::class,
-        QoeEvent::class
+        QoeEvent::class,
+        SeriesFollow::class,
+        GenreFollow::class,
+        ChannelTimer::class,
+        MyPlaylistBouquet::class,
+        MyPlaylistItem::class,
+        UserRating::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -50,6 +56,12 @@ abstract class StreamMasterDatabase : RoomDatabase() {
     abstract fun seriesRecordingRuleDao(): SeriesRecordingRuleDao
     abstract fun downloadDao(): DownloadDao
     abstract fun qoeDao(): QoeDao
+    abstract fun seriesFollowDao(): SeriesFollowDao
+    abstract fun genreFollowDao(): GenreFollowDao
+    abstract fun channelTimerDao(): ChannelTimerDao
+    abstract fun myPlaylistBouquetDao(): MyPlaylistBouquetDao
+    abstract fun myPlaylistItemDao(): MyPlaylistItemDao
+    abstract fun userRatingDao(): UserRatingDao
 
     companion object {
         const val NAME = "stream_master.db"
@@ -62,9 +74,83 @@ abstract class StreamMasterDatabase : RoomDatabase() {
             }
         }
 
+        /** 7 -> 8: the six new tables (§4.50/§4.57/§4.58/§4.62/§4.53) +
+         *  the episode resume column. CREATE TABLE statements mirror
+         *  Entities.kt exactly (table/column names, PKs, defaults).
+         *  The episodes ALTER is guarded by a PRAGMA check: a fresh
+         *  install already has progressMs (Room creates tables from the
+         *  entities), so a bare ALTER would crash the 7 -> 8 upgrade
+         *  on those databases; only v7 databases upgraded from an older
+         *  install lack the column. */
+        val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `series_follows` (" +
+                        "`seriesId` TEXT NOT NULL, `title` TEXT NOT NULL, " +
+                        "`lastEpisodeCount` INTEGER NOT NULL DEFAULT 0, " +
+                        "`lastChecked` INTEGER NOT NULL DEFAULT 0, " +
+                        "PRIMARY KEY(`seriesId`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `genre_follows` (" +
+                        "`genre` TEXT NOT NULL, `lastFilmIdsHash` TEXT NOT NULL DEFAULT '', " +
+                        "`lastChecked` INTEGER NOT NULL DEFAULT 0, " +
+                        "PRIMARY KEY(`genre`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `channel_timers` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`channelId` TEXT NOT NULL, `channelName` TEXT NOT NULL, " +
+                        "`triggerAtMillis` INTEGER NOT NULL, " +
+                        "`enabled` INTEGER NOT NULL DEFAULT 1)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_channel_timers_triggerAtMillis` " +
+                        "ON `channel_timers` (`triggerAtMillis`)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `myplaylist_bouquets` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `type` TEXT NOT NULL, " +
+                        "`sortOrder` INTEGER NOT NULL DEFAULT 0)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_myplaylist_bouquets_type` " +
+                        "ON `myplaylist_bouquets` (`type`)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `myplaylist_items` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`bouquetId` INTEGER NOT NULL, `sourcePlaylistId` TEXT NOT NULL, " +
+                        "`itemType` TEXT NOT NULL, `itemId` TEXT NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_myplaylist_items_bouquetId` " +
+                        "ON `myplaylist_items` (`bouquetId`)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `user_ratings` (" +
+                        "`itemType` TEXT NOT NULL, `itemId` TEXT NOT NULL, " +
+                        "`stars` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`itemType`, `itemId`))"
+                )
+                val hasProgress = db.query("PRAGMA table_info(`episodes`)").use { cursor ->
+                    var found = false
+                    val nameIdx = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (cursor.getString(nameIdx) == "progressMs") { found = true; break }
+                    }
+                    found
+                }
+                if (!hasProgress) {
+                    db.execSQL("ALTER TABLE episodes ADD COLUMN progressMs INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         fun create(context: Context): StreamMasterDatabase =
             Room.databaseBuilder(context, StreamMasterDatabase::class.java, NAME)
-                .addMigrations(MIGRATION_6_7)
+                .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
                 .fallbackToDestructiveMigration()
                 .build()
     }

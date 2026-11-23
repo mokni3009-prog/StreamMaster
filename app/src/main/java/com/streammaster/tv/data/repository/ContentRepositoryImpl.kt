@@ -2,6 +2,8 @@ package com.streammaster.tv.data.repository
 
 import android.content.Context
 import android.util.Log
+import com.streammaster.tv.data.api.XtreamApi
+import com.streammaster.tv.data.cleanup.PlaylistCleanupScanner
 import com.streammaster.tv.data.db.Converters
 import com.streammaster.tv.data.db.HistoryEntity
 import com.streammaster.tv.data.db.ReminderEntity
@@ -19,6 +21,7 @@ import com.streammaster.tv.data.model.Reminder
 import com.streammaster.tv.data.model.SearchResult
 import com.streammaster.tv.data.model.Series
 import com.streammaster.tv.data.prefs.SettingsStore
+import com.streammaster.tv.data.work.ChannelTimerScheduler
 import com.streammaster.tv.data.work.ReminderScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +64,12 @@ class ContentRepositoryImpl @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
+        // §4.36.6 — the cleanup scanner is a no-arg object (CleanupViewModel
+        // contract), so it gets the database here; until then its scan()
+        // returns an empty report. Same for the channel-timer scheduler
+        // (§4.58): until installed, observeTimers() is empty.
+        PlaylistCleanupScanner.install(db)
+        ChannelTimerScheduler.install(db)
         scope.launch { runCatching { purgeLegacyDemoPlaylist() }.onFailure { Log.w(TAG, "Demo purge failed", it) } }
     }
 
@@ -107,6 +116,35 @@ class ContentRepositoryImpl @Inject constructor(
         val pid = activePlaylistId()
         if (pid == null) emit(emptyList())
         else emitAll(db.seriesDao().observeAll(pid).map { list -> list.map { it.toModel() } })
+    }
+
+    /** §4.40 — favourites screen only: every playlist at once. */
+    override fun observeAllChannels(): Flow<List<Channel>> =
+        db.channelDao().observeAllChannels().map { list -> list.map { it.toModel() } }
+
+    override fun observeAllFilms(): Flow<List<Film>> =
+        db.filmDao().observeAllFilms().map { list -> list.map { it.toModel() } }
+
+    override fun observeAllSeries(): Flow<List<Series>> =
+        db.seriesDao().observeAllSeries().map { list -> list.map { it.toModel() } }
+
+    /** §4.36.2 — genre search for the natural-language layer. */
+    override suspend fun searchFilmsByGenre(genre: String?, newestFirst: Boolean): List<Film> {
+        val entities = when {
+            newestFirst -> db.filmDao().getByGenreNewest(genre)
+            genre.isNullOrBlank() -> db.filmDao().getAllFilms()
+            else -> db.filmDao().search(genre)
+        }
+        return entities.map { it.toModel() }
+    }
+
+    override suspend fun searchSeriesByGenre(genre: String?, newestFirst: Boolean): List<Series> {
+        val entities = when {
+            newestFirst -> db.seriesDao().getByGenreNewest(genre)
+            genre.isNullOrBlank() -> db.seriesDao().getAllSeries()
+            else -> db.seriesDao().search(genre)
+        }
+        return entities.map { it.toModel() }
     }
 
     override fun observeBouquets(kind: BouquetKind): Flow<List<Bouquet>> = flow {
@@ -279,6 +317,31 @@ class ContentRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getStreamUrls(channelId: String): List<String> {
+        // Catchup (§4.43): encoded id "catchup:<channelId>:<startMillis>:<durationMin>".
+        // Resolves to the Xtream timeshift URL of the ACTIVE playlist.
+        // The player agent handles kind="catchup" by playing this URL with
+        // the real channel's metadata; Stalker/M3U have no catchup here.
+        if (channelId.startsWith("catchup:")) {
+            val parts = channelId.removePrefix("catchup:").split(":")
+            if (parts.size == 3) {
+                val realId = parts[0]
+                val start = parts[1].toLongOrNull()
+                val duration = parts[2].toIntOrNull()
+                val playlist = db.playlistDao().getActive()
+                    ?: db.playlistDao().getAll().firstOrNull()
+                val streamId = realId.takeIf { it.startsWith("xt-") }
+                    ?.removePrefix("xt-")?.toIntOrNull()
+                if (playlist != null && start != null && duration != null && streamId != null) {
+                    return listOf(
+                        XtreamApi.buildTimeshiftUrl(
+                            playlist.serverUrl, playlist.username, playlist.password,
+                            streamId, start, duration
+                        )
+                    )
+                }
+            }
+            return emptyList()
+        }
         val entity = db.channelDao().getById(channelId)
         if (entity != null) {
             val backups = Converters.decodeStrings(entity.backupUrlsEncoded)

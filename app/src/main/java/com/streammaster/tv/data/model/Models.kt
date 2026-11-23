@@ -264,7 +264,32 @@ data class AppSettings(
     /** Phone web remote (2026-11-22): local HTTP server + QR pairing — opt-in, off by default. */
     val remoteEnabled: Boolean = false,
     /** 6-digit pairing code for the phone remote (shown as QR + text). */
-    val remoteCode: String = ""
+    val remoteCode: String = "",
+    /** Last watched live channel id (§4.37): saved on every channel
+     *  switch, read at launch when autoResume is on. Null = none yet. */
+    val lastChannelId: String? = null,
+    /** §4.36 (batch 2/1): loudness normalisation across channels. */
+    val volumeNormalization: Boolean = true,
+    /** §4.61: auto-enable an Arabic subtitle track when available. */
+    val autoArabicSubs: Boolean = true,
+    /** §4.54: do-not-disturb while watching (popups muted, goal alerts
+     *  §4.33 excepted). */
+    val dndEnabled: Boolean = false,
+    /** §4.36.8: smart alerts before every match of the day. */
+    val smartMatchAlerts: Boolean = true,
+    /** §4.39: true once the first-run wizard has been completed. */
+    val firstRunDone: Boolean = false,
+    /** §4.59: automatic weekly backup (BackupWorker). */
+    val autoBackupWeekly: Boolean = false,
+    /** §4.56: subtitle size as a percentage (75/100/125/150). */
+    val subtitleSize: Int = 100,
+    /** §4.56: subtitle colour as a hex string ("#FFFFFF", …). */
+    val subtitleColor: String = "#FFFFFF",
+    /** §4.56: subtitle position ("bottom" | "top"). */
+    val subtitlePosition: String = "bottom",
+    /** §4.42: SHA-256 hex of the 6-digit PIN recovery code. The code
+     *  itself is NEVER stored — only this hash. Null = no code issued. */
+    val pinRecoveryHash: String? = null
 )
 
 sealed class PlaybackItem {

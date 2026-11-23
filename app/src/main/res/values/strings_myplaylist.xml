@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- «My Playlist» (§4.62) — strings owned by the My Playlist builder.
+     French (the app's default language); same keys in every locale. -->
+<resources>
+    <string name="my_playlist_name">My Playlist</string>
+    <string name="my_playlist_local">Playlist locale</string>
+    <string name="my_playlist_no_server">Sans serveur</string>
+    <string name="my_playlist_no_expiry">Sans expiration</string>
+    <string name="my_playlist_empty">Vide — ajoutez du contenu depuis Gérer la playlist</string>
+    <string name="my_playlist_bouquets">bouquets</string>
+    <string name="my_playlist_manage">Gérer</string>
+    <string name="my_playlist_add">Ajouter à My Playlist</string>
+    <string name="my_playlist_choose_bouquet">Choisir un bouquet</string>
+    <string name="my_playlist_create_and_add">Créer et ajouter</string>
+    <string name="my_playlist_added">Ajouté à My Playlist</string>
+    <string name="my_playlist_already_added">Déjà dans ce bouquet</string>
+    <string name="my_playlist_no_bouquet">Aucun bouquet — créez-en un ci-dessous</string>
+    <string name="my_playlist_section_empty">Aucun contenu pour le moment</string>
+    <string name="my_playlist_always_available">Toujours disponible</string>
+</resources>

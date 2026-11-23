@@ -11,7 +11,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streammaster.tv.BuildConfig
 import com.streammaster.tv.data.backup.BackupManager
+import com.streammaster.tv.data.backup.PinRecovery
 import com.streammaster.tv.data.model.AppSettings
+import com.streammaster.tv.data.util.SpeedTest
+import com.streammaster.tv.data.work.BackupWorker
 import com.streammaster.tv.data.repository.PlaylistRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import com.streammaster.tv.data.update.AppUpdateChecker
@@ -54,7 +57,21 @@ data class SettingsDraft(
     /** Goal alerts (2026-11-22): instant popup for every goal, opt-in. */
     val goalAlerts: Boolean = false,
     /** Maximum speed (2026-11-22): highest rendition + full bandwidth. */
-    val maxSpeed: Boolean = true
+    val maxSpeed: Boolean = true,
+    /** §4.36 (batch 2/1): loudness normalisation across channels. */
+    val volumeNormalization: Boolean = true,
+    /** §4.61: auto-enable an Arabic subtitle track when available. */
+    val autoArabicSubs: Boolean = true,
+    /** §4.54: do-not-disturb while watching. */
+    val dndEnabled: Boolean = false,
+    /** §4.36.8: smart alerts before every match of the day. */
+    val smartMatchAlerts: Boolean = true,
+    /** §4.59: automatic weekly backup. */
+    val autoBackupWeekly: Boolean = false,
+    /** §4.56: subtitle size (%), colour (hex) and position. */
+    val subtitleSize: Int = 100,
+    val subtitleColor: String = "#FFFFFF",
+    val subtitlePosition: String = "bottom"
 )
 
 /**
@@ -123,8 +140,29 @@ class SettingsViewModel @Inject constructor(
         kidsMode = s.kidsMode, frameRateSwitch = s.frameRateSwitch,
         externalPlayer = s.externalPlayer,
         recordingFolderUri = s.recordingFolderUri, updateUrl = s.updateUrl,
-        goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed
+        goalAlerts = s.goalAlerts, maxSpeed = s.maxSpeed,
+        volumeNormalization = s.volumeNormalization,
+        autoArabicSubs = s.autoArabicSubs, dndEnabled = s.dndEnabled,
+        smartMatchAlerts = s.smartMatchAlerts,
+        autoBackupWeekly = s.autoBackupWeekly,
+        subtitleSize = s.subtitleSize, subtitleColor = s.subtitleColor,
+        subtitlePosition = s.subtitlePosition
     )
+
+    /** §4.42 — recovery code issued at the last PIN setup, shown ONCE to
+     *  the user (SettingsScreen dialog). Null = none pending. The code
+     *  itself is never persisted — only its hash (pinRecoveryHash). */
+    private val _recoveryCode = MutableStateFlow<String?>(null)
+    val recoveryCode: StateFlow<String?> = _recoveryCode.asStateFlow()
+
+    /** §4.47 — last speed-test result, null = never tested / failed. */
+    private val _speedTestResult = MutableStateFlow<SpeedTest.Result?>(null)
+    val speedTestResult: StateFlow<SpeedTest.Result?> = _speedTestResult.asStateFlow()
+    private val _speedTesting = MutableStateFlow(false)
+    val speedTesting: StateFlow<Boolean> = _speedTesting.asStateFlow()
+    private val _speedTestError = MutableStateFlow(false)
+    val speedTestError: StateFlow<Boolean> = _speedTestError.asStateFlow()
+    private val speedTest = SpeedTest()
 
     /** ST05 — reset to defaults. Like the prototype's resetSettings(): the
      *  PIN and the parental locks are KEPT, everything else returns to the
@@ -134,10 +172,12 @@ class SettingsViewModel @Inject constructor(
         val keptBouquets = settings.value.lockedBouquets
         val keptItems = settings.value.lockedItems
         val keptProfile = settings.value.activeProfileId
+        val keptRecoveryHash = settings.value.pinRecoveryHash
         settingsRepository.update {
             AppSettings(
                 pin = keptPin, lockedBouquets = keptBouquets,
-                lockedItems = keptItems, activeProfileId = keptProfile
+                lockedItems = keptItems, activeProfileId = keptProfile,
+                pinRecoveryHash = keptRecoveryHash
             )
         }
         _draft.value = SettingsDraft(
@@ -152,9 +192,10 @@ class SettingsViewModel @Inject constructor(
     }
 
     /** ST07 — delete the parental PIN (locks stay stored, but nothing is
-     *  enforced without a PIN, like SettingsRepository.isLocked). */
+     *  enforced without a PIN, like SettingsRepository.isLocked). The
+     *  recovery code dies with the PIN (§4.42). */
     fun clearPin() = viewModelScope.launch {
-        settingsRepository.setPin("")
+        settingsRepository.update { it.copy(pin = "", pinRecoveryHash = null) }
         _draft.update { it.copy(pin = "") }
         _messageRes.value = com.streammaster.tv.R.string.st_pin_removed
     }
@@ -175,16 +216,40 @@ class SettingsViewModel @Inject constructor(
     fun setFrameRateSwitch(v: Boolean) = _draft.update { it.copy(frameRateSwitch = v) }
     fun setGoalAlerts(v: Boolean) = _draft.update { it.copy(goalAlerts = v) }
     fun setMaxSpeed(v: Boolean) = _draft.update { it.copy(maxSpeed = v) }
+    fun setVolumeNormalization(v: Boolean) = _draft.update { it.copy(volumeNormalization = v) }
+    fun setAutoArabicSubs(v: Boolean) = _draft.update { it.copy(autoArabicSubs = v) }
+    fun setDndEnabled(v: Boolean) = _draft.update { it.copy(dndEnabled = v) }
+    fun setSmartMatchAlerts(v: Boolean) = _draft.update { it.copy(smartMatchAlerts = v) }
+    fun setAutoBackupWeekly(v: Boolean) = _draft.update { it.copy(autoBackupWeekly = v) }
+    fun setSubtitleSize(v: Int) = _draft.update { it.copy(subtitleSize = v) }
+    fun setSubtitleColor(v: String) = _draft.update { it.copy(subtitleColor = v) }
+    fun setSubtitlePosition(v: String) = _draft.update { it.copy(subtitlePosition = v) }
     fun setExternalPlayer(v: String) = _draft.update { it.copy(externalPlayer = v) }
     fun setRecordingFolderUri(v: String) = _draft.update { it.copy(recordingFolderUri = v) }
     fun setUpdateUrl(v: String) = _draft.update { it.copy(updateUrl = v) }
 
-    /** PIN applies immediately, without waiting for Save. */
+    /** PIN applies immediately, without waiting for Save. §4.42: setting
+     *  a new PIN issues a fresh 6-digit recovery code (shown once via
+     *  [recoveryCode]); only its hash is stored. */
     fun setPin(pin: String) = viewModelScope.launch {
-        settingsRepository.setPin(pin)
+        val code = PinRecovery.generateRecoveryCode()
+        settingsRepository.update {
+            it.copy(pin = pin, pinRecoveryHash = PinRecovery.hash(code))
+        }
         _draft.update { it.copy(pin = pin) }
+        _recoveryCode.value = code
         _messageRes.value = com.streammaster.tv.R.string.pin_set
     }
+
+    /** Dismisses the one-time recovery-code dialog (the code cannot be
+     *  shown again — the user was told to write it down). */
+    fun dismissRecoveryCode() { _recoveryCode.value = null }
+
+    /** §4.42 — checks a recovery code against the stored hash. True means
+     *  the caller may let the user define a new PIN (which issues a fresh
+     *  code). The old hash is NOT cleared here — setPin replaces it. */
+    suspend fun verifyRecoveryCode(code: String): Boolean =
+        PinRecovery.verify(code, settings.value.pinRecoveryHash)
 
     fun save(activity: Activity?) = viewModelScope.launch {
         val d = _draft.value
@@ -199,9 +264,18 @@ class SettingsViewModel @Inject constructor(
                 kidsMode = d.kidsMode, frameRateSwitch = d.frameRateSwitch,
                 externalPlayer = d.externalPlayer,
                 recordingFolderUri = d.recordingFolderUri, updateUrl = d.updateUrl,
-                goalAlerts = d.goalAlerts, maxSpeed = d.maxSpeed
+                goalAlerts = d.goalAlerts, maxSpeed = d.maxSpeed,
+                volumeNormalization = d.volumeNormalization,
+                autoArabicSubs = d.autoArabicSubs, dndEnabled = d.dndEnabled,
+                smartMatchAlerts = d.smartMatchAlerts,
+                autoBackupWeekly = d.autoBackupWeekly,
+                subtitleSize = d.subtitleSize, subtitleColor = d.subtitleColor,
+                subtitlePosition = d.subtitlePosition
             )
         }
+        // §4.59 — (un)schedule the weekly auto-backup with the saved value.
+        if (d.autoBackupWeekly) BackupWorker.enqueue(context)
+        else BackupWorker.cancel(context)
         playerManager.setSleepTimer(d.sleepMinutes)
         _messageRes.value = com.streammaster.tv.R.string.settings_saved
         if (d.lang != previousLang) {
@@ -248,10 +322,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Backup (2026-11-22): writes the JSON export to the chosen document. */
-    fun exportBackup(uri: Uri) = viewModelScope.launch {
+    /** Backup (2026-11-22): writes the export to the chosen document.
+     *  §4.42: a non-blank [password] encrypts the file (AES/GCM); blank
+     *  keeps the plain-JSON export as before. The password is never stored. */
+    fun exportBackup(uri: Uri, password: String? = null) = viewModelScope.launch {
         val ok = runCatching {
-            val json = backupManager.export()
+            val json = backupManager.export(password)
             context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
                 ?: error("no stream")
             true
@@ -260,15 +336,38 @@ class SettingsViewModel @Inject constructor(
         else com.streammaster.tv.R.string.backup_failed
     }
 
-    /** Restore (2026-11-22): reads a backup JSON and applies it. */
-    fun importBackup(uri: Uri) = viewModelScope.launch {
+    /** Restore (2026-11-22): reads a backup and applies it. §4.42: an
+     *  encrypted file needs its [password]; a wrong/missing password fails
+     *  with the same generic message (no hint about the password). */
+    fun importBackup(uri: Uri, password: String? = null) = viewModelScope.launch {
         val ok = runCatching {
-            val json = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
+            val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString() }
                 ?: return@runCatching false
-            backupManager.import(json)
+            backupManager.import(text, password)
         }.getOrDefault(false)
         _messageRes.value = if (ok) com.streammaster.tv.R.string.backup_restored
         else com.streammaster.tv.R.string.backup_failed
+    }
+
+    /** §4.47 — runs a download speed test (Cloudflare public endpoint);
+     *  the result lands in [speedTestResult]. A previous run is cancelled. */
+    fun runSpeedTest() = viewModelScope.launch {
+        if (_speedTesting.value) return@launch
+        _speedTesting.value = true
+        _speedTestError.value = false
+        try {
+            _speedTestResult.value = speedTest.measure()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            _speedTestError.value = true
+        } finally {
+            _speedTesting.value = false
+        }
+    }
+
+    fun cancelSpeedTest() {
+        speedTest.cancel()
     }
 
     fun clearMessage() { _messageRes.value = null }

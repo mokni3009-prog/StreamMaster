@@ -63,6 +63,7 @@ import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.data.matchcenter.GoalAlert
 import com.streammaster.tv.player.remote.RemoteCommand
+import com.streammaster.tv.ui.components.MiniPlayerOverlay
 import com.streammaster.tv.ui.components.PinDialog
 import com.streammaster.tv.ui.components.SelectorDialog
 import com.streammaster.tv.ui.components.SelectorOption
@@ -77,6 +78,7 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextShadowCrisp
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.ProfilesViewModel
+import com.streammaster.tv.ui.viewmodel.PlayerExtrasViewModel
 import com.streammaster.tv.ui.viewmodel.ShellViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -106,12 +108,20 @@ val SIDEBAR_ITEMS = listOf(
     SidebarItem(Routes.RECORDINGS, R.string.nav_recordings, R.drawable.ic_video),
     SidebarItem(Routes.DOWNLOADS, R.string.nav_downloads, R.drawable.ic_download),
     SidebarItem(Routes.MATCH_CENTER, R.string.nav_match_center, R.drawable.ic_activity),
+    SidebarItem(Routes.MATCH_DAY, R.string.nav_match_day, R.drawable.ic_trending_up),
+    SidebarItem(Routes.WATCH_TONIGHT, R.string.nav_watch_tonight, R.drawable.ic_star),
     SidebarItem(Routes.REMOTE, R.string.nav_remote, R.drawable.ic_smartphone),
     SidebarItem(Routes.FAVORIS, R.string.nav_favoris, R.drawable.ic_heart),
     SidebarItem(Routes.WATCH_LATER, R.string.nav_watch_later, R.drawable.ic_clock),
     SidebarItem(Routes.HISTORIQUE, R.string.nav_historique, R.drawable.ic_rotate_ccw),
     SidebarItem(Routes.PLAYLISTS, R.string.nav_playlists, R.drawable.ic_folder),
     SidebarItem(Routes.MANAGE, R.string.nav_manage, R.drawable.ic_list),
+    SidebarItem(Routes.DIAGNOSTICS, R.string.nav_diagnostics, R.drawable.ic_server),
+    SidebarItem(Routes.EPG_HEALTH, R.string.nav_epg_health, R.drawable.ic_info),
+    SidebarItem(Routes.USB_FILES, R.string.nav_usb_files, R.drawable.ic_disc),
+    SidebarItem(Routes.CHANNEL_TIMER, R.string.nav_channel_timer, R.drawable.ic_bell),
+    SidebarItem(Routes.CLEANUP, R.string.nav_cleanup, R.drawable.ic_trash),
+    SidebarItem(Routes.DRIVE, R.string.nav_drive, R.drawable.ic_upload),
     SidebarItem(Routes.SETTINGS, R.string.nav_settings, R.drawable.ic_settings)
 )
 
@@ -205,6 +215,17 @@ fun Shell(
             if (currentGoalAlert?.key == shownGoalAlert.key) currentGoalAlert = null
         }
     }
+    // DND (§4.54) — the gate for ambient overlays lives in Shell: while
+    // DND is on, no ambient popup may appear over any screen — EXCEPT
+    // the goal alert (§4.33), which is exempt by spec and keeps working.
+    // Today GoalAlertPopup is the only ambient overlay Shell owns, so it
+    // renders unconditionally below; any future ambient overlay added to
+    // Shell must check `dndEnabled` first. (The goal alert's system
+    // notification when the app is backgrounded lives in
+    // GoalAlertService, and toasts in GoldToastHost/AppNavHost — both
+    // outside this file, so their DND muting belongs to their owners.)
+    val extrasViewModel: PlayerExtrasViewModel = hiltViewModel()
+    val dndEnabled by extrasViewModel.dndEnabled.collectAsState()
     Box(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Sidebar (model .sidebar: 360dp, gradient, 2px right border, shadow).
@@ -419,12 +440,18 @@ fun Shell(
             if (!kidsMode) kidsPinOpen = false
         }
         // Goal alert popup (2026-11-22): small gold card over every screen.
+        // DND-exempt (§4.54/§4.33): it shows even when `dndEnabled` is
+        // on — hence no `!dndEnabled` condition here.
         if (currentGoalAlert != null) {
             GoalAlertPopup(
                 alert = currentGoalAlert!!,
                 onDismiss = { currentGoalAlert = null }
             )
         }
+        // In-app mini player (§4.44): floating 480x270 window over the
+        // browsable screens while playback is in PiP mode. It renders
+        // nothing when isPip is false.
+        MiniPlayerOverlay(navController = navController)
     }
 }
 

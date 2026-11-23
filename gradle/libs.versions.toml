@@ -48,6 +48,14 @@ activityCompose = "1.9.3"
 cronet = "143.7445.0"
 nanohttpd = "2.3.1"
 zxing = "3.5.3"
+# Chromecast (§4.46, 2026-11-23): play-services-cast-framework 21.4.0 —
+# released 2023-12-04 per Google Cast release notes; stable, minSdk 23-safe.
+# NOTE: 22.x/23.x exist but were NOT picked: 21.4.0 is the newest version
+# verified here against the release notes, and the app must not upgrade
+# any existing version. Brings androidx.mediarouter transitively (used by
+# CastManager for device discovery); if Gradle ever fails to resolve it,
+# add androidx.mediarouter:mediarouter explicitly as part of Chromecast.
+castFramework = "21.4.0"
 
 [libraries]
 # Media3 (ExoPlayer) — primary engine on API >= 23.
@@ -102,6 +110,8 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 # Phone web remote (2026-11-22): tiny embedded HTTP server + QR codes.
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
+# Chromecast (§4.46) — Cast Application Framework (sender).
+play-services-cast-framework = { group = "com.google.android.gms", name = "play-services-cast-framework", version.ref = "castFramework" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

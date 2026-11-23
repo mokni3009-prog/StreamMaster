@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sidebar labels for the screens wired in by the integration step
+     (Match Day, Watch Tonight, Diagnostics, EPG Health, USB Files,
+     Channel Timer, Cleanup, Google Drive). French, like the other
+     nav_* labels in strings.xml. -->
+<resources>
+    <string name="nav_match_day">Match Day</string>
+    <string name="nav_watch_tonight">Quoi regarder ?</string>
+    <string name="nav_diagnostics">Diagnostic</string>
+    <string name="nav_epg_health">Santé EPG</string>
+    <string name="nav_usb_files">Fichiers USB</string>
+    <string name="nav_channel_timer">Minuteur</string>
+    <string name="nav_cleanup">Nettoyage</string>
+    <string name="nav_drive">Google Drive</string>
+</resources>

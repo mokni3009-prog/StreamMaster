@@ -66,15 +66,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.media3.common.text.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.SubtitleView
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
+import com.streammaster.tv.cast.CastButton
+import com.streammaster.tv.cast.CastManager
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.Channel
 import com.streammaster.tv.data.model.EpgProgram
@@ -86,6 +91,7 @@ import com.streammaster.tv.ui.components.GoldButton
 import com.streammaster.tv.ui.components.PinDialog
 import com.streammaster.tv.ui.components.SelectorDialog
 import com.streammaster.tv.ui.components.SelectorOption
+import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.CardSurface
@@ -99,8 +105,10 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.ThemedScreen
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.player.remote.RemoteCommand
+import com.streammaster.tv.ui.viewmodel.LiveScoresTickerViewModel
 import com.streammaster.tv.ui.viewmodel.LiveViewModel
 import com.streammaster.tv.ui.viewmodel.MatchCenterViewModel
+import com.streammaster.tv.ui.viewmodel.PlayerExtrasViewModel
 import com.streammaster.tv.ui.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
 import org.videolan.libvlc.util.VLCVideoLayout
@@ -163,6 +171,10 @@ fun PlayerScreen(
     val epgPrograms by viewModel.epgPrograms.collectAsState()
     val allChannels by viewModel.allChannels.collectAsState()
     val context = LocalContext.current
+    // Chromecast (§4.46): one CastManager per player session, released
+    // when the player leaves (see the DisposableEffect below).
+    val castManager = remember { CastManager(context) }
+    DisposableEffect(Unit) { onDispose { castManager.release() } }
     var selector by remember { mutableStateOf<String?>(null) } // audio | subs | quality | display
     var scoresOpen by remember { mutableStateOf(false) } // Match Center dialog (live only)
     // Match Center toggle (2026-11-22): opt-in, persists until the user
@@ -186,13 +198,61 @@ fun PlayerScreen(
     }
     var volumeLevel by remember { mutableStateOf(0) }
     var volumeMax by remember { mutableStateOf(15) }
+    // Player extras (§4.34 / §4.54): DND toggle + max-speed flag, from
+    // SettingsRepository via a small dedicated ViewModel (PlayerViewModel
+    // is owned by the player agent).
+    val extrasViewModel: PlayerExtrasViewModel = hiltViewModel()
+    val dndOn by extrasViewModel.dndEnabled.collectAsState()
+    val maxSpeed by extrasViewModel.maxSpeed.collectAsState()
+    // Live-scores ticker (§4.55): today's in-play matches, refreshed
+    // every 60 s while the player is open.
+    val tickerViewModel: LiveScoresTickerViewModel = hiltViewModel()
+    val liveMatches by tickerViewModel.liveMatches.collectAsState()
+    var tickerVisible by remember { mutableStateOf(true) }
+    // Failure diagnosis (§4.36.7): plain French text from the engine
+    // (cause + suggested fix), "" when no failure — see ErrorScreen.kt.
+    val errorDiagnosis by viewModel.lastErrorDiagnosis.collectAsState()
+    // Subtitle styling (§4.56): saved size/color/position from
+    // AppSettings, applied to the subtitle view in VideoSurface.
+    val subtitleSize by extrasViewModel.subtitleSize.collectAsState()
+    val subtitleColor by extrasViewModel.subtitleColor.collectAsState()
+    val subtitlePosition by extrasViewModel.subtitlePosition.collectAsState()
 
-    LaunchedEffect(kind, id) { viewModel.load(kind, id) }
+    LaunchedEffect(kind, id) {
+        // §4.44: returning to a retained player route (Agrandir from the
+        // mini player) must NOT restart the stream — the ViewModel
+        // survived in the back stack with the item already loaded, so
+        // skip load(). A fresh entry has an empty ui state, so it
+        // always loads. (Recordings/downloads have no ui slot, so they
+        // always load — mini-player for them restarts, an edge case.)
+        val s = viewModel.ui.value
+        val alreadyLoaded = s.kind == kind && s.id == id && when (kind) {
+            "live" -> s.channel != null
+            "film" -> s.film != null
+            "series" -> s.series != null
+            else -> false
+        }
+        if (!alreadyLoaded) {
+            if (playback.isPip) viewModel.exitPip() // new item: leave mini mode
+            viewModel.load(kind, id)
+        }
+    }
     LaunchedEffect(position, duration) { viewModel.onPositionAdvanced(position, duration) }
     fun exitPlayer() {
         viewModel.stop()
         navController.previousBackStackEntry?.savedStateHandle?.set("focusedId", id)
         navController.popBackStack()
+    }
+
+    // §4.36.7 "Changer de chaîne": stop playback and go to the Direct
+    // channel list (the error dialog's escape hatch).
+    fun changeChannel() {
+        viewModel.stop()
+        navController.navigate(Routes.LIVE) {
+            popUpTo(Routes.HOME) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
     }
 
     // EPG now/next for the live channel, re-derived every second from the
@@ -332,6 +392,17 @@ fun PlayerScreen(
             epgPanelOpen -> { epgPanelOpen = false; true }
             volumeOsd -> { volumeOsd = false; true }
             ui.listsOpen -> { viewModel.closeLists(); true }
+            // §4.44: Back while in PiP does NOT exit the player — it
+            // switches to the in-app mini player over the matching view.
+            // The player route stays underneath in the back stack (so
+            // playback and isPip survive) and Shell's MiniPlayerOverlay
+            // shows the floating window; Agrandir pops back to it.
+            playback.isPip -> {
+                navController.navigate(viewModel.backRouteFor(ui.kind)) {
+                    launchSingleTop = true
+                }
+                true
+            }
             else -> { exitPlayer(); true }
         }
     }
@@ -355,6 +426,15 @@ fun PlayerScreen(
                             val digit = ('0' + (event.nativeKeyEvent.keyCode - KeyEvent.KEYCODE_0))
                             viewModel.onDigit(digit)
                             true
+                        }
+                        // §4.40 CH+/CH−: the physical remote's channel
+                        // keys zap to the next/previous live channel
+                        // (same zapChannel the phone remote already used).
+                        KeyEvent.KEYCODE_CHANNEL_UP -> {
+                            if (ui.kind == "live") { viewModel.zapChannel(1); true } else false
+                        }
+                        KeyEvent.KEYCODE_CHANNEL_DOWN -> {
+                            if (ui.kind == "live") { viewModel.zapChannel(-1); true } else false
                         }
                         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -387,7 +467,12 @@ fun PlayerScreen(
                             .background(Color.Black)
                             .border(2.dp, BorderStrong, RoundedCornerShape(18.dp))
                     ) {
-                        VideoSurface(viewModel)
+                        VideoSurface(
+                            viewModel,
+                            subtitleSizePercent = subtitleSize,
+                            subtitleColorHex = subtitleColor,
+                            subtitlePosition = subtitlePosition
+                        )
                         Row(
                             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                                 .background(
@@ -411,7 +496,13 @@ fun PlayerScreen(
                     }
                 }
             } else {
-                VideoSurface(viewModel, Modifier.fillMaxSize())
+                VideoSurface(
+                    viewModel,
+                    Modifier.fillMaxSize(),
+                    subtitleSizePercent = subtitleSize,
+                    subtitleColorHex = subtitleColor,
+                    subtitlePosition = subtitlePosition
+                )
             }
 
             // Watermark (PL01): visible with the controls UI.
@@ -472,7 +563,9 @@ fun PlayerScreen(
             if (playback.showError) {
                 ErrorScreen(
                     message = playback.errorMessage,
+                    diagnosis = errorDiagnosis.takeIf { it.isNotBlank() },
                     onRetry = { playback.item?.let { viewModel.playerManager.play(it) } },
+                    onChangeChannel = { changeChannel() },
                     onBack = { exitPlayer() }
                 )
             }
@@ -486,6 +579,7 @@ fun PlayerScreen(
                     sleepRemainingMin = playback.sleepRemainingMin,
                     usingBackup = playback.usingBackup,
                     networkSpeedLabel = playback.networkSpeedLabel,
+                    maxSpeed = maxSpeed,
                     modifier = Modifier.align(Alignment.TopEnd).padding(24.dp)
                 )
             }
@@ -515,9 +609,15 @@ fun PlayerScreen(
 
             // Controls overlay (PL03-PL07, PL17): transparent with black
             // top/bottom vignettes instead of a solid #CC000000 bar.
+            // Live-scores ticker (§4.55): permanent strip at the bottom
+            // while matches are in play — never over the lists or PiP,
+            // and the controls sit above it (bottom padding grows).
+            val tickerShowing = tickerVisible && liveMatches.isNotEmpty() &&
+                !playback.isPip && !ui.listsOpen
             if (ui.controlsVisible && !playback.isPip) {
                 PlayerControls(
                     viewModel = viewModel,
+                    castManager = castManager,
                     playback = playback,
                     positionMs = position,
                     durationMs = duration,
@@ -526,6 +626,12 @@ fun PlayerScreen(
                     nextProgram = nextProgram,
                     nowMs = nowMs,
                     recElapsed = recElapsed,
+                    maxSpeed = maxSpeed,
+                    dndOn = dndOn,
+                    onToggleDnd = { extrasViewModel.toggleDnd() },
+                    tickerOn = tickerVisible,
+                    onToggleTicker = { tickerVisible = !tickerVisible },
+                    contentBottomPadding = if (tickerShowing) 76.dp else 32.dp,
                     focusRequester = firstControlFocus,
                     onSelector = { selector = it },
                     onVolume = { openVolume() },
@@ -546,6 +652,12 @@ fun PlayerScreen(
                     },
                     onToggleFailover = { viewModel.toggleSmartFailover() },
                     onExit = { exitPlayer() }
+                )
+            }
+            if (tickerShowing) {
+                LiveScoresTicker(
+                    matches = liveMatches,
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
 
@@ -745,7 +857,13 @@ fun PlayerScreen(
 
 /** Video surface: ExoPlayer PlayerView, or VLC VlcVideoLayout (CONTRACT §7). */
 @Composable
-private fun VideoSurface(viewModel: PlayerViewModel, modifier: Modifier = Modifier) {
+private fun VideoSurface(
+    viewModel: PlayerViewModel,
+    modifier: Modifier = Modifier,
+    subtitleSizePercent: Int = 100,
+    subtitleColorHex: String = "#FFFFFF",
+    subtitlePosition: String = "bottom"
+) {
     val playback by viewModel.playbackState.collectAsState()
     if (playback.engine == Engine.VLC) {
         AndroidView(
@@ -767,11 +885,59 @@ private fun VideoSurface(viewModel: PlayerViewModel, modifier: Modifier = Modifi
                     player = viewModel.playerManager.exoPlayer
                     useController = false // Stream Master draws its own controls
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                    applySubtitleStyle(subtitleView, subtitleSizePercent, subtitleColorHex, subtitlePosition)
                 }
             },
-            update = { view -> view.player = viewModel.playerManager.exoPlayer },
+            update = { view ->
+                view.player = viewModel.playerManager.exoPlayer
+                applySubtitleStyle(view.subtitleView, subtitleSizePercent, subtitleColorHex, subtitlePosition)
+            },
             modifier = modifier.background(Color.Black)
         )
+    }
+}
+
+/**
+ * Subtitle styling (§4.56): applies the saved caption size / colour /
+ * position (AppSettings.subtitleSize % / subtitleColor hex /
+ * subtitlePosition "bottom"|"top", owned by the settings builder) to the
+ * ExoPlayer subtitle view, at creation and on every recomposition (so a
+ * style change applies without restarting playback). VLC renders its own
+ * subtitles, so the VLC branch is untouched.
+ *
+ * Media3 1.9 notes (verified against the API reference): there is no
+ * `setFontSize` on SubtitleView — size is a fraction of the view height
+ * (`setFractionalTextSize`, default 0.0533), scaled here by the saved
+ * percentage; `setStyle(CaptionStyleCompat)` exists but is deprecated in
+ * favour of `setStyle(SubtitleStyle)` — the Compat form is used as the
+ * task prescribes. Position has no direct API: "top" is approximated
+ * with a large bottom-padding fraction (cues with an unset line anchor
+ * to that padding), "bottom" uses the default 0.08.
+ */
+private fun applySubtitleStyle(
+    subtitleView: SubtitleView?,
+    sizePercent: Int,
+    colorHex: String,
+    position: String
+) {
+    subtitleView?.let { sv ->
+        val foreground = runCatching {
+            android.graphics.Color.parseColor(colorHex)
+        }.getOrDefault(android.graphics.Color.WHITE)
+        sv.setStyle(
+            CaptionStyleCompat(
+                foreground,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                android.graphics.Color.BLACK,
+                null
+            )
+        )
+        sv.setFractionalTextSize(
+            SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * (sizePercent / 100f)
+        )
+        sv.setBottomPaddingFraction(if (position == "top") 0.85f else 0.08f)
     }
 }
 
@@ -785,6 +951,7 @@ private fun VideoSurface(viewModel: PlayerViewModel, modifier: Modifier = Modifi
 @Composable
 private fun PlayerControls(
     viewModel: PlayerViewModel,
+    castManager: CastManager,
     playback: com.streammaster.tv.player.PlaybackState,
     positionMs: Long,
     durationMs: Long,
@@ -793,6 +960,12 @@ private fun PlayerControls(
     nextProgram: EpgProgram?,
     nowMs: Long,
     recElapsed: String?,
+    maxSpeed: Boolean,
+    dndOn: Boolean,
+    onToggleDnd: () -> Unit,
+    tickerOn: Boolean,
+    onToggleTicker: () -> Unit,
+    contentBottomPadding: Dp = 32.dp,
     focusRequester: FocusRequester,
     onSelector: (String) -> Unit,
     onVolume: () -> Unit,
@@ -879,7 +1052,7 @@ private fun PlayerControls(
         )
         Column(
             modifier = Modifier.fillMaxSize()
-                .padding(start = 52.dp, end = 52.dp, top = 34.dp, bottom = 32.dp),
+                .padding(start = 52.dp, end = 52.dp, top = 34.dp, bottom = contentBottomPadding),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Header (PL03).
@@ -926,7 +1099,8 @@ private fun PlayerControls(
                         isTimeshift = playback.isTimeshift,
                         sleepRemainingMin = playback.sleepRemainingMin,
                         usingBackup = playback.usingBackup,
-                        networkSpeedLabel = playback.networkSpeedLabel
+                        networkSpeedLabel = playback.networkSpeedLabel,
+                        maxSpeed = maxSpeed
                     )
                     if (isLive) HeaderQualityPill(text = playback.qualityLabel)
                     Text(
@@ -1101,41 +1275,91 @@ private fun PlayerControls(
                     }
                 }
                 // Second row: approved post-model buttons (PL11), kept.
-                Row(
+                // LazyRow (2026-11-23): the row now holds seven buttons
+                // (speed / REC / failover / Scores / DND / ticker /
+                // external player), so it scrolls with D-pad focus on
+                // narrow canvases instead of clipping the last ones.
+                LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FsCtrlButton(stringResource(R.string.speed)) { onSelector("speed") }
+                    item {
+                        FsCtrlButton(stringResource(R.string.speed)) { onSelector("speed") }
+                    }
                     if (isLive) {
-                        FsCtrlButton(
-                            if (recState is com.streammaster.tv.player.RecordingState.Active)
-                                stringResource(R.string.record_stop)
-                            else stringResource(R.string.record_start)
-                        ) { viewModel.toggleRecording() }
+                        item {
+                            FsCtrlButton(
+                                if (recState is com.streammaster.tv.player.RecordingState.Active)
+                                    stringResource(R.string.record_stop)
+                                else stringResource(R.string.record_start)
+                            ) { viewModel.toggleRecording() }
+                        }
                         // Smart failover toggle (2026-11-22): opt-in, off by
                         // default, persists until the user turns it off here.
-                        val failoverOn by viewModel.smartFailover.collectAsState()
-                        FsCtrlButton(
-                            stringResource(R.string.failover),
-                            // R-S3: ic_check icon when on instead of "✓ ".
-                            iconRes = if (failoverOn) R.drawable.ic_check else null
-                        ) { onToggleFailover() }
+                        item {
+                            val failoverOn by viewModel.smartFailover.collectAsState()
+                            FsCtrlButton(
+                                stringResource(R.string.failover),
+                                // R-S3: ic_check icon when on instead of "✓ ".
+                                iconRes = if (failoverOn) R.drawable.ic_check else null
+                            ) { onToggleFailover() }
+                        }
                         // Match Center toggle (2026-11-22): same pattern —
                         // the Scores button enables it (and opens the
                         // scores); while enabled it shows the check icon
                         // until turned off from this button.
-                        val centerOn by viewModel.matchCenter.collectAsState()
+                        item {
+                            val centerOn by viewModel.matchCenter.collectAsState()
+                            FsCtrlButton(
+                                stringResource(R.string.scores),
+                                // R-S3: ic_check icon when on instead of "✓ ".
+                                iconRes = if (centerOn) R.drawable.ic_check else null
+                            ) { onScores() }
+                        }
+                    }
+                    // DND (§4.54): same toggle pattern — persisted, check
+                    // icon while on; only the goal alert stays active.
+                    item {
                         FsCtrlButton(
-                            stringResource(R.string.scores),
-                            // R-S3: ic_check icon when on instead of "✓ ".
-                            iconRes = if (centerOn) R.drawable.ic_check else null
-                        ) { onScores() }
+                            stringResource(R.string.player_dnd),
+                            iconRes = if (dndOn) R.drawable.ic_check else null
+                        ) { onToggleDnd() }
+                    }
+                    // Live-scores ticker (§4.55): shows/hides the bottom
+                    // strip; check icon while the strip is enabled.
+                    item {
+                        FsCtrlButton(
+                            stringResource(R.string.player_ticker),
+                            iconRes = if (tickerOn) R.drawable.ic_check else null
+                        ) { onToggleTicker() }
+                    }
+                    // Chromecast (§4.46): opens the device picker; once a
+                    // device is picked, the current stream URL is handed
+                    // over. No clean URL exists for catchup (the timeshift
+                    // URL lives only in getStreamUrls) or for local
+                    // recordings/downloads — there the picker still opens
+                    // but picking a device casts nothing.
+                    item {
+                        CastButton(
+                            castManager = castManager,
+                            onCastStarted = {
+                                val url = when (ui.kind) {
+                                    "live" -> ui.channel?.streamUrl
+                                    "film" -> ui.film?.streamUrl
+                                    "series" -> ui.episode?.streamUrl
+                                    else -> null
+                                }
+                                if (url != null) castManager.castUrl(url, title, isLive = isLive)
+                            }
+                        )
                     }
                     // External player (not for local recordings/downloads).
                     if (ui.kind != "recording" && ui.kind != "download") {
-                        FsCtrlButton(stringResource(R.string.external_player)) {
-                            viewModel.playExternally()
+                        item {
+                            FsCtrlButton(stringResource(R.string.external_player)) {
+                                viewModel.playExternally()
+                            }
                         }
                     }
                 }
@@ -1265,7 +1489,9 @@ private fun HeaderQualityPill(text: String) {
     }
 }
 
-/** Status pills (PL16): REC / TIMESHIFT / SLEEP / backup / network speed. */
+/** Status pills (PL16): REC / TIMESHIFT / SLEEP / backup / network speed.
+ *  The live-speed badge (§4.34) shows only while maximum speed is on
+ *  (`maxSpeed == true`) — never just because a label was measured. */
 @Composable
 private fun StatusPills(
     recElapsed: String?,
@@ -1273,6 +1499,7 @@ private fun StatusPills(
     sleepRemainingMin: Int,
     usingBackup: Boolean,
     networkSpeedLabel: String,
+    maxSpeed: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -1318,7 +1545,7 @@ private fun StatusPills(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             )
         }
-        if (networkSpeedLabel.isNotEmpty()) {
+        if (maxSpeed && networkSpeedLabel.isNotEmpty()) {
             Text(
                 text = networkSpeedLabel,
                 fontSize = 14.sp, fontWeight = FontWeight.Bold, color = GoldDeep,

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.1 / §4.48 / §4.49 / §4.53 — Detail screen strings (2026-11-23). -->
+<resources>
+    <string name="detail_resume_percent">استئناف • %1$d%%</string>
+    <string name="detail_director">المخرج</string>
+    <string name="detail_your_rating">تقييمك</string>
+    <string name="detail_your_rating_set">تقييمك: %1$d / 5</string>
+    <string name="detail_rate_hint">المس نجمة لتقييم هذا العنوان (من 1 إلى 5).</string>
+    <string name="detail_similar_title">أعمال مشابهة</string>
+    <string name="detail_actor_works_title">مع %1$s</string>
+    <string name="detail_actor_works_loading">جارٍ البحث عن أعماله الأخرى…</string>
+    <string name="detail_actor_works_empty">لم نعثر على أعمال أخرى في قوائمك.</string>
+    <string name="detail_cast_unavailable">طاقم التمثيل غير متوفر لهذا العنوان.</string>
+    <string name="detail_subtitle_download">الترجمة</string>
+    <string name="detail_subtitle_soon">تنزيل الترجمة سيتوفر قريبًا.</string>
+</resources>

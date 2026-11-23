@@ -105,7 +105,11 @@ data class EpisodeEntity(
     val title: String,
     val durationMin: Int,
     val code: String,
-    val streamUrl: String? = null
+    val streamUrl: String? = null,
+    /** Resume point inside the episode, in ms (§4.40 Continue Watching:
+     *  the player agent reads/writes it via EpisodeDao.setProgress; 0 =
+     *  never started / finished). */
+    val progressMs: Long = 0
 )
 
 @Entity(
@@ -302,4 +306,105 @@ data class DownloadEntity(
     /** DownloadStatus name. */
     val status: String,
     val createdMillis: Long
+)
+
+/**
+ * A series the user follows (§4.50): when a playlist refresh finds more
+ * episodes than [lastEpisodeCount], a "new episode" notification is sent.
+ * NEW TABLE — the coordinator adds it to StreamMasterDatabase + migration;
+ * this file only declares the entity (do NOT bump the DB version here).
+ */
+@Entity(tableName = "series_follows")
+data class SeriesFollow(
+    @PrimaryKey val seriesId: String,
+    val title: String,
+    val lastEpisodeCount: Int = 0,
+    val lastChecked: Long = 0
+)
+
+/**
+ * A film genre the user follows (§4.57): when a playlist refresh finds a
+ * different set of film ids for the genre than [lastFilmIdsHash], a
+ * "new films" notification is sent. The hash is
+ * `sortedFilmIds.joinToString("|").hashCode().toString()`; "" means "no
+ * baseline yet — take the current set silently".
+ * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ */
+@Entity(tableName = "genre_follows")
+data class GenreFollow(
+    @PrimaryKey val genre: String,
+    val lastFilmIdsHash: String = "",
+    val lastChecked: Long = 0
+)
+
+/**
+ * A channel timer (§4.58): switch to [channelId] automatically at
+ * [triggerAtMillis]. The §4.58 builder owns the UI + scheduler; this file
+ * only declares the storage.
+ * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ */
+@Entity(
+    tableName = "channel_timers",
+    indices = [Index("triggerAtMillis")]
+)
+data class ChannelTimer(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val channelId: String,
+    val channelName: String,
+    val triggerAtMillis: Long,
+    val enabled: Boolean = true
+)
+
+/**
+ * A "My Playlist" bouquet (§4.62): a user-created bouquet of the
+ * app-owned virtual playlist #11. [type] is LIVE | FILM | SERIES.
+ * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ */
+@Entity(
+    tableName = "myplaylist_bouquets",
+    indices = [Index("type")]
+)
+data class MyPlaylistBouquet(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** LIVE | FILM | SERIES. */
+    val type: String,
+    val sortOrder: Int = 0
+)
+
+/**
+ * One item inside a "My Playlist" bouquet (§4.62): a COPY (reference) of
+ * content from one of the user's subscriptions — the original stays in
+ * its source playlist. [itemType] is CHANNEL | FILM | SERIES.
+ * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ */
+@Entity(
+    tableName = "myplaylist_items",
+    indices = [Index("bouquetId")]
+)
+data class MyPlaylistItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bouquetId: Long,
+    val sourcePlaylistId: String,
+    /** CHANNEL | FILM | SERIES. */
+    val itemType: String,
+    val itemId: String
+)
+
+/**
+ * A user star rating (§4.53): 1..5 stars on a film or series, fed into
+ * the "Recommandé pour vous" recommendations (§4.36.1). Composite PK
+ * (itemType, itemId); [itemType] is FILM | SERIES.
+ * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ */
+@Entity(
+    tableName = "user_ratings",
+    primaryKeys = ["itemType", "itemId"]
+)
+data class UserRating(
+    val itemType: String,
+    val itemId: String,
+    /** 1..5. */
+    val stars: Int,
+    val updatedAt: Long
 )

@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the new screens (§4.36 Watch Tonight + Smart Lists, §4.38 Diagnostics,
+     §4.39 Onboarding Wizard, §4.41 EPG Health, §4.52 USB files, §4.58 Channel Timer,
+     §4.36.6 Cleanup). French is the app default language; all keys are prefixed ns_. -->
+<resources>
+    <!-- Diagnostics (§4.38) -->
+    <string name="ns_diagnostics_title">Diagnostic</string>
+    <string name="ns_diagnostics_subtitle">Santé de l\'application — aucune donnée n\'est envoyée à un serveur.</string>
+    <string name="ns_diag_server">Serveur de la playlist</string>
+    <string name="ns_diag_server_none">Aucune playlist active</string>
+    <string name="ns_diag_online">En ligne</string>
+    <string name="ns_diag_offline">Hors ligne</string>
+    <string name="ns_diag_latency">Latence : %1$d ms (%2$s)</string>
+    <string name="ns_diag_check_server">Vérifier le serveur</string>
+    <string name="ns_diag_checking">Vérification…</string>
+    <string name="ns_diag_network">Réseau</string>
+    <string name="ns_diag_network_wifi">Wi-Fi</string>
+    <string name="ns_diag_network_mobile">Mobile</string>
+    <string name="ns_diag_network_ethernet">Ethernet</string>
+    <string name="ns_diag_network_offline">Hors ligne</string>
+    <string name="ns_diag_network_unknown">Inconnu</string>
+    <string name="ns_diag_stalls">Coupures cette session</string>
+    <string name="ns_diag_errors">Erreurs cette session</string>
+    <string name="ns_diag_recent_errors">Dernières erreurs (locales)</string>
+    <string name="ns_diag_no_errors">Aucune erreur enregistrée.</string>
+    <string name="ns_diag_version">Version de l\'application</string>
+    <string name="ns_diag_no_telemetry">Aucun envoi externe : le diagnostic reste sur la télévision (télémétrie suspendue).</string>
+
+    <!-- EPG health (§4.41) -->
+    <string name="ns_epg_health_title">Santé du guide TV (EPG)</string>
+    <string name="ns_epg_with_guide">Avec guide</string>
+    <string name="ns_epg_without_guide">Sans guide</string>
+    <string name="ns_epg_filter_all">Toutes</string>
+    <string name="ns_epg_filter_with">Avec guide</string>
+    <string name="ns_epg_filter_without">Sans guide</string>
+    <string name="ns_epg_reason_no_id">Identifiant EPG manquant (tvg-id) : le guide ne peut pas être rattaché à cette chaîne.</string>
+    <string name="ns_epg_reason_provider">Le fournisseur ne fournit pas de guide pour cette chaîne.</string>
+    <string name="ns_epg_reason_xmltv">Source XMLTV indisponible ou identifiant différent : vérifiez l\'URL XMLTV ou le tvg-id.</string>
+    <string name="ns_epg_reason_unknown">Aucun programme trouvé pour cette chaîne.</string>
+    <string name="ns_epg_fix_xmltv">Ajouter une source XMLTV dans Profil</string>
+    <string name="ns_epg_fix_id">Vérifier le tvg-id de la chaîne chez le fournisseur</string>
+    <string name="ns_epg_fix_provider">Le guide dépend du fournisseur pour cette chaîne</string>
+    <string name="ns_epg_fix_retry">Réessayer la synchronisation du guide</string>
+    <string name="ns_epg_loading">Analyse du guide…</string>
+    <string name="ns_epg_empty">Aucune chaîne.</string>
+
+    <!-- Onboarding wizard (§4.39) -->
+    <string name="ns_onboarding_title">Bienvenue sur Stream Master</string>
+    <string name="ns_onboarding_step">Étape %1$d / %2$d</string>
+    <string name="ns_onboarding_lang">Choisissez votre langue</string>
+    <string name="ns_onboarding_playlist">Ajoutez votre playlist</string>
+    <string name="ns_onboarding_test">Test de connexion</string>
+    <string name="ns_onboarding_sync">Synchronisation</string>
+    <string name="ns_onboarding_test_ok">Connexion réussie (%1$s).</string>
+    <string name="ns_onboarding_test_fail">Connexion impossible : %1$s. Vérifiez l\'adresse du serveur, vos identifiants et votre connexion Internet, puis réessayez.</string>
+    <string name="ns_onboarding_retry">Réessayer le test</string>
+    <string name="ns_onboarding_syncing">Synchronisation des chaînes, films et séries en arrière-plan…</string>
+    <string name="ns_onboarding_sync_done">Synchronisation terminée.</string>
+    <string name="ns_onboarding_finish">Terminer</string>
+    <string name="ns_onboarding_next">Suivant</string>
+    <string name="ns_onboarding_back">Retour</string>
+    <string name="ns_onboarding_add">Ajouter et tester</string>
+    <string name="ns_onboarding_adding">Ajout en cours…</string>
+
+    <!-- USB files (§4.52) -->
+    <string name="ns_usb_title">Fichiers USB</string>
+    <string name="ns_usb_subtitle">Lisez vos vidéos depuis une clé USB, avec le même lecteur.</string>
+    <string name="ns_usb_choose_folder">Choisir un dossier USB</string>
+    <string name="ns_usb_choose_file">Choisir un fichier vidéo</string>
+    <string name="ns_usb_empty">Aucun fichier vidéo. Choisissez un dossier USB ou un fichier vidéo.</string>
+    <string name="ns_usb_play">Lire</string>
+    <string name="ns_usb_folder">Dossier : %1$s</string>
+    <string name="ns_usb_count">%1$d fichier(s) vidéo</string>
+
+    <!-- Channel timer (§4.58) -->
+    <string name="ns_timer_title">Minuteur de chaîne</string>
+    <string name="ns_timer_subtitle">Bascule automatique vers la chaîne choisie à l\'heure choisie.</string>
+    <string name="ns_timer_channel">Chaîne</string>
+    <string name="ns_timer_choose_channel">Choisir une chaîne</string>
+    <string name="ns_timer_hour">Heure</string>
+    <string name="ns_timer_minute">Minute</string>
+    <string name="ns_timer_schedule">Programmer</string>
+    <string name="ns_timer_cancel">Annuler</string>
+    <string name="ns_timer_list">Minuteurs programmés</string>
+    <string name="ns_timer_empty">Aucun minuteur programmé.</string>
+    <string name="ns_timer_scheduled">Minuteur programmé : %1$s à %2$s.</string>
+    <string name="ns_timer_cancelled">Minuteur annulé.</string>
+    <string name="ns_timer_pick_channel_first">Choisissez d\'abord une chaîne.</string>
+
+    <!-- Watch Tonight (§4.36) -->
+    <string name="ns_tonight_title">Quoi regarder ce soir ?</string>
+    <string name="ns_tonight_button">Quoi regarder ce soir ?</string>
+    <string name="ns_tonight_time">Combien de temps avez-vous ?</string>
+    <string name="ns_tonight_minutes">%1$d min</string>
+    <string name="ns_tonight_live">En direct</string>
+    <string name="ns_tonight_now">En cours : %1$s</string>
+    <string name="ns_tonight_episode">Série • ~45 min / épisode</string>
+    <string name="ns_tonight_empty">Rien ne correspond à ce temps disponible. Essayez une durée plus longue.</string>
+    <string name="ns_tonight_picks">Nos propositions (%1$d)</string>
+
+    <!-- Smart lists (§4.51) -->
+    <string name="ns_smartlists_empty">Aucune liste intelligente pour le moment.</string>
+
+    <!-- Cleanup (§4.36.6) -->
+    <string name="ns_cleanup_title">Nettoyage des playlists</string>
+    <string name="ns_cleanup_subtitle">Chaînes en double et contenus morts détectés dans vos playlists.</string>
+    <string name="ns_cleanup_duplicates">En double (%1$d)</string>
+    <string name="ns_cleanup_dead">Morts (%1$d)</string>
+    <string name="ns_cleanup_merge">Fusionner</string>
+    <string name="ns_cleanup_delete">Supprimer</string>
+    <string name="ns_cleanup_scanning">Analyse en cours…</string>
+    <string name="ns_cleanup_clean">Aucun doublon ni contenu mort détecté.</string>
+    <string name="ns_cleanup_merged">Doublons fusionnés : %1$s conservé.</string>
+    <string name="ns_cleanup_deleted">Supprimé : %1$s.</string>
+    <string name="ns_cleanup_dead_reason_dead">Lien mort (ne répond plus)</string>
+    <string name="ns_cleanup_unsupported">La suppression des films et séries demande encore les méthodes DAO correspondantes (voir rapport).</string>
+</resources>

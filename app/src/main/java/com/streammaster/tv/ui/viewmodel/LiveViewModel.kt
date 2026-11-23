@@ -55,9 +55,11 @@ class LiveViewModel @Inject constructor(
             _selectedBouquetId, _selectedChannelId, _showAllBouquets
         ) { bouquetId, channelId, showAll -> Triple(bouquetId, channelId, showAll) }
     ) { (bouquets, channels, settings), (bouquetId, channelId, showAll) ->
-        // Kids mode (2026-11-22): only kid-named bouquets/channels.
+        // Kids mode (2026-11-22): bouquets still filter by NAME (a bouquet
+        // has no description); channels filter by CONTENT — category +
+        // description via KidsFilter.isKidContent.
         val kidFilteredBouquets = if (settings.kidsMode) bouquets.filter { KidsFilter.isKidCategory(it.name) } else bouquets
-        val kidFilteredChannels = if (settings.kidsMode) channels.filter { KidsFilter.isKidCategory(it.category) } else channels
+        val kidFilteredChannels = if (settings.kidsMode) channels.filter { KidsFilter.isKidContent(it.category, it.description) } else channels
         val visibleBouquets = kidFilteredBouquets.filter { !it.hidden }
         val bouquet = if (showAll) null else visibleBouquets.firstOrNull { it.id == bouquetId } ?: visibleBouquets.firstOrNull()
         val bouquetChannels = if (showAll) kidFilteredChannels.filter { !it.hidden }

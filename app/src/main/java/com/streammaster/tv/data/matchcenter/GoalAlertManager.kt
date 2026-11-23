@@ -17,6 +17,11 @@ import javax.inject.Singleton
  * Goal alerts manager (2026-11-22): watches the `goalAlerts` setting and
  * starts/stops [GoalAlertService]. Opt-in — nothing runs while the setting
  * is off. Bound once from MainActivity, like RemoteServerManager.
+ *
+ * §4.36.8: the service also carries the pre-match smart alerts, which
+ * are gated inside the service on `smartMatchAlerts` (default true) —
+ * so the service must ALSO start when `smartMatchAlerts` is on even if
+ * `goalAlerts` is off; otherwise the pre-match alerts never fire alone.
  */
 @Singleton
 class GoalAlertManager @Inject constructor(
@@ -34,7 +39,7 @@ class GoalAlertManager @Inject constructor(
         bound = true
         scope.launch {
             settingsRepository.settings
-                .map { it.goalAlerts }
+                .map { it.goalAlerts || it.smartMatchAlerts }
                 .distinctUntilChanged()
                 .collect { enabled ->
                     if (enabled) GoalAlertService.start(context)

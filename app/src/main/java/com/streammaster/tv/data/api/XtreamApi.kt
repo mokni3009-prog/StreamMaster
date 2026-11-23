@@ -485,4 +485,49 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
         val base = playlist.serverUrl.trimEnd('/')
         return "$base/series/${playlist.username}/${playlist.password}/$episodeId.$containerExt"
     }
+
+    companion object {
+        /**
+         * Catchup / timeshift URL (§4.43):
+         * `{server}/streaming/timeshift.php?username={u}&password={p}&stream={id}&start={yyyy-MM-dd:HH-mm}&duration={minutes}`.
+         * [startMillis] is formatted in the device's local timezone (the
+         * EPG grid shows local times; the panel is assumed to interpret
+         * the value in the same wall-clock time). Pure function so the
+         * repository can build the URL without an XtreamApi instance.
+         */
+        fun buildTimeshiftUrl(
+            serverUrl: String,
+            username: String,
+            password: String,
+            streamId: Int,
+            startMillis: Long,
+            durationMinutes: Int
+        ): String {
+            val start = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.US)
+                .format(java.util.Date(startMillis))
+            return "${serverUrl.trimEnd('/')}/streaming/timeshift.php" +
+                "?username=$username&password=$password&stream=$streamId" +
+                "&start=$start&duration=${durationMinutes.coerceAtLeast(1)}"
+        }
+    }
+
+    /** Catchup URL for one EPG program on an Xtream channel, or null when
+     *  the channel id is not an Xtream stream ("xt-<streamId>"). */
+    fun catchupUrlForChannel(playlist: Playlist, channelId: String, program: EpgProgram): String? {
+        if (!channelId.startsWith("xt-")) return null
+        val streamId = channelId.removePrefix("xt-").toIntOrNull() ?: return null
+        val duration = ((program.endMillis - program.startMillis) / 60_000L).toInt().coerceAtLeast(1)
+        return timeshiftUrl(playlist, streamId, program.startMillis, duration)
+    }
+
+    /** Catchup URL for one program (instance helper around [buildTimeshiftUrl]). */
+    fun timeshiftUrl(playlist: Playlist, streamId: Int, startMillis: Long, durationMinutes: Int): String =
+        buildTimeshiftUrl(playlist.serverUrl, playlist.username, playlist.password, streamId, startMillis, durationMinutes)
+
+    /** Whether this live stream supports catchup: the provider sets
+     *  `tv_archive=1` on archived channels. Only a per-channel signal —
+     *  the Channel model does not carry it, so the EPG shows "Revoir"
+     *  for every Xtream channel and an unsupported one fails on playback
+     *  with the standard error screen. */
+    fun supportsCatchup(stream: XtreamLiveStream): Boolean = stream.tvArchive == 1
 }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="diag_dead_link">رابط ميّت: هاذي القناة ما عادش تجاوب. جرّب قناة أخرى ولا حدّث القائمة.</string>
+    <string name="diag_server_down">سيرفر المزوّد ما يتوصّلوش. عاود المحاولة بعد شوية دقايق.</string>
+    <string name="diag_weak_network">الإنترنت ضعيفة ولا غير مستقرة. ثبّت في اتصال الواي فاي ولا قرّب من الراوتر.</string>
+    <string name="diag_timeout">فات الوقت: السيرفر ياخو برشا وقت باش يجاوب. عاود المحاولة.</string>
+    <string name="diag_stalled">البث تجمّد (الذاكرة المؤقتة فارغة). ثبّت في اتصال الإنترنت.</string>
+    <string name="diag_decoder">المفكّك موش متوافق مع هاذا البث. جرّب محرك VLC من الإعدادات.</string>
+    <string name="diag_behind_live">البث المباشر تعاود من جهة السيرفر. رجوع للبث الحي.</string>
+    <string name="diag_unknown">التشغيل مستحيل. ثبّت في اتصالك ولا جرّب قناة أخرى.</string>
+</resources>

@@ -30,8 +30,10 @@ class SeriesViewModel @Inject constructor(
     val series: StateFlow<List<Series>> = combine(
         contentRepository.observeSeries(), settingsRepository.settings, _sort
     ) { list, settings, sort ->
-        // Kids mode (2026-11-22): only kid-named genres.
-        val kidFiltered = if (settings.kidsMode) list.filter { KidsFilter.isKidCategory(it.genre) } else list
+        // Kids mode (2026-11-22): content-based classification (genre +
+        // description). The rating argument stays null: Series.rating is
+        // the 0-10 provider score, not an age classification.
+        val kidFiltered = if (settings.kidsMode) list.filter { KidsFilter.isKidContent(it.genre, it.description) } else list
         val visible = kidFiltered.filter { !it.hidden }
         when (sort) {
             SeriesSort.DEFAULT -> visible

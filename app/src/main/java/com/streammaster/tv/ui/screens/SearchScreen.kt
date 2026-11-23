@@ -58,8 +58,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
+import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.SearchResult
+import com.streammaster.tv.data.prefs.SettingsStore
+import com.streammaster.tv.data.util.SearchIntent
 import com.streammaster.tv.ui.components.BuiltInKeyboard
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.KeyboardAction
@@ -76,6 +79,7 @@ import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
+import com.streammaster.tv.ui.viewmodel.MatchCenterViewModel
 import com.streammaster.tv.ui.viewmodel.SearchViewModel
 import java.util.Locale
 
@@ -96,15 +100,30 @@ import java.util.Locale
 @Composable
 fun SearchScreen(
     navController: NavHostController,
-    viewModel: SearchViewModel = hiltViewModel()
+    viewModel: SearchViewModel = hiltViewModel(),
+    matchCenterViewModel: MatchCenterViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    // §4.36.2 — MatchesToday intent: today's matches from the Match
+    // Center feed (ESPN), not from `state.results` (which stays empty
+    // for this intent by design).
+    val isMatchesToday = state.intent is SearchIntent.MatchesToday
+    val todayMatches by matchCenterViewModel.matches.collectAsState()
+    val matchesLoading by matchCenterViewModel.loading.collectAsState()
     // Initial focus: the first scope pill ("Tout").
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
     var keyboardLang by remember { mutableStateOf(KeyboardLanguage.FR) }
     var keyboard123 by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    // §4.22: speech recognition speaks the APP's chosen UI language
+    // (AppSettings.lang), not the device language. SettingsStore is read
+    // directly here — SearchViewModel owns search state only.
+    val settingsStore = remember(context) { SettingsStore(context.applicationContext) }
+    val settings by settingsStore.settings.collectAsState(initial = AppSettings())
+    val voiceLocale = remember(settings.lang) {
+        Locale.forLanguageTag(settings.lang.ifBlank { "fr" })
+    }
     // Voice search (2026-11-22): system speech recognizer (remote mic).
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -118,7 +137,7 @@ fun SearchScreen(
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) launchVoiceSearch(context, voiceLauncher)
+        if (granted) launchVoiceSearch(context, voiceLauncher, voiceLocale)
     }
 
     val liveResults = state.results.filter { it.kind == ContentKind.LIVE }
@@ -233,17 +252,23 @@ fun SearchScreen(
         }
 
         // SE05: results in 3 grouped sections, each with a SectionHeader,
-        // a count badge and channel cards / posters.
+        // a count badge and channel cards / posters. For the MatchesToday
+        // intent the sections are replaced by today's Match Center feed.
         LazyColumn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            if (state.query.isNotEmpty() && state.results.isEmpty() && !state.searching) {
+            if (isMatchesToday) {
+                item {
+                    MatchCenterList(matches = todayMatches, loading = matchesLoading)
+                }
+            }
+            if (state.query.isNotEmpty() && state.results.isEmpty() && !state.searching && !isMatchesToday) {
                 item {
                     Text(text = stringResource(R.string.no_results), fontSize = 18.sp, color = TextMuted)
                 }
             }
-            if (state.query.isNotEmpty()) {
+            if (state.query.isNotEmpty() && !isMatchesToday) {
                 item {
                     ResultSection(
                         title = stringResource(R.string.search_results_live),
@@ -685,11 +710,12 @@ private fun ChannelResultCard(
 
 private fun launchVoiceSearch(
     context: android.content.Context,
-    launcher: androidx.activity.result.ActivityResultLauncher<Intent>
+    launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
+    locale: Locale
 ) {
     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+        putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
         putExtra(RecognizerIntent.EXTRA_PROMPT, "")
     }
     if (intent.resolveActivity(context.packageManager) != null) {

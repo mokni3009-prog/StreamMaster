@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- §4.1 / §4.48 / §4.49 / §4.53 — Detail screen strings (2026-11-23). -->
+<resources>
+    <string name="detail_resume_percent">Resume • %1$d%%</string>
+    <string name="detail_director">Director</string>
+    <string name="detail_your_rating">Your rating</string>
+    <string name="detail_your_rating_set">Your rating: %1$d / 5</string>
+    <string name="detail_rate_hint">Tap a star to rate this title (1 to 5).</string>
+    <string name="detail_similar_title">Similar titles</string>
+    <string name="detail_actor_works_title">With %1$s</string>
+    <string name="detail_actor_works_loading">Looking for their other works…</string>
+    <string name="detail_actor_works_empty">No other works found in your lists.</string>
+    <string name="detail_cast_unavailable">Cast not available for this title.</string>
+    <string name="detail_subtitle_download">Subtitles</string>
+    <string name="detail_subtitle_soon">Subtitle download coming soon.</string>
+</resources>

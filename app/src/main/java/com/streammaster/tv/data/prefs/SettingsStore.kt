@@ -49,6 +49,21 @@ class SettingsStore(private val context: Context) {
         val KEY_MAX_SPEED = booleanPreferencesKey("maxSpeed")
         val KEY_REMOTE_ENABLED = booleanPreferencesKey("remoteEnabled")
         val KEY_REMOTE_CODE = stringPreferencesKey("remoteCode")
+        // §4.37 / §4.36 / §4.54 / §4.56 / §4.59 / §4.61 / §4.39 / §4.42
+        // (2026-11-23): new settings — see AppSettings for the meaning of
+        // each field. Contract: other builders read these via the
+        // AppSettings flow; setters below are the write path.
+        val KEY_LAST_CHANNEL = stringPreferencesKey("lastChannelId")
+        val KEY_VOLUME_NORMALIZATION = booleanPreferencesKey("volumeNormalization")
+        val KEY_AUTO_ARABIC_SUBS = booleanPreferencesKey("autoArabicSubs")
+        val KEY_DND_ENABLED = booleanPreferencesKey("dndEnabled")
+        val KEY_SMART_MATCH_ALERTS = booleanPreferencesKey("smartMatchAlerts")
+        val KEY_FIRST_RUN_DONE = booleanPreferencesKey("firstRunDone")
+        val KEY_AUTO_BACKUP_WEEKLY = booleanPreferencesKey("autoBackupWeekly")
+        val KEY_SUBTITLE_SIZE = intPreferencesKey("subtitleSize")
+        val KEY_SUBTITLE_COLOR = stringPreferencesKey("subtitleColor")
+        val KEY_SUBTITLE_POSITION = stringPreferencesKey("subtitlePosition")
+        val KEY_PIN_RECOVERY_HASH = stringPreferencesKey("pinRecoveryHash")
 
         fun encodeLockedBouquets(map: Map<String, List<String>>): String =
             map.entries.filter { it.value.isNotEmpty() }
@@ -96,7 +111,18 @@ class SettingsStore(private val context: Context) {
             goalAlerts = prefs[KEY_GOAL_ALERTS] ?: false,
             maxSpeed = prefs[KEY_MAX_SPEED] ?: true,
             remoteEnabled = prefs[KEY_REMOTE_ENABLED] ?: false,
-            remoteCode = prefs[KEY_REMOTE_CODE] ?: ""
+            remoteCode = prefs[KEY_REMOTE_CODE] ?: "",
+            lastChannelId = prefs[KEY_LAST_CHANNEL],
+            volumeNormalization = prefs[KEY_VOLUME_NORMALIZATION] ?: true,
+            autoArabicSubs = prefs[KEY_AUTO_ARABIC_SUBS] ?: true,
+            dndEnabled = prefs[KEY_DND_ENABLED] ?: false,
+            smartMatchAlerts = prefs[KEY_SMART_MATCH_ALERTS] ?: true,
+            firstRunDone = prefs[KEY_FIRST_RUN_DONE] ?: false,
+            autoBackupWeekly = prefs[KEY_AUTO_BACKUP_WEEKLY] ?: false,
+            subtitleSize = prefs[KEY_SUBTITLE_SIZE] ?: 100,
+            subtitleColor = prefs[KEY_SUBTITLE_COLOR] ?: "#FFFFFF",
+            subtitlePosition = prefs[KEY_SUBTITLE_POSITION] ?: "bottom",
+            pinRecoveryHash = prefs[KEY_PIN_RECOVERY_HASH]
         )
     }
 
@@ -130,7 +156,18 @@ class SettingsStore(private val context: Context) {
                 goalAlerts = prefs[KEY_GOAL_ALERTS] ?: false,
                 maxSpeed = prefs[KEY_MAX_SPEED] ?: true,
                 remoteEnabled = prefs[KEY_REMOTE_ENABLED] ?: false,
-                remoteCode = prefs[KEY_REMOTE_CODE] ?: ""
+                remoteCode = prefs[KEY_REMOTE_CODE] ?: "",
+                lastChannelId = prefs[KEY_LAST_CHANNEL],
+                volumeNormalization = prefs[KEY_VOLUME_NORMALIZATION] ?: true,
+                autoArabicSubs = prefs[KEY_AUTO_ARABIC_SUBS] ?: true,
+                dndEnabled = prefs[KEY_DND_ENABLED] ?: false,
+                smartMatchAlerts = prefs[KEY_SMART_MATCH_ALERTS] ?: true,
+                firstRunDone = prefs[KEY_FIRST_RUN_DONE] ?: false,
+                autoBackupWeekly = prefs[KEY_AUTO_BACKUP_WEEKLY] ?: false,
+                subtitleSize = prefs[KEY_SUBTITLE_SIZE] ?: 100,
+                subtitleColor = prefs[KEY_SUBTITLE_COLOR] ?: "#FFFFFF",
+                subtitlePosition = prefs[KEY_SUBTITLE_POSITION] ?: "bottom",
+                pinRecoveryHash = prefs[KEY_PIN_RECOVERY_HASH]
             )
             val next = transform(current)
             prefs[KEY_LANG] = next.lang
@@ -160,11 +197,77 @@ class SettingsStore(private val context: Context) {
             prefs[KEY_MAX_SPEED] = next.maxSpeed
             prefs[KEY_REMOTE_ENABLED] = next.remoteEnabled
             prefs[KEY_REMOTE_CODE] = next.remoteCode
+            if (next.lastChannelId == null) prefs.remove(KEY_LAST_CHANNEL)
+            else prefs[KEY_LAST_CHANNEL] = next.lastChannelId
+            prefs[KEY_VOLUME_NORMALIZATION] = next.volumeNormalization
+            prefs[KEY_AUTO_ARABIC_SUBS] = next.autoArabicSubs
+            prefs[KEY_DND_ENABLED] = next.dndEnabled
+            prefs[KEY_SMART_MATCH_ALERTS] = next.smartMatchAlerts
+            prefs[KEY_FIRST_RUN_DONE] = next.firstRunDone
+            prefs[KEY_AUTO_BACKUP_WEEKLY] = next.autoBackupWeekly
+            prefs[KEY_SUBTITLE_SIZE] = next.subtitleSize
+            prefs[KEY_SUBTITLE_COLOR] = next.subtitleColor
+            prefs[KEY_SUBTITLE_POSITION] = next.subtitlePosition
+            if (next.pinRecoveryHash == null) prefs.remove(KEY_PIN_RECOVERY_HASH)
+            else prefs[KEY_PIN_RECOVERY_HASH] = next.pinRecoveryHash
         }
     }
 
     suspend fun setPin(pin: String) {
         context.settingsDataStore.edit { prefs -> prefs[KEY_PIN] = pin }
+    }
+
+    /** §4.37 — last watched live channel (null clears it). Read by the
+     *  launch flow when autoResume is on; written on every channel switch. */
+    suspend fun setLastChannelId(id: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (id == null) prefs.remove(KEY_LAST_CHANNEL) else prefs[KEY_LAST_CHANNEL] = id
+        }
+    }
+
+    suspend fun setVolumeNormalization(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_VOLUME_NORMALIZATION] = enabled }
+    }
+
+    suspend fun setAutoArabicSubs(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_AUTO_ARABIC_SUBS] = enabled }
+    }
+
+    suspend fun setDndEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_DND_ENABLED] = enabled }
+    }
+
+    suspend fun setSmartMatchAlerts(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SMART_MATCH_ALERTS] = enabled }
+    }
+
+    suspend fun setFirstRunDone(done: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_FIRST_RUN_DONE] = done }
+    }
+
+    suspend fun setAutoBackupWeekly(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_AUTO_BACKUP_WEEKLY] = enabled }
+    }
+
+    suspend fun setSubtitleSize(percent: Int) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SUBTITLE_SIZE] = percent }
+    }
+
+    suspend fun setSubtitleColor(hex: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SUBTITLE_COLOR] = hex }
+    }
+
+    suspend fun setSubtitlePosition(position: String) {
+        context.settingsDataStore.edit { prefs -> prefs[KEY_SUBTITLE_POSITION] = position }
+    }
+
+    /** §4.42 — stores ONLY the hash of the PIN recovery code (null clears
+     *  it, e.g. when the PIN is removed). The code itself is never stored. */
+    suspend fun setPinRecoveryHash(hash: String?) {
+        context.settingsDataStore.edit { prefs ->
+            if (hash == null) prefs.remove(KEY_PIN_RECOVERY_HASH)
+            else prefs[KEY_PIN_RECOVERY_HASH] = hash
+        }
     }
 
 }
