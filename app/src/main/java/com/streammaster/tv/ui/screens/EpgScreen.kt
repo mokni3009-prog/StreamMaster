@@ -3,6 +3,8 @@ package com.streammaster.tv.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -111,6 +113,11 @@ fun EpgScreen(
     val slotGap: Dp = 10.dp
     val chanW: Dp = 240.dp
     val gridW: Dp = slotW * 12 + slotGap * 11
+    // UI scaling (2026-11-23): the grid is 1560dp wide — it overflows the
+    // 1472dp content even at the 1920×1080 reference — so the hour header
+    // and every channel row share one horizontal scroll state instead of
+    // being clipped. The slots keep their exact 100dp design width.
+    val gridScroll = rememberScrollState()
 
     Column(modifier = Modifier.fillMaxSize()) {
         // E01 — section header (.sec-head): gold bar + title + badge.
@@ -163,7 +170,7 @@ fun EpgScreen(
         }
         // E03 — hour header: 20:00–02:00, each label spanning two 30-min columns.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(gridScroll).padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(slotGap),
             verticalAlignment = Alignment.Bottom
         ) {
@@ -193,6 +200,7 @@ fun EpgScreen(
             items(state.channels) { channel ->
                 val programs by viewModel.programsFor(channel.id).collectAsState()
                 Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(gridScroll),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(slotGap)
                 ) {

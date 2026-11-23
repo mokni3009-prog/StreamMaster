@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -86,7 +86,7 @@ fun LoadingScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .width(880.dp)
+                    .widthIn(max = 880.dp).fillMaxWidth()
                     .shadow(
                         35.dp,
                         RoundedCornerShape(36.dp),

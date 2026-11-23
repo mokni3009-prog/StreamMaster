@@ -3,6 +3,8 @@ package com.streammaster.tv.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -83,7 +85,14 @@ fun HomeScreen(
             initialFocusDone = true
         }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(36.dp)) {
+    // UI scaling (2026-11-23): Hero (420dp) + stats + 4 poster rows
+    // exceed the viewport even at the reference, and the Shell does not
+    // scroll its content — so Home scrolls vertically (LazyRows inside
+    // still scroll horizontally; D-pad focus scrolls into view).
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(36.dp)
+    ) {
         // Expiry card at the top (no welcome text).
         CardSurface(modifier = Modifier.fillMaxWidth()) {
             Row(

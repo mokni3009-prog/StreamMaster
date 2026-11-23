@@ -49,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -595,6 +596,9 @@ private fun TopBar(
 ) {
     val activePlaylist by viewModel.activePlaylist.collectAsState()
     val latencyMs by viewModel.latencyMs.collectAsState()
+    // UI scaling (2026-11-23): on the narrowest canvas class the latency
+    // pill is hidden first (Flux + clock stay) so the search pill keeps room.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -682,8 +686,8 @@ private fun TopBar(
                     color = GoldWhite
                 )
             }
-            // Latency pill (ic_wifi + live ms).
-            Row(
+            // Latency pill (ic_wifi + live ms) — hidden first on narrow canvases.
+            if (!narrow) Row(
                 modifier = Modifier
                     .height(52.dp)
                     .background(Color(0xE61C1406), RoundedCornerShape(26.dp))

@@ -74,7 +74,8 @@ fun FilmsScreen(
             SortPill(stringResource(R.string.sort_rated), sort == FilmSort.RATED) { viewModel.setSort(FilmSort.RATED) }
             SortPill(stringResource(R.string.sort_az), sort == FilmSort.AZ) { viewModel.setSort(FilmSort.AZ) }
         }
-        LazyVerticalGrid(columns = GridCells.Fixed(5), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        // UI scaling (2026-11-23): Adaptive keeps 5 columns at the reference and drops to 3 on the smallest canvas.
+        LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 232.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             items(films) { film ->
                 PosterTile(
                     title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),

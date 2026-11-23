@@ -74,7 +74,8 @@ fun SeriesScreen(
             SortPill(stringResource(R.string.sort_seasons), sort == SeriesSort.SEASONS) { viewModel.setSort(SeriesSort.SEASONS) }
             SortPill(stringResource(R.string.sort_az), sort == SeriesSort.AZ) { viewModel.setSort(SeriesSort.AZ) }
         }
-        LazyVerticalGrid(columns = GridCells.Fixed(5), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        // UI scaling (2026-11-23): Adaptive keeps 5 columns at the reference and drops to 3 on the smallest canvas.
+        LazyVerticalGrid(columns = GridCells.Adaptive(minSize = 232.dp), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
             items(series) { item ->
                 PosterTile(
                     title = item.title, hue = item.hue, code = item.title.take(2).uppercase(),

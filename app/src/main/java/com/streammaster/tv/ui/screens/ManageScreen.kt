@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -193,7 +193,7 @@ fun ManageScreen(
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             // Column 1 — bouquets (M02/M03: 470dp).
             MgCol(
-                modifier = Modifier.width(470.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.89f).widthIn(max = 470.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_folder,
                 title = stringResource(R.string.bouquets),
                 count = kindBouquets.size
@@ -272,7 +272,7 @@ fun ManageScreen(
             }
             // Column 3 — actions (M02/M03: 430dp, no header: target box first).
             MgCol(
-                modifier = Modifier.width(430.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.81f).widthIn(max = 430.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_shield,
                 title = stringResource(R.string.mg_target),
                 count = selectedIds.size,

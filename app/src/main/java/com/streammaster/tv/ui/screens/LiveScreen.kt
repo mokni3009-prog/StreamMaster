@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -202,7 +203,10 @@ fun LiveScreen(
             }
             Row(modifier = Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
                 // Left — channel list (580dp) + usage hint (V03).
-                Column(modifier = Modifier.width(580.dp).fillMaxHeight()) {
+                // UI scaling (2026-11-23): 580dp is a cap, not a forced
+                // width — weight 0.671 reproduces 580dp at the 1472dp
+                // reference content width (0.671/1.671 × 1444 ≈ 580).
+                Column(modifier = Modifier.weight(0.671f).widthIn(max = 580.dp).fillMaxHeight()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(start = 6.dp, bottom = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,

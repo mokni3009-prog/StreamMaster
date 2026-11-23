@@ -5,6 +5,8 @@ import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -160,7 +162,7 @@ fun LoginScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .width(800.dp)
+                    .widthIn(max = 800.dp).fillMaxWidth()
                     .offset(y = boxLift)
                     .shadow(
                         35.dp,
@@ -170,6 +172,11 @@ fun LoginScreen(
                     )
                     .background(LoginBoxGradient, RoundedCornerShape(36.dp))
                     .border(2.dp, BorderStrong, RoundedCornerShape(36.dp))
+                    // UI scaling (2026-11-23): the card is ~826dp tall, so at
+                    // scale 0.5 it is ~413dp — taller than a 360dp canvas.
+                    // It scrolls internally there; at the reference it fits
+                    // and nothing scrolls.
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 56.dp, vertical = 44.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(18.dp)

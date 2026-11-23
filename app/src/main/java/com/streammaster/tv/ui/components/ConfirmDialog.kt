@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -68,7 +68,7 @@ fun ConfirmDialog(
     ) {
         Column(
             modifier = Modifier
-                .width(720.dp)
+                .widthIn(max = 720.dp).fillMaxWidth()
                 .background(
                     Brush.linearGradient(
                         0.0f to Color(0xFA221807),

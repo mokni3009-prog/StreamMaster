@@ -19,6 +19,7 @@ import com.streammaster.tv.player.remote.RemoteKeyDispatcher
 import com.streammaster.tv.player.remote.RemoteServerManager
 import com.streammaster.tv.ui.navigation.AppNavHost
 import com.streammaster.tv.ui.navigation.Routes
+import com.streammaster.tv.ui.theme.ScaledContent
 import com.streammaster.tv.ui.theme.StreamMasterTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -61,7 +62,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
             StreamMasterTheme {
-                AppNavHost(navController)
+                // UI scaling (2026-11-23): the whole nav graph is measured
+                // against the 1920×1080dp design canvas (see UiScale.kt).
+                ScaledContent { AppNavHost(navController) }
             }
             // Navigate to a pending reminder deep link once the destination
             // settles on a main screen (not Splash/Login/Loading).

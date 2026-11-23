@@ -858,7 +858,7 @@ private fun PlayerControls(
     Box(Modifier.fillMaxSize()) {
         // Vignettes (PL17).
         Box(
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(300.dp)
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(0.28f)
                 .background(
                     Brush.verticalGradient(
                         listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
@@ -866,7 +866,7 @@ private fun PlayerControls(
                 )
         )
         Box(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(460.dp)
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.43f)
                 .background(
                     Brush.verticalGradient(
                         listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))

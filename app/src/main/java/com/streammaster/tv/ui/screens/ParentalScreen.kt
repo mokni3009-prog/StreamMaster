@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -180,7 +180,7 @@ fun ParentalScreen(
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             // Column 1 — bouquets
             MgCol(
-                modifier = Modifier.width(470.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.89f).widthIn(max = 470.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_folder,
                 title = stringResource(R.string.bouquets),
                 count = kindBouquets.size
@@ -246,7 +246,7 @@ fun ParentalScreen(
             // Column 3 — actions (no column header in the prototype: the
             // target box is the first element).
             MgCol(
-                modifier = Modifier.width(430.dp).fillMaxHeight(),
+                modifier = Modifier.weight(0.81f).widthIn(max = 430.dp).fillMaxHeight(),
                 iconRes = R.drawable.ic_shield,
                 title = stringResource(R.string.mg_target),
                 count = dirtyCount,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -97,7 +98,7 @@ fun SelectorDialog(
     ) {
         Column(
             modifier = modifier
-                .width(980.dp)
+                .widthIn(max = 980.dp).fillMaxWidth()
                 .background(
                     Brush.linearGradient(
                         0.0f to Color(0xFA221807),

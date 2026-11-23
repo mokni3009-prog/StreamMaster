@@ -153,7 +153,8 @@ fun PlaylistsScreen(
         }
         // Y01 — 3-column grid.
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            // UI scaling (2026-11-23): Adaptive keeps 3 columns at the reference (minSize 232 would give 6) and drops to 1 on the smallest canvas.
+            columns = GridCells.Adaptive(minSize = 460.dp),
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(22.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)

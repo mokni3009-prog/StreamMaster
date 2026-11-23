@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -306,7 +306,9 @@ fun SettingsScreen(
         // ST01 — two columns: 660dp list + detail panel.
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             LazyColumn(
-                modifier = Modifier.width(660.dp).fillMaxHeight(),
+                // UI scaling (2026-11-23): 660dp is a cap — weight 0.835
+                // reproduces it at the 1472dp reference (0.835/1.835 × 1450 ≈ 660).
+                modifier = Modifier.weight(0.835f).widthIn(max = 660.dp).fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(11.dp)
             ) {
                 modelRows.forEach { def ->
