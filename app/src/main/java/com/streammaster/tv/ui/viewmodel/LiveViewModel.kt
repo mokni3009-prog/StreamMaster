@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -75,7 +76,7 @@ class LiveViewModel @Inject constructor(
     /** Digit entry: custom number first, then the built-in server number. */
     suspend fun resolveChannelNumber(digits: String): Channel? {
         val n = digits.toIntOrNull() ?: return null
-        val list = kotlinx.coroutines.flow.first(contentRepository.observeChannels())
+        val list = contentRepository.observeChannels().first()
         return list.firstOrNull { it.customNum == n }
             ?: list.firstOrNull { it.num.trimStart('0').toIntOrNull() == n }
     }

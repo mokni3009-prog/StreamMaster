@@ -14,8 +14,9 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.StuckPlayerException
+import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.LoadEventInfo
 import androidx.media3.exoplayer.source.MediaLoadData
 import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
@@ -27,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -240,7 +242,7 @@ class PlayerManagerImpl @Inject constructor(
     private val exoAnalyticsListener = object : AnalyticsListener {
         override fun onBandwidthEstimate(
             eventTime: AnalyticsListener.EventTime,
-            totalLoadTimeMs: Long,
+            totalLoadTimeMs: Int,
             totalBytesLoaded: Long,
             bitrateEstimate: Long
         ) {
@@ -274,7 +276,7 @@ class PlayerManagerImpl @Inject constructor(
 
         override fun onLoadError(
             eventTime: AnalyticsListener.EventTime,
-            loadEventInfo: AnalyticsListener.LoadEventInfo,
+            loadEventInfo: LoadEventInfo,
             mediaLoadData: MediaLoadData,
             error: java.io.IOException,
             wasCanceled: Boolean
@@ -1023,6 +1025,7 @@ class PlayerManagerImpl @Inject constructor(
                 ContentKind.SERIES, item.series.id,
                 "${item.series.title} — S${item.episode.season}E${item.episode.number}"
             )
+            is PlaybackItem.RecordingItem, is PlaybackItem.DownloadItem -> return
         }
         scope.launch {
             try {

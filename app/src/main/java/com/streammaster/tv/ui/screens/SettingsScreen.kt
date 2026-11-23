@@ -103,6 +103,7 @@ fun SettingsScreen(
         }
     }
 
+    @Composable
     fun label(res: Int) = stringResource(res)
     val dnsOptions = listOf(
         "auto" to label(R.string.dns_auto), "8.8.8.8" to label(R.string.dns_google),
@@ -264,12 +265,13 @@ fun SettingsScreen(
         // Server status (2026-11-22).
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                val status = serverStatus
                 Text(
                     text = stringResource(R.string.server_status) + ": " + when {
                         serverChecking -> "…"
-                        serverStatus == null -> stringResource(R.string.server_not_checked)
-                        serverStatus.online -> stringResource(R.string.server_online, serverStatus.latencyMs)
-                        else -> stringResource(R.string.server_offline, serverStatus.detail)
+                        status == null -> stringResource(R.string.server_not_checked)
+                        status.online -> stringResource(R.string.server_online, status.latencyMs)
+                        else -> stringResource(R.string.server_offline, status.detail)
                     },
                     fontSize = 18.sp, color = GoldWhite
                 )
@@ -280,18 +282,19 @@ fun SettingsScreen(
         item { ReadOnlyField(stringResource(R.string.update_url), draft.updateUrl) { keyboardTarget = "updateUrl" } }
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                val info = updateInfo
                 Text(
                     text = when {
                         checkingUpdate -> stringResource(R.string.checking)
-                        updateInfo == null -> stringResource(R.string.update_not_checked)
-                        !updateInfo.available -> stringResource(R.string.update_up_to_date)
-                        else -> stringResource(R.string.update_available, updateInfo.version)
+                        info == null -> stringResource(R.string.update_not_checked)
+                        !info.available -> stringResource(R.string.update_up_to_date)
+                        else -> stringResource(R.string.update_available, info.version)
                     },
                     fontSize = 18.sp, color = GoldWhite
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (updateInfo?.available == true && updateInfo.downloadUrl.isNotBlank()) {
-                        GoldButton(text = stringResource(R.string.download)) { viewModel.downloadUpdate(updateInfo.downloadUrl) }
+                    if (info?.available == true && info.downloadUrl.isNotBlank()) {
+                        GoldButton(text = stringResource(R.string.download)) { viewModel.downloadUpdate(info.downloadUrl) }
                     }
                     GoldButton(text = stringResource(R.string.check)) { viewModel.checkForUpdate() }
                 }

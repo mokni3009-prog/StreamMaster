@@ -20,8 +20,8 @@ import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.cronet.CronetDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.source.DefaultLoadErrorHandlingPolicy
-import androidx.media3.exoplayer.source.LoadErrorInfo
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.rtsp.RtspMediaSource
@@ -47,7 +47,7 @@ private const val TAG = "StreamMaster"
 internal class StreamMasterLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(
     /* minimumLoadableRetryCount = */ 4
 ) {
-    override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorInfo): Long {
+    override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {
         val exception = loadErrorInfo.exception
         if (exception is HttpDataSource.InvalidResponseCodeException) {
             if (exception.responseCode == 404 || exception.responseCode == 403) {

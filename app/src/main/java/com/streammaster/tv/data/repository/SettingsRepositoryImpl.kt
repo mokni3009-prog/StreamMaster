@@ -5,6 +5,7 @@ import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.prefs.SettingsStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,7 +31,7 @@ class SettingsRepositoryImpl @Inject constructor(
      * for a live channel — if its bouquet is locked.
      */
     override suspend fun isLocked(kind: ContentKind, id: String): Boolean {
-        val current = kotlinx.coroutines.flow.first(settingsStore.settings)
+        val current = settingsStore.settings.first()
         if (current.pin.isEmpty()) return false
         if (id in current.lockedItems) return true
         val lockedBouquetIds = current.lockedBouquets.values.flatten().toSet()

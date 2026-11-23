@@ -106,6 +106,12 @@ fun PlayerScreen(
 
     LaunchedEffect(kind, id) { viewModel.load(kind, id) }
     LaunchedEffect(position, duration) { viewModel.onPositionAdvanced(position, duration) }
+    fun exitPlayer() {
+        viewModel.stop()
+        navController.previousBackStackEntry?.savedStateHandle?.set("focusedId", id)
+        navController.popBackStack()
+    }
+
     // Phone web remote (2026-11-22): commands from the phone page.
     LaunchedEffect(Unit) {
         viewModel.remoteCommands.collect { cmd ->
@@ -189,12 +195,6 @@ fun PlayerScreen(
     }
     LaunchedEffect(playback.showError) {
         if (playback.showError) viewModel.armControlsAutoHide()
-    }
-
-    fun exitPlayer() {
-        viewModel.stop()
-        navController.previousBackStackEntry?.savedStateHandle?.set("focusedId", id)
-        navController.popBackStack()
     }
 
     fun onBackPressed(): Boolean {

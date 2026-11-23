@@ -40,10 +40,10 @@ import com.streammaster.tv.ui.theme.tvFocus
 @Composable
 fun GoldButton(
     text: String,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    outlined: Boolean = false
+    outlined: Boolean = false,
+    onClick: () -> Unit
 ) {
     val bg = when {
         !enabled -> Color(0xFF3A2F16)

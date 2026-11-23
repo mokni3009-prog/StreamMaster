@@ -4,8 +4,9 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.OptIn
 import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.util.Clock
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultBandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -64,11 +65,19 @@ fun createExoPlayer(
         .setEnableDecoderFallback(true) // A8: software fallback if HW decoder fails.
         .experimentalSetEnableMediaCodecVideoRendererPrewarming(true) // B11.
 
-    val adaptiveFactory = AdaptiveTrackSelection.Factory()
-        // Max speed (2026-11-22): use 100% of the measured bandwidth and
-        // upshift sooner; otherwise ~70% with the live-edge guard (B1/B5).
-        .setBandwidthFraction(if (settings.maxSpeed) 1.0f else 0.7f) // B1.
-        .setBufferedFractionToLiveEdgeForQualityIncrease(if (settings.maxSpeed) 0.5f else 0.75f) // B5.
+    // Max speed (2026-11-22): use 100% of the measured bandwidth and
+    // upshift sooner; otherwise ~70% with the live-edge guard (B1/B5).
+    // Media3 1.9.0 configures AdaptiveTrackSelection via constructor
+    // parameters (the setBandwidthFraction / setBufferedFraction... setters
+    // do not exist in 1.9.0); duration defaults are 10s / 25s / 25s.
+    val adaptiveFactory = AdaptiveTrackSelection.Factory(
+        /* minDurationForQualityIncreaseMs = */ 10_000,
+        /* maxDurationForQualityDecreaseMs = */ 25_000,
+        /* minDurationToRetainAfterDiscardMs = */ 25_000,
+        /* bandwidthFraction = */ if (settings.maxSpeed) 1.0f else 0.7f, // B1.
+        /* bufferedFractionToLiveEdgeForQualityIncrease = */ if (settings.maxSpeed) 0.5f else 0.75f, // B5.
+        Clock.DEFAULT
+    )
 
     val trackSelector = DefaultTrackSelector(context, adaptiveFactory)
     trackSelector.parameters = buildTrackSelectionParameters(context, settings.maxSpeed)
@@ -93,7 +102,7 @@ fun createExoPlayer(
             /* bufferForPlaybackMs = */ 2_500,
             /* bufferForPlaybackAfterRebufferMs = */ 5_000
         )
-        .setPrioritizeTimeOverSizeThresholds(true) // B6: time over size for live.
+        .setPrioritizeTimeOverSizeThresholdsForStreaming(true) // B6: time over size for live.
         .build()
 
     return ExoPlayer.Builder(context, renderersFactory)

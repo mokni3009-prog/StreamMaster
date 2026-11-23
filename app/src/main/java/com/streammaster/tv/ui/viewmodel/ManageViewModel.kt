@@ -55,7 +55,7 @@ class ManageViewModel @Inject constructor(
                 contentRepository.observeChannels(),
                 contentRepository.observeFilms(),
                 contentRepository.observeSeries()
-            ) { live, films, series, channels, filmList, seriesList ->
+            ) { live: List<Bouquet>, films: List<Bouquet>, series: List<Bouquet>, channels: List<Channel>, filmList: List<Film>, seriesList: List<Series> ->
                 val allBouquets = live + films + series
                 _draft.update {
                     it.copy(

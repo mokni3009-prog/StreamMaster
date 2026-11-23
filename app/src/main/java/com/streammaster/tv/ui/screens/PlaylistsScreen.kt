@@ -1,6 +1,7 @@
 package com.streammaster.tv.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember

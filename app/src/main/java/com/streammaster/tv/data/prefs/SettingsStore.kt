@@ -49,6 +49,23 @@ class SettingsStore(private val context: Context) {
         val KEY_MAX_SPEED = booleanPreferencesKey("maxSpeed")
         val KEY_REMOTE_ENABLED = booleanPreferencesKey("remoteEnabled")
         val KEY_REMOTE_CODE = stringPreferencesKey("remoteCode")
+
+        fun encodeLockedBouquets(map: Map<String, List<String>>): String =
+            map.entries.filter { it.value.isNotEmpty() }
+                .joinToString(";") { (k, v) -> "$k:${v.joinToString(",")}" }
+
+        fun decodeLockedBouquets(raw: String): Map<String, List<String>> {
+            if (raw.isBlank()) return emptyMap()
+            return raw.split(";").mapNotNull { part ->
+                val idx = part.indexOf(':')
+                if (idx <= 0) null else part.substring(0, idx) to
+                    part.substring(idx + 1).split(",").filter { it.isNotBlank() }
+            }.toMap()
+        }
+
+        fun encodeLockedItems(list: List<String>): String = list.joinToString(",")
+        fun decodeLockedItems(raw: String): List<String> =
+            if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -150,22 +167,4 @@ class SettingsStore(private val context: Context) {
         context.settingsDataStore.edit { prefs -> prefs[KEY_PIN] = pin }
     }
 
-    companion object {
-        fun encodeLockedBouquets(map: Map<String, List<String>>): String =
-            map.entries.filter { it.value.isNotEmpty() }
-                .joinToString(";") { (k, v) -> "$k:${v.joinToString(",")}" }
-
-        fun decodeLockedBouquets(raw: String): Map<String, List<String>> {
-            if (raw.isBlank()) return emptyMap()
-            return raw.split(";").mapNotNull { part ->
-                val idx = part.indexOf(':')
-                if (idx <= 0) null else part.substring(0, idx) to
-                    part.substring(idx + 1).split(",").filter { it.isNotBlank() }
-            }.toMap()
-        }
-
-        fun encodeLockedItems(list: List<String>): String = list.joinToString(",")
-        fun decodeLockedItems(raw: String): List<String> =
-            if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
-    }
 }

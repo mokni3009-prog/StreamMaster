@@ -256,7 +256,7 @@ class PlayerViewModel @Inject constructor(
 
     fun checkPin(pin: String) = viewModelScope.launch {
         val expected = settingsRepository.settings.let {
-            kotlinx.coroutines.flow.first(it).pin
+            it.first().pin
         }
         if (pin == expected && expected.isNotEmpty()) {
             _ui.update { it.copy(pinRequired = false, pinError = false) }
@@ -305,7 +305,7 @@ class PlayerViewModel @Inject constructor(
     /** Phone remote (2026-11-22): zap to the next / previous channel in
      *  the current bouquet order. */
     fun zapChannel(delta: Int) = viewModelScope.launch {
-        val channels = kotlinx.coroutines.flow.first(contentRepository.observeChannels())
+        val channels = contentRepository.observeChannels().first()
         if (channels.isEmpty()) return@launch
         val currentId = _ui.value.channel?.id ?: return@launch
         val idx = channels.indexOfFirst { it.id == currentId }
@@ -395,7 +395,7 @@ class PlayerViewModel @Inject constructor(
 
     /** Previous channel; pressing twice returns to the first channel. */
     fun previousChannel() = viewModelScope.launch {
-        val channels = kotlinx.coroutines.flow.first(contentRepository.observeChannels())
+        val channels = contentRepository.observeChannels().first()
         val currentId = _ui.value.channel?.id ?: return@launch
         val idx = channels.indexOfFirst { it.id == currentId }
         val target = when {
@@ -414,7 +414,7 @@ class PlayerViewModel @Inject constructor(
         digitJob?.cancel()
         digitJob = viewModelScope.launch {
             delay(1500)
-            val channels = kotlinx.coroutines.flow.first(contentRepository.observeChannels())
+            val channels = contentRepository.observeChannels().first()
             val n = buffer.toIntOrNull()
             val found = channels.firstOrNull { it.customNum == n }
                 ?: channels.firstOrNull { it.num.trimStart('0').toIntOrNull() == n }

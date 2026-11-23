@@ -24,8 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.tv.foundation.lazy.list.TvLazyColumn
-import androidx.tv.foundation.lazy.list.itemsIndexed
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.clip
 import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
@@ -106,7 +107,7 @@ fun SelectorDialog(
                     }
                 }
             }
-            TvLazyColumn(
+            LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {

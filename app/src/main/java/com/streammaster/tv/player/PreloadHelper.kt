@@ -5,7 +5,8 @@ import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.source.DefaultPreloadManager
+import androidx.media3.exoplayer.source.preload.DefaultPreloadManager
+import androidx.media3.exoplayer.source.preload.TargetPreloadStatusControl
 import androidx.media3.exoplayer.source.MediaSource
 import com.streammaster.tv.util.DeviceCaps
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -53,10 +54,18 @@ class PreloadHelper @Inject constructor(
             val factoryKey = "${settings.ua}|${settings.dns}|$isVod"
             if (preloadManager == null || currentFactoryKey != factoryKey) {
                 preloadManager?.release()
+                // Media3 1.9.0: the Builder takes a TargetPreloadStatusControl
+                // (the 1.11.x Builder(context, mediaSourceFactory) form does
+                // not exist in 1.9.0); neighbours are prepared to
+                // STAGE_SOURCE_PREPARED, the factory comes via the setter.
                 preloadManager = DefaultPreloadManager.Builder(
                     context,
-                    networkStack.mediaSourceFactory(settings, isVod)
-                ).build()
+                    TargetPreloadStatusControl<Int, DefaultPreloadManager.PreloadStatus> {
+                        DefaultPreloadManager.PreloadStatus.PRELOAD_STATUS_SOURCE_PREPARED
+                    }
+                )
+                    .setMediaSourceFactory(networkStack.mediaSourceFactory(settings, isVod))
+                    .build()
                 currentFactoryKey = factoryKey
             }
             val manager = preloadManager ?: return
