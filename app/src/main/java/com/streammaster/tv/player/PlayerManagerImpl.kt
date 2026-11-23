@@ -159,26 +159,6 @@ class PlayerManagerImpl @Inject constructor(
         handleFailure(session, "stall: no progress for 12s")
     }
 
-    init {
-        scope.launch {
-            settingsRepository.settings.collect {
-                val maxSpeedChanged = it.maxSpeed != currentSettings.maxSpeed
-                currentSettings = it
-                // Max speed (2026-11-22): re-apply the rendition choice at once
-                // when the setting flips (the factory-level knobs — bandwidth
-                // fraction, buffers — apply from the next player creation).
-                if (maxSpeedChanged) setQuality(currentQualityMode)
-            }
-        }
-        scope.launch {
-            bitrateStore.getLastMeasuredBitrate()?.let { initialBitrateBps = it }
-        }
-        // Eager ExoPlayer creation so the UI can bind it as soon as the player
-        // screen opens (non-null on API >= 23, CONTRACT §5). MediaSources are
-        // still built per item, with the settings in force at play time.
-        ensureExoPlayer()
-    }
-
     // ---- ExoPlayer listeners ---------------------------------------------------
 
     private val exoListener = object : Player.Listener {
@@ -285,6 +265,26 @@ class PlayerManagerImpl @Inject constructor(
                 qoeLogger.logError(currentItem, activeEngine, "load: ${error.message}")
             }
         }
+    }
+
+    init {
+        scope.launch {
+            settingsRepository.settings.collect {
+                val maxSpeedChanged = it.maxSpeed != currentSettings.maxSpeed
+                currentSettings = it
+                // Max speed (2026-11-22): re-apply the rendition choice at once
+                // when the setting flips (the factory-level knobs — bandwidth
+                // fraction, buffers — apply from the next player creation).
+                if (maxSpeedChanged) setQuality(currentQualityMode)
+            }
+        }
+        scope.launch {
+            bitrateStore.getLastMeasuredBitrate()?.let { initialBitrateBps = it }
+        }
+        // Eager ExoPlayer creation so the UI can bind it as soon as the player
+        // screen opens (non-null on API >= 23, CONTRACT §5). MediaSources are
+        // still built per item, with the settings in force at play time.
+        ensureExoPlayer()
     }
 
     // ---- Public API ------------------------------------------------------------
