@@ -8,6 +8,10 @@
 #   Kotlin metadata 2.1.0 from 2025 libraries ("Provided Metadata instance
 #   has version 2.1.0"); 2.1.20's KAPT reads it. The Compose Compiler
 #   follows the Kotlin version automatically (kotlin.compose plugin).
+# - Hilt pinned to 2.55 (2026-11-23): 2.52's bundled kotlinx-metadata-jvm
+#   reads only up to Kotlin 2.0 metadata, so kapt failed with
+#   "Unable to read Kotlin metadata due to unsupported metadata version"
+#   once Room was fixed; 2.55 is confirmed working with Kotlin 2.1.0.
 # - libvlc-all pinned to 3.7.0 (2026-11-22): 3.7.6/3.7.7 require
 #   compileSdk 36 (AAR minCompileSdk=36, verified from the AAR metadata);
 #   3.7.0 is the newest verified with no compileSdk requirement
@@ -27,7 +31,7 @@ libvlc = "3.7.0"
 room = "2.7.1"
 datastore = "1.1.1"
 workmanager = "2.9.0"
-hilt = "2.52"
+hilt = "2.55"
 hiltNavigationCompose = "1.2.0"
 retrofit = "2.11.0"
 okhttp = "4.12.0"
