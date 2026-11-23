@@ -83,7 +83,7 @@ internal class StreamMasterLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(
 class NetworkStack @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
-    private val cronetEngine: CronetEngine,
+    private val cronetEngine: CronetEngine?,
     private val bitrateStore: BitrateStore
 ) {
     companion object {
@@ -187,25 +187,32 @@ class NetworkStack @Inject constructor(
                 Log.w(TAG, "HttpEngine unavailable, falling back to Cronet", e)
             }
         }
-        return try {
-            CronetDataSource.Factory(
-                cronetEngine,
-                Executors.newSingleThreadExecutor()
-            )
-                .setConnectionTimeoutMs(CONNECT_TIMEOUT_MS)
-                .setReadTimeoutMs(READ_TIMEOUT_MS)
-                .setUserAgent(ua)
-        } catch (e: Exception) {
-            Log.w(TAG, "Cronet unavailable, falling back to OkHttp/DefaultHttp", e)
+        // Cronet is optional (the DI provider returns null when it is
+        // unavailable on this device) — fall through to OkHttp then.
+        val engine = cronetEngine
+        if (engine != null) {
             try {
-                OkHttpDataSource.Factory(okHttpClient)
-            } catch (e2: Exception) {
-                DefaultHttpDataSource.Factory()
-                    .setUserAgent(ua)
-                    .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
+                return CronetDataSource.Factory(
+                    engine,
+                    Executors.newSingleThreadExecutor()
+                )
+                    .setConnectionTimeoutMs(CONNECT_TIMEOUT_MS)
                     .setReadTimeoutMs(READ_TIMEOUT_MS)
-                    .setAllowCrossProtocolRedirects(true)
+                    .setUserAgent(ua)
+            } catch (e: Exception) {
+                Log.w(TAG, "Cronet unavailable, falling back to OkHttp/DefaultHttp", e)
             }
+        } else {
+            Log.w(TAG, "CronetEngine not provided, falling back to OkHttp/DefaultHttp")
+        }
+        return try {
+            OkHttpDataSource.Factory(okHttpClient)
+        } catch (e2: Exception) {
+            DefaultHttpDataSource.Factory()
+                .setUserAgent(ua)
+                .setConnectTimeoutMs(CONNECT_TIMEOUT_MS)
+                .setReadTimeoutMs(READ_TIMEOUT_MS)
+                .setAllowCrossProtocolRedirects(true)
         }
     }
 
