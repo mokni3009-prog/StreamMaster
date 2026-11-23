@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -122,6 +125,39 @@ fun SearchScreen(
     val filmResults = state.results.filter { it.kind == ContentKind.FILM }
     val seriesResults = state.results.filter { it.kind == ContentKind.SERIES }
 
+    // Narrow canvas (720p xhdpi: 640x360 physical dp — LocalConfiguration
+    // reports physical dp, so this is true only there; same check as
+    // Shell.kt:601). On narrow the 400dp sidebar next to the panel leaves
+    // the keyboard 410dp wide (~22dp keys, "Valider" narrower than its
+    // label) and the ~664dp panel overflows the 546dp content height with
+    // no scrolling. There the panel goes full width and the sidebar moves
+    // below it inside a scrollable column; the results keep their
+    // LazyColumn(weight(1f)) below. Reference 1920x1080 unchanged.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
+    // Hoisted (unconditional) so the narrow branch needs no conditional
+    // remember(): the scroll state of the narrow upper column.
+    val narrowScrollState = rememberScrollState()
+    // Keyboard / sidebar callbacks, hoisted so both layout branches share
+    // one wiring (the branches differ only in arrangement + modifiers).
+    val onKeyboardKey: (String) -> Unit = { c -> viewModel.setQuery(state.query + c) }
+    val onKeyboardAction: (KeyboardAction) -> Unit = { action ->
+        when (action) {
+            is KeyboardAction.Char -> Unit // already handled via onKey
+            KeyboardAction.Backspace -> viewModel.setQuery(state.query.dropLast(1))
+            KeyboardAction.Space -> viewModel.setQuery(state.query + " ")
+            KeyboardAction.Shift -> { }
+            KeyboardAction.SwitchLanguage -> keyboardLang =
+                if (keyboardLang == KeyboardLanguage.FR) KeyboardLanguage.AR else KeyboardLanguage.FR
+            KeyboardAction.Switch123 -> keyboard123 = !keyboard123
+            KeyboardAction.Validate -> viewModel.submitSearch()
+            KeyboardAction.Close -> { }
+        }
+    }
+    val onClearQuery: () -> Unit = { viewModel.setQuery("") }
+    val onFilterChange: (ContentKind?) -> Unit = { viewModel.setFilter(it) }
+    val onPreviousSearch: (String) -> Unit = { viewModel.runPreviousSearch(it) }
+    val onVoiceSearch: () -> Unit = { audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+
     fun openResult(result: SearchResult) {
         viewModel.submitSearch()
         when (result.kind) {
@@ -135,225 +171,64 @@ fun SearchScreen(
         Text(text = stringResource(R.string.search_title), fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite)
 
         // SE01: two columns — search panel (1fr) + 400dp sidebar.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(22.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Left: .kb-panel — field + count, keyboard, remote hint.
-            val panelShape = RoundedCornerShape(24.dp)
+        // Narrow canvas only: panel full width, sidebar below it in a
+        // vertically scrollable column (weight(1f), sharing the space
+        // equally with the results LazyColumn below). Focused keys and
+        // pills scroll themselves into view (scrollIntoView), so the last
+        // keyboard row, "Valider", the hint and the whole sidebar stay
+        // reachable by remote. The reference branch keeps the old Row.
+        if (narrow) {
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .background(
-                        Brush.linearGradient(
-                            0.0f to Color(0xF01E1606),
-                            1.0f to Color(0xF50E0A03)
-                        ),
-                        panelShape
-                    )
-                    .border(2.dp, BorderGold, panelShape)
-                    .padding(horizontal = 26.dp, vertical = 24.dp),
+                    .verticalScroll(narrowScrollState),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                // SE02 + SE09: search field row with the result-count pill.
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val fieldShape = RoundedCornerShape(18.dp)
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(62.dp)
-                            .clip(fieldShape)
-                            .background(Color(0xEB060401))
-                            .border(2.dp, GoldBright, fieldShape)
-                            .padding(horizontal = 22.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_search),
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(26.dp)
-                        )
-                        Text(
-                            text = if (state.query.isEmpty()) stringResource(R.string.search_hint) else state.query,
-                            fontSize = 23.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (state.query.isEmpty()) Color(0x73FFE89E) else GoldWhite,
-                            maxLines = 1,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (state.query.isNotEmpty()) {
-                            // .clear-x: 42dp circle.
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0x29E5C158))
-                                    .border(1.5.dp, BorderGold, CircleShape)
-                                    .tvFocus()
-                                    .clickable { viewModel.setQuery("") },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text = "✕", fontSize = 20.sp, color = GoldWhite)
-                            }
-                        }
-                    }
-                    // .search-count pill.
-                    Text(
-                        text = pluralStringResource(
-                            R.plurals.search_results_count,
-                            state.results.size,
-                            state.results.size
-                        ),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Black,
-                        color = GoldBright,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(Color(0x2EE5C158))
-                            .border(1.5.dp, BorderGold, RoundedCornerShape(18.dp))
-                            .padding(horizontal = 18.dp, vertical = 8.dp)
-                    )
-                }
-
-                // SE07: built-in keyboard inside the panel.
-                BuiltInKeyboard(
-                    onKey = { c -> viewModel.setQuery(state.query + c) },
-                    onAction = { action ->
-                        when (action) {
-                            is KeyboardAction.Char -> Unit // already handled via onKey
-                            KeyboardAction.Backspace -> viewModel.setQuery(state.query.dropLast(1))
-                            KeyboardAction.Space -> viewModel.setQuery(state.query + " ")
-                            KeyboardAction.Shift -> { }
-                            KeyboardAction.SwitchLanguage -> keyboardLang =
-                                if (keyboardLang == KeyboardLanguage.FR) KeyboardLanguage.AR else KeyboardLanguage.FR
-                            KeyboardAction.Switch123 -> keyboard123 = !keyboard123
-                            KeyboardAction.Validate -> viewModel.submitSearch()
-                            KeyboardAction.Close -> { }
-                        }
-                    },
-                    language = keyboardLang,
-                    mode = if (keyboard123) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS,
-                    onClearAll = { viewModel.setQuery("") }
-                )
-
-                // SE08 (part): remote hint — ↑↓←→/OK/⌫.
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RemoteHintKey(keys = listOf("↑", "↓", "←", "→"), label = stringResource(R.string.hint_navigate))
-                    RemoteHintKey(keys = listOf("OK"), label = stringResource(R.string.hint_type_letter))
-                    RemoteHintKey(keys = listOf("⌫"), label = stringResource(R.string.hint_erase))
-                }
-            }
-
-            // Right: .kb-side, 400dp — scope, recents, tip, voice search.
-            Column(
-                modifier = Modifier.width(400.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                // SE03: scope pills — "Tout / Chaînes / Films / Séries".
-                SideCard(title = stringResource(R.string.search_scope_title)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SortPill(stringResource(R.string.search_filter_all), state.filter == null, Modifier.focusRequester(firstFocus)) { viewModel.setFilter(null) }
-                        SortPill(stringResource(R.string.search_filter_live), state.filter == ContentKind.LIVE) { viewModel.setFilter(ContentKind.LIVE) }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SortPill(stringResource(R.string.search_filter_film), state.filter == ContentKind.FILM) { viewModel.setFilter(ContentKind.FILM) }
-                        SortPill(stringResource(R.string.search_filter_series), state.filter == ContentKind.SERIES) { viewModel.setFilter(ContentKind.SERIES) }
-                    }
-                }
-                // SE06: recent searches as 46dp chips with a clock icon.
-                SideCard(title = stringResource(R.string.previous_searches)) {
-                    if (state.previousSearches.isEmpty()) {
-                        Text(
-                            text = stringResource(R.string.search_no_recent),
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GoldSoft
-                        )
-                    } else {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            items(state.previousSearches) { previous ->
-                                Row(
-                                    modifier = Modifier
-                                        .height(46.dp)
-                                        .clip(RoundedCornerShape(23.dp))
-                                        .background(Color(0x1AE5C158))
-                                        .border(1.5.dp, BorderGold, RoundedCornerShape(23.dp))
-                                        .tvFocus()
-                                        .clickable { viewModel.runPreviousSearch(previous) }
-                                        .padding(horizontal = 18.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        painter = painterResource(R.drawable.ic_clock),
-                                        contentDescription = null,
-                                        tint = GoldSoft,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = previous,
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = GoldSoft,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                // SE08: "Astuce" card.
-                SideCard(title = stringResource(R.string.search_tip_title)) {
-                    Text(
-                        text = stringResource(R.string.search_tip_text),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldSoft,
-                        lineHeight = 27.sp
-                    )
-                }
-                // SE04: voice search — kept, restyled with the ic_mic icon.
-                // R-B2: plain CardSurface (20dp) with the shadow; focus/click
-                // stay on the outer surface.
-                CardSurface(
+                SearchPanel(
+                    query = state.query,
+                    resultsCount = state.results.size,
+                    keyboardLang = keyboardLang,
+                    keyboard123 = keyboard123,
+                    onKey = onKeyboardKey,
+                    onAction = onKeyboardAction,
+                    onClearQuery = onClearQuery,
                     modifier = Modifier.fillMaxWidth()
-                        .tvFocus()
-                        .clickable { audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_mic),
-                                contentDescription = null,
-                                tint = Gold,
-                                modifier = Modifier.size(22.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.voice_search),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldWhite
-                            )
-                        }
-                    }
-                }
+                )
+                SearchSidebar(
+                    filter = state.filter,
+                    previousSearches = state.previousSearches,
+                    onFilterChange = onFilterChange,
+                    onPreviousSearch = onPreviousSearch,
+                    onVoiceSearch = onVoiceSearch,
+                    firstFocus = firstFocus,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(22.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                SearchPanel(
+                    query = state.query,
+                    resultsCount = state.results.size,
+                    keyboardLang = keyboardLang,
+                    keyboard123 = keyboard123,
+                    onKey = onKeyboardKey,
+                    onAction = onKeyboardAction,
+                    onClearQuery = onClearQuery,
+                    modifier = Modifier.weight(1f)
+                )
+                SearchSidebar(
+                    filter = state.filter,
+                    previousSearches = state.previousSearches,
+                    onFilterChange = onFilterChange,
+                    onPreviousSearch = onPreviousSearch,
+                    onVoiceSearch = onVoiceSearch,
+                    firstFocus = firstFocus,
+                    modifier = Modifier.width(400.dp)
+                )
             }
         }
 
@@ -420,6 +295,243 @@ fun SearchScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Left panel (.kb-panel): search field + result-count pill, the built-in
+ * AZERTY keyboard and the remote hint. Extracted from SearchScreen so the
+ * narrow layout can reuse it full-width above the sidebar instead of
+ * beside it; the reference call passes Modifier.weight(1f) as before.
+ */
+@Composable
+private fun SearchPanel(
+    query: String,
+    resultsCount: Int,
+    keyboardLang: KeyboardLanguage,
+    keyboard123: Boolean,
+    onKey: (String) -> Unit,
+    onAction: (KeyboardAction) -> Unit,
+    onClearQuery: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val panelShape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(
+                    0.0f to Color(0xF01E1606),
+                    1.0f to Color(0xF50E0A03)
+                ),
+                panelShape
+            )
+            .border(2.dp, BorderGold, panelShape)
+            .padding(horizontal = 26.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        // SE02 + SE09: search field row with the result-count pill.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val fieldShape = RoundedCornerShape(18.dp)
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(62.dp)
+                    .clip(fieldShape)
+                    .background(Color(0xEB060401))
+                    .border(2.dp, GoldBright, fieldShape)
+                    .padding(horizontal = 22.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_search),
+                    contentDescription = null,
+                    tint = GoldBright,
+                    modifier = Modifier.size(26.dp)
+                )
+                Text(
+                    text = if (query.isEmpty()) stringResource(R.string.search_hint) else query,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (query.isEmpty()) Color(0x73FFE89E) else GoldWhite,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                if (query.isNotEmpty()) {
+                    // .clear-x: 42dp circle.
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x29E5C158))
+                            .border(1.5.dp, BorderGold, CircleShape)
+                            .tvFocus()
+                            .clickable { onClearQuery() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "✕", fontSize = 20.sp, color = GoldWhite)
+                    }
+                }
+            }
+            // .search-count pill.
+            Text(
+                text = pluralStringResource(
+                    R.plurals.search_results_count,
+                    resultsCount,
+                    resultsCount
+                ),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Black,
+                color = GoldBright,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color(0x2EE5C158))
+                    .border(1.5.dp, BorderGold, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+            )
+        }
+
+        // SE07: built-in keyboard inside the panel.
+        BuiltInKeyboard(
+            onKey = onKey,
+            onAction = onAction,
+            language = keyboardLang,
+            mode = if (keyboard123) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS,
+            onClearAll = onClearQuery
+        )
+
+        // SE08 (part): remote hint — ↑↓←→/OK/⌫.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RemoteHintKey(keys = listOf("↑", "↓", "←", "→"), label = stringResource(R.string.hint_navigate))
+            RemoteHintKey(keys = listOf("OK"), label = stringResource(R.string.hint_type_letter))
+            RemoteHintKey(keys = listOf("⌫"), label = stringResource(R.string.hint_erase))
+        }
+    }
+}
+
+/**
+ * Right column (.kb-side, 400dp on the reference): scope pills
+ * ("Rechercher dans"), recent searches, the "Astuce" card and the
+ * voice-search button. Extracted from SearchScreen; the narrow layout
+ * reuses it full-width below the panel. The initial-focus target (the
+ * "Tout" pill, firstFocus) is unchanged.
+ */
+@Composable
+private fun SearchSidebar(
+    filter: ContentKind?,
+    previousSearches: List<String>,
+    onFilterChange: (ContentKind?) -> Unit,
+    onPreviousSearch: (String) -> Unit,
+    onVoiceSearch: () -> Unit,
+    firstFocus: FocusRequester,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        // SE03: scope pills — "Tout / Chaînes / Films / Séries".
+        SideCard(title = stringResource(R.string.search_scope_title)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SortPill(stringResource(R.string.search_filter_all), filter == null, Modifier.focusRequester(firstFocus)) { onFilterChange(null) }
+                SortPill(stringResource(R.string.search_filter_live), filter == ContentKind.LIVE) { onFilterChange(ContentKind.LIVE) }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SortPill(stringResource(R.string.search_filter_film), filter == ContentKind.FILM) { onFilterChange(ContentKind.FILM) }
+                SortPill(stringResource(R.string.search_filter_series), filter == ContentKind.SERIES) { onFilterChange(ContentKind.SERIES) }
+            }
+        }
+        // SE06: recent searches as 46dp chips with a clock icon.
+        SideCard(title = stringResource(R.string.previous_searches)) {
+            if (previousSearches.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.search_no_recent),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GoldSoft
+                )
+            } else {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(previousSearches) { previous ->
+                        Row(
+                            modifier = Modifier
+                                .height(46.dp)
+                                .clip(RoundedCornerShape(23.dp))
+                                .background(Color(0x1AE5C158))
+                                .border(1.5.dp, BorderGold, RoundedCornerShape(23.dp))
+                                .tvFocus()
+                                .clickable { onPreviousSearch(previous) }
+                                .padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_clock),
+                                contentDescription = null,
+                                tint = GoldSoft,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = previous,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = GoldSoft,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        // SE08: "Astuce" card.
+        SideCard(title = stringResource(R.string.search_tip_title)) {
+            Text(
+                text = stringResource(R.string.search_tip_text),
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Bold,
+                color = GoldSoft,
+                lineHeight = 27.sp
+            )
+        }
+        // SE04: voice search — kept, restyled with the ic_mic icon.
+        // R-B2: plain CardSurface (20dp) with the shadow; focus/click
+        // stay on the outer surface.
+        CardSurface(
+            modifier = Modifier.fillMaxWidth()
+                .tvFocus()
+                .clickable { onVoiceSearch() }
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_mic),
+                        contentDescription = null,
+                        tint = Gold,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        text = stringResource(R.string.voice_search),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldWhite
+                    )
                 }
             }
         }

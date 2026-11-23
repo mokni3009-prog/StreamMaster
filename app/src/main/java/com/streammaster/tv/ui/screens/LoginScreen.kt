@@ -38,6 +38,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -59,6 +62,7 @@ import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
+import com.streammaster.tv.ui.theme.uiScale
 import com.streammaster.tv.ui.theme.ThemedScreen
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.LoginTab
@@ -99,8 +103,25 @@ fun LoginScreen(
     var keyboard123 by remember { mutableStateOf(false) }
     // R-M4: lift the login box by -150dp while the keyboard is open
     // (model translateY(-150px)), animated.
+    // Small screens (2026-11-23, approved by the user): the box is taller
+    // than a 720-design-dp canvas, so the full -150dp lift pushes the logo
+    // fully off-screen (box top -203dp on 640x360). Cap the lift so the
+    // logo (44dp top padding + 88dp) always stays on-screen:
+    // |lift| <= centeredTop + 44dp, where centeredTop = (screenH - boxH)/2
+    // from the box height measured at runtime (onSizeChanged below), so no
+    // hardcoded content-height estimate is needed. At the 1080p reference
+    // the model -150dp lift applies exactly, as before.
+    val density = LocalDensity.current
+    var boxHeightDp by remember { mutableStateOf(826.dp) }
+    val screenHeightDesignDp =
+        LocalConfiguration.current.screenHeightDp / uiScale()
+    val centeredTopDp =
+        maxOf(0f, (screenHeightDesignDp - boxHeightDp.value) / 2f)
+    val maxLiftDp = centeredTopDp + 44f
+    val liftMagnitudeDp = if (screenHeightDesignDp >= 1080f) 150f
+    else minOf(150f, maxLiftDp)
     val boxLift by animateDpAsState(
-        targetValue = if (keyboardField != null) (-150).dp else 0.dp,
+        targetValue = if (keyboardField != null) -liftMagnitudeDp.dp else 0.dp,
         label = "loginBoxLift"
     )
     // Initial focus: the playlist-name field (first field, above the tabs).
@@ -177,6 +198,11 @@ fun LoginScreen(
                     // It scrolls internally there; at the reference it fits
                     // and nothing scrolls.
                     .verticalScroll(rememberScrollState())
+                    // Measure the laid-out box height (min(content, screen))
+                    // so the keyboard lift cap above uses the real height.
+                    .onSizeChanged { size ->
+                        with(density) { boxHeightDp = size.height.toDp() }
+                    }
                     .padding(horizontal = 56.dp, vertical = 44.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(18.dp)

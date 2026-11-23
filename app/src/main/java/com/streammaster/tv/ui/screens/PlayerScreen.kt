@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -55,7 +56,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -974,74 +977,112 @@ private fun PlayerControls(
                         fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = GoldSoft
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // Groups row (PL07): three control groups. LazyRow
+                // (2026-11-23) so the row scrolls with D-pad focus when
+                // the groups overflow: live totals ~1851dp vs 1816dp at
+                // the reference (~35dp) and far more than the ~728dp
+                // available on the narrow 1280x720 screen. Lazy lists
+                // only use arrangement.spacing — SpaceBetween spacing is
+                // 0dp — so the SpaceBetween spread is reproduced from
+                // the measured group widths: when the groups fit, the gap
+                // spreads them like SpaceBetween; when they overflow,
+                // the gap is 0 and the row scrolls.
+                var groupWidths by remember { mutableStateOf(listOf(0, 0, 0)) }
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
                 ) {
-                    // Group 1: -10s / play-pause / +10s / previous / live.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    val density = LocalDensity.current
+                    val gap = if (groupWidths.any { it == 0 }) 0.dp
+                    else with(density) {
+                        ((maxWidth.toPx() - groupWidths.sum()).coerceAtLeast(0f) / 2).toDp()
+                    }
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FsCtrlButton("-10 s", R.drawable.ic_rewind) { viewModel.skip(-10_000) }
-                        FsMainPlayButton(
-                            isPlaying = playback.isPlaying,
-                            modifier = Modifier.focusRequester(focusRequester)
-                        ) { viewModel.togglePlayPause() }
-                        FsCtrlButton("+10 s", R.drawable.ic_forward) { viewModel.skip(10_000) }
-                        if (isLive) {
-                            FsCtrlButton(
-                                stringResource(R.string.previous_channel),
-                                R.drawable.ic_clock
+                        item {
+                            // Group 1: -10s / play-pause / +10s / previous / live.
+                            Row(
+                                modifier = Modifier.onSizeChanged { size ->
+                                    groupWidths = groupWidths.toMutableList()
+                                        .also { it[0] = size.width }
+                                },
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                viewModel.previousChannel()
+                                FsCtrlButton("-10 s", R.drawable.ic_rewind) { viewModel.skip(-10_000) }
+                                FsMainPlayButton(
+                                    isPlaying = playback.isPlaying,
+                                    modifier = Modifier.focusRequester(focusRequester)
+                                ) { viewModel.togglePlayPause() }
+                                FsCtrlButton("+10 s", R.drawable.ic_forward) { viewModel.skip(10_000) }
+                                if (isLive) {
+                                    FsCtrlButton(
+                                        stringResource(R.string.previous_channel),
+                                        R.drawable.ic_clock
+                                    ) {
+                                        viewModel.previousChannel()
+                                    }
+                                }
+                                if (isLive && !playback.atLiveEdge) {
+                                    FsCtrlButton(stringResource(R.string.go_live), R.drawable.ic_tv) {
+                                        viewModel.goLiveEdge()
+                                    }
+                                }
                             }
                         }
-                        if (isLive && !playback.atLiveEdge) {
-                            FsCtrlButton(stringResource(R.string.go_live), R.drawable.ic_tv) {
-                                viewModel.goLiveEdge()
+                        item {
+                            // Group 2: Volume / Subtitles / Audio / Programme / Display.
+                            Row(
+                                modifier = Modifier.onSizeChanged { size ->
+                                    groupWidths = groupWidths.toMutableList()
+                                        .also { it[1] = size.width }
+                                },
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FsCtrlButton(stringResource(R.string.player_volume), R.drawable.ic_volume) {
+                                    onVolume()
+                                }
+                                FsCtrlButton(stringResource(R.string.subtitles), R.drawable.ic_file_text) {
+                                    onSelector("subs")
+                                }
+                                FsCtrlButton(stringResource(R.string.audio), R.drawable.ic_volume_2) {
+                                    onSelector("audio")
+                                }
+                                if (isLive) {
+                                    FsCtrlButton(
+                                        stringResource(R.string.player_programme),
+                                        R.drawable.ic_calendar
+                                    ) { onProgramme() }
+                                }
+                                FsCtrlButton(stringResource(R.string.display), R.drawable.ic_cast) {
+                                    onSelector("display")
+                                }
                             }
                         }
-                    }
-                    // Group 2: Volume / Subtitles / Audio / Programme / Display.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FsCtrlButton(stringResource(R.string.player_volume), R.drawable.ic_volume) {
-                            onVolume()
-                        }
-                        FsCtrlButton(stringResource(R.string.subtitles), R.drawable.ic_file_text) {
-                            onSelector("subs")
-                        }
-                        FsCtrlButton(stringResource(R.string.audio), R.drawable.ic_volume_2) {
-                            onSelector("audio")
-                        }
-                        if (isLive) {
-                            FsCtrlButton(
-                                stringResource(R.string.player_programme),
-                                R.drawable.ic_calendar
-                            ) { onProgramme() }
-                        }
-                        FsCtrlButton(stringResource(R.string.display), R.drawable.ic_cast) {
-                            onSelector("display")
-                        }
-                    }
-                    // Group 3: Favorite / Quality / PiP / Quit.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FsCtrlButton(stringResource(R.string.favorite), R.drawable.ic_heart) {
-                            viewModel.toggleFavorite()
-                        }
-                        FsCtrlButton(stringResource(R.string.quality), R.drawable.ic_settings) {
-                            onSelector("quality")
-                        }
-                        FsCtrlButton("PiP", R.drawable.ic_maximize) { viewModel.enterPip() }
-                        FsCtrlButton(stringResource(R.string.player_quit), R.drawable.ic_x) {
-                            onExit()
+                        item {
+                            // Group 3: Favorite / Quality / PiP / Quit.
+                            Row(
+                                modifier = Modifier.onSizeChanged { size ->
+                                    groupWidths = groupWidths.toMutableList()
+                                        .also { it[2] = size.width }
+                                },
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FsCtrlButton(stringResource(R.string.favorite), R.drawable.ic_heart) {
+                                    viewModel.toggleFavorite()
+                                }
+                                FsCtrlButton(stringResource(R.string.quality), R.drawable.ic_settings) {
+                                    onSelector("quality")
+                                }
+                                FsCtrlButton("PiP", R.drawable.ic_maximize) { viewModel.enterPip() }
+                                FsCtrlButton(stringResource(R.string.player_quit), R.drawable.ic_x) {
+                                    onExit()
+                                }
+                            }
                         }
                     }
                 }

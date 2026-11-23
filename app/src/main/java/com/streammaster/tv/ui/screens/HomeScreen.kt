@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -126,16 +127,26 @@ fun HomeScreen(
         // Hero (prototype view-home): featured film of the evening, from the
         // highest-rated film; hue-based backdrop like PosterTile.
         val heroFilm = state.popularFilms.firstOrNull()
+        // Flexible hero height (2026-11-23): the content (~412dp with a
+        // 2-line title + 2-line description) overflows the 358dp left by
+        // the fixed 420dp height on the narrow 1280x720 screen
+        // (640x360dp) and is clipped from the top by Arrangement.Bottom.
+        // heightIn(min) lets the hero grow with its content there and
+        // stays 420dp at the reference. The Box sits inside a
+        // verticalScroll, so its children must not use fillMaxSize
+        // (unbounded max height): the backdrop uses matchParentSize and
+        // the content column is content-sized, bottom-aligned by the Box.
         if (heroFilm != null) {
             Box(
                 modifier = Modifier.fillMaxWidth()
-                    .height(420.dp)
+                    .heightIn(min = 420.dp)
                     .clip(RoundedCornerShape(28.dp))
-                    .border(2.dp, BorderStrong, RoundedCornerShape(28.dp))
+                    .border(2.dp, BorderStrong, RoundedCornerShape(28.dp)),
+                contentAlignment = Alignment.BottomStart
             ) {
-                HeroBackdrop(heroFilm.hue, Modifier.fillMaxSize())
+                HeroBackdrop(heroFilm.hue, Modifier.matchParentSize())
                 Column(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxWidth()
                         .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 38.dp),
                     verticalArrangement = Arrangement.Bottom
                 ) {

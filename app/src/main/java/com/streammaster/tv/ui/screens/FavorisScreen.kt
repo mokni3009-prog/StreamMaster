@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,69 +76,78 @@ fun FavorisScreen(
             initialFocusDone = true
         }
     }
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-        FavSection {
-            SectionHeader("1. ${stringResource(R.string.fav_section_channels)}", count = state.channels.size)
-            if (state.channels.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.fav_empty_channels),
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
-                    modifier = Modifier.padding(4.dp, 14.dp)
-                )
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                    itemsIndexed(state.channels) { index, channel ->
-                        FavChannelCard(
-                            channel = channel,
-                            modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
-                        ) { navController.navigate(Routes.player("live", channel.id)) }
-                    }
-                }
-            }
-        }
-        FavSection {
-            SectionHeader("2. ${stringResource(R.string.fav_section_films)}", count = state.films.size)
-            if (state.films.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.fav_empty_films),
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
-                    modifier = Modifier.padding(4.dp, 14.dp)
-                )
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                    itemsIndexed(state.films) { index, film ->
-                        PosterTile(
-                            title = film.title, hue = film.hue,
-                            code = film.title.take(2).uppercase(), isFavorite = true,
-                            quality = film.quality, rating = film.rating, year = film.year,
-                            unstable = film.isBroken,
-                            modifier = if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
-                        ) {
-                            navController.navigate(Routes.detail("film", film.id))
+    // 2026-11-23: LazyColumn (was a plain Column) so the three sections scroll
+    // vertically — with all sections full (1151dp) the old Column clipped the
+    // series section even at 1080p, with no way to reach it by remote.
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+        item {
+            FavSection {
+                SectionHeader("1. ${stringResource(R.string.fav_section_channels)}", count = state.channels.size)
+                if (state.channels.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.fav_empty_channels),
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
+                        modifier = Modifier.padding(4.dp, 14.dp)
+                    )
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        itemsIndexed(state.channels) { index, channel ->
+                            FavChannelCard(
+                                channel = channel,
+                                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                            ) { navController.navigate(Routes.player("live", channel.id)) }
                         }
                     }
                 }
             }
         }
-        FavSection {
-            SectionHeader("3. ${stringResource(R.string.fav_section_series)}", count = state.series.size)
-            if (state.series.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.fav_empty_series),
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
-                    modifier = Modifier.padding(4.dp, 14.dp)
-                )
-            } else {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                    itemsIndexed(state.series) { index, series ->
-                        PosterTile(
-                            title = series.title, hue = series.hue,
-                            code = series.title.take(2).uppercase(), isFavorite = true,
-                            quality = series.quality, rating = series.rating,
-                            seasons = series.seasons, unstable = series.isBroken,
-                            modifier = if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
-                        ) {
-                            navController.navigate(Routes.detail("series", series.id))
+        item {
+            FavSection {
+                SectionHeader("2. ${stringResource(R.string.fav_section_films)}", count = state.films.size)
+                if (state.films.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.fav_empty_films),
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
+                        modifier = Modifier.padding(4.dp, 14.dp)
+                    )
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        itemsIndexed(state.films) { index, film ->
+                            PosterTile(
+                                title = film.title, hue = film.hue,
+                                code = film.title.take(2).uppercase(), isFavorite = true,
+                                quality = film.quality, rating = film.rating, year = film.year,
+                                unstable = film.isBroken,
+                                modifier = if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
+                            ) {
+                                navController.navigate(Routes.detail("film", film.id))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            FavSection {
+                SectionHeader("3. ${stringResource(R.string.fav_section_series)}", count = state.series.size)
+                if (state.series.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.fav_empty_series),
+                        fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldSoft,
+                        modifier = Modifier.padding(4.dp, 14.dp)
+                    )
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        itemsIndexed(state.series) { index, series ->
+                            PosterTile(
+                                title = series.title, hue = series.hue,
+                                code = series.title.take(2).uppercase(), isFavorite = true,
+                                quality = series.quality, rating = series.rating,
+                                seasons = series.seasons, unstable = series.isBroken,
+                                modifier = if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
+                            ) {
+                                navController.navigate(Routes.detail("series", series.id))
+                            }
                         }
                     }
                 }

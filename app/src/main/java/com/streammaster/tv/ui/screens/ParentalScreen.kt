@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +43,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -88,6 +91,10 @@ fun ParentalScreen(
     val films by viewModel.films.collectAsState()
     val series by viewModel.series.collectAsState()
     val context = LocalContext.current
+    // Narrow canvas (720p xhdpi = 640dp wide, like Shell.kt:601): the
+    // actions column scrolls, the save bar shortens, and rows drop the
+    // order number and shrink the icon so the title stays readable.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     var kind by remember { mutableStateOf(ManageKind.LIVE) }
     var selectedBouquetId by remember { mutableStateOf<String?>(null) }
     var selectedItemId by remember { mutableStateOf<String?>(null) }
@@ -250,7 +257,11 @@ fun ParentalScreen(
                 iconRes = R.drawable.ic_shield,
                 title = stringResource(R.string.mg_target),
                 count = dirtyCount,
-                showHeader = false
+                showHeader = false,
+                // Narrow canvas: actions content ~468dp vs ~241dp
+                // available, so it scrolls; on the reference it fits
+                // (468dp vs ~554dp) and stays as it was.
+                scrollContent = narrow
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
@@ -325,10 +336,12 @@ fun ParentalScreen(
                     else stringResource(R.string.pc_clean),
                     fontSize = 19.sp, fontWeight = FontWeight.Bold, color = GoldWhite
                 )
-                Text(
-                    text = stringResource(R.string.pc_save_hint),
-                    fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
-                )
+                if (!narrow) {
+                    Text(
+                        text = stringResource(R.string.pc_save_hint),
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
+                    )
+                }
             }
             if (dirtyCount > 0) {
                 Box(
@@ -350,7 +363,7 @@ fun ParentalScreen(
                 iconRes = R.drawable.ic_arrow_left
             ) { navController.popBackStack() }
             GoldSaveButton(
-                text = stringResource(R.string.save_changes),
+                text = stringResource(if (narrow) R.string.save else R.string.save_changes),
                 enabled = dirtyCount > 0
             ) { viewModel.save() }
         }
@@ -435,6 +448,12 @@ internal fun MgCol(
     title: String,
     count: Int,
     showHeader: Boolean = true,
+    /** When true the column content scrolls (actions column on a narrow
+     * canvas, or Manage's actions column which also overflows the
+     * reference). The weight Spacer inside such content collapses to
+     * 0dp while scrolling (no leftover space to share), so the note
+     * sits right after the actions instead of pinned to the bottom. */
+    scrollContent: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // R-B2: CardSurface with the column's own 24dp shape, gradient and
@@ -446,7 +465,9 @@ internal fun MgCol(
         border = BorderStroke(2.dp, BorderGold)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(18.dp),
+            modifier = Modifier.fillMaxSize()
+                .then(if (scrollContent) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             if (showHeader) {
@@ -499,6 +520,10 @@ private fun PcRow(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // Narrow canvas: drop the 38dp order number and shrink the icon
+    // 46dp -> 36dp so the title column gets ~61dp back (~60dp -> ~121dp
+    // in the items column); on the reference the row stays as it was.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(17.dp))
@@ -510,18 +535,20 @@ private fun PcRow(
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(38.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(if (selected) Color(0x381A1100) else Color(0xFF2A2113)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = ord.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black,
-                color = if (selected) GoldDeep else Gold
-            )
+        if (!narrow) {
+            Box(
+                modifier = Modifier.size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (selected) Color(0x381A1100) else Color(0xFF2A2113)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = ord.toString(), fontSize = 16.sp, fontWeight = FontWeight.Black,
+                    color = if (selected) GoldDeep else Gold
+                )
+            }
         }
-        GoldIconBox(iconRes = iconRes, boxSize = 46.dp, iconSize = 24.dp)
+        GoldIconBox(iconRes = iconRes, boxSize = if (narrow) 36.dp else 46.dp, iconSize = if (narrow) 18.dp else 24.dp)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold,

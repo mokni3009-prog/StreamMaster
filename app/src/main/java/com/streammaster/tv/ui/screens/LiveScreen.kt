@@ -240,12 +240,19 @@ fun LiveScreen(
                     }
                 }
                 // Right — preview column: viewport (V07) + EPG panel (V08).
+                // Flexible split (2026-11-23): the fixed 420dp viewport
+                // left the weight(1f) EPG panel only ~42dp on the narrow
+                // 1280x720 screen (640x360dp) against ~326dp of content.
+                // Weights keep the reference split almost unchanged
+                // (viewport ~452dp, panel ~370dp) and give the panel
+                // ~208dp on the narrow screen.
                 val channel = state.selectedChannel
                 Column(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     LiveViewport(
+                        modifier = Modifier.fillMaxWidth().weight(0.55f),
                         channel = channel,
                         epgNowTitle = epg.firstOrNull {
                             it.startMillis <= System.currentTimeMillis() && it.endMillis > System.currentTimeMillis()
@@ -254,7 +261,7 @@ fun LiveScreen(
                         onToggleFavorite = { viewModel.toggleFavorite() }
                     )
                     if (channel != null) {
-                        LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().weight(1f))
+                        LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().weight(0.45f))
                     }
                 }
             }
@@ -402,13 +409,16 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
     }
 }
 
-/** V07 — preview window (.live-viewport): 420dp high, radius 26,
+/** V07 — preview window (.live-viewport): radius 26,
  *  2.5px border, pulsing «EN DIRECT» pill + tech pill on top, bottom
  *  bar with the «Now playing» title + gold «Lancer» and «Favori»
- *  buttons. A single click on a channel only selects/previews it —
- *  the viewport itself does NOT open the player. */
+ *  buttons. Flexible height (2026-11-23): weight 0.55 of the preview
+ *  column (~452dp at the reference, ~254dp on the narrow screen).
+ *  A single click on a channel only selects/previews it — the
+ *  viewport itself does NOT open the player. */
 @Composable
 private fun LiveViewport(
+    modifier: Modifier = Modifier,
     channel: Channel?,
     epgNowTitle: String,
     onLaunch: () -> Unit,
@@ -421,7 +431,7 @@ private fun LiveViewport(
         label = "liveDotAlpha"
     )
     Box(
-        modifier = Modifier.fillMaxWidth().height(420.dp)
+        modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(26.dp))
             .background(Color(0xFF050401))
             .border(2.5.dp, BorderStrong, RoundedCornerShape(26.dp))

@@ -138,8 +138,17 @@ fun SelectorDialog(
                     }
                 }
             }
+            // weight(1f, fill = false): the list takes AT MOST the
+            // remaining dialog height, so a long list scrolls inside it
+            // and "Annuler" stays pinned at the bottom instead of being
+            // pushed out (EPG with poster+description ~788dp, audio /
+            // subtitle tracks > 6 rows). Without it the LazyColumn
+            // measures its full content height. fill = false matters: a
+            // plain weight(1f) would stretch EVERY selector dialog to
+            // full window height, even a 3-option list; with fill=false
+            // short lists stay compact and only long ones are capped.
             LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 itemsIndexed(options) { index, option ->

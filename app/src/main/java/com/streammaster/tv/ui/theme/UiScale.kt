@@ -44,16 +44,26 @@ private const val MIN_SCALE = 0.5f
 
 @Composable
 fun ScaledContent(content: @Composable () -> Unit) {
-    val config = LocalConfiguration.current
+    val scale = uiScale()
     val base = LocalDensity.current
-    val scale = minOf(
-        config.screenWidthDp / DESIGN_WIDTH_DP,
-        config.screenHeightDp / DESIGN_HEIGHT_DP
-    ).coerceIn(MIN_SCALE, 1f)
     CompositionLocalProvider(
         LocalDensity provides Density(
             density = base.density * scale,
             fontScale = base.fontScale
         )
     ) { content() }
+}
+
+/**
+ * Current UI scale (same computation as [ScaledContent]), exposed for
+ * screens that need size-aware behavior — e.g. the Login lift cap, which
+ * must shrink on small canvases so the logo stays on-screen.
+ */
+@Composable
+fun uiScale(): Float {
+    val config = LocalConfiguration.current
+    return minOf(
+        config.screenWidthDp / DESIGN_WIDTH_DP,
+        config.screenHeightDp / DESIGN_HEIGHT_DP
+    ).coerceIn(MIN_SCALE, 1f)
 }

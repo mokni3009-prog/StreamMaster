@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -147,8 +148,11 @@ fun EpgScreen(
             )
         }
         // Day tabs: tonight + the next nights (up to 7 days, per the EPG window setting).
-        Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            (0..state.maxDayOffset).forEach { offset ->
+        // LazyRow (2026-11-23): 8 tabs ≈ 960dp overflow the 832dp narrow
+        // screen by ~128dp; the row scrolls with D-pad focus so no
+        // focusable tab is clipped away.
+        LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items((0..state.maxDayOffset).toList()) { offset ->
                 val selected = offset == state.selectedDayOffset
                 Box(
                     modifier = Modifier

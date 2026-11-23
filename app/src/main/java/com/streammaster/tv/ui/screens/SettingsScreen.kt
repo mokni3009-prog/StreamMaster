@@ -22,7 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -292,6 +295,10 @@ fun SettingsScreen(
     val selectedDef = allRows.firstOrNull { it.key == selectedKey } ?: modelRows.first()
     // ST06 — dirty = draft differs from persisted settings.
     val isDirty = draft.loaded && draft != draftFromSettings(settings)
+    // Narrow canvas (720p xhdpi = 640dp wide, like Shell.kt:601): the
+    // save bar hides its hint and shortens the save button so the save
+    // button is not pushed off-screen (dirty bar ~1056dp vs 832dp).
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
 
     // Initial focus (2026-11-23): the language row (first setting), so the
     // remote (D-pad) moves from the first press.
@@ -414,10 +421,12 @@ fun SettingsScreen(
                     text = if (isDirty) stringResource(R.string.st_dirty) else stringResource(R.string.st_clean),
                     fontSize = 19.sp, fontWeight = FontWeight.Bold, color = GoldWhite
                 )
-                Text(
-                    text = stringResource(R.string.st_save_hint),
-                    fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
-                )
+                if (!narrow) {
+                    Text(
+                        text = stringResource(R.string.st_save_hint),
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
+                    )
+                }
             }
             if (isDirty) {
                 Box(
@@ -434,7 +443,7 @@ fun SettingsScreen(
             IconGhostButton(text = stringResource(R.string.st_reset), iconRes = R.drawable.ic_x) { confirmReset = true }
             GhostButton(text = stringResource(R.string.discard)) { if (isDirty) viewModel.discardChanges() }
             GoldSaveButton(
-                text = stringResource(R.string.save_changes),
+                text = stringResource(if (narrow) R.string.save else R.string.save_changes),
                 enabled = isDirty
             ) { viewModel.save(activity) }
         }
@@ -708,8 +717,12 @@ private fun SettingDetailPanel(
         background = Brush.linearGradient(listOf(Color(0xFF1E1606), Color(0xFF0D0903))),
         border = BorderStroke(2.dp, BorderGold)
     ) {
+        // Narrow canvas: the panel content (~373-393dp) is taller than
+        // the ~313dp available, so it scrolls and the CTA stays reachable
+        // (focus auto-scrolls it into view); on the reference it fits
+        // and the scroll is a no-op.
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
         Text(

@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -96,6 +97,10 @@ fun ManageScreen(
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
     val context = LocalContext.current
+    // Narrow canvas (720p xhdpi = 640dp wide, like Shell.kt:601): the
+    // actions column scrolls, the save bar shortens, and rows drop the
+    // order number / checkbox and shrink the icon so titles stay readable.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     var renameTarget by remember { mutableStateOf<Pair<String, String>?>(null) } // id to kind ("bouquet"/"channel")
     var renameValue by remember { mutableStateOf("") }
     var numberTarget by remember { mutableStateOf<String?>(null) }
@@ -276,7 +281,13 @@ fun ManageScreen(
                 iconRes = R.drawable.ic_shield,
                 title = stringResource(R.string.mg_target),
                 count = selectedIds.size,
-                showHeader = false
+                showHeader = false,
+                // Actions content ~700dp in LIVE mode: taller than the
+                // ~540dp available on the reference (~160dp clipped) and
+                // the ~177dp on a narrow canvas, so it scrolls in both
+                // cases. In Films/Series mode on the reference it fits
+                // (~472dp vs ~540dp) and stays exactly as it was.
+                scrollContent = narrow || draft.kind == ManageKind.LIVE
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth()
@@ -390,10 +401,12 @@ fun ManageScreen(
                     text = if (isDirty) stringResource(R.string.st_dirty) else stringResource(R.string.mg_clean),
                     fontSize = 19.sp, fontWeight = FontWeight.Bold, color = GoldWhite
                 )
-                Text(
-                    text = stringResource(R.string.mg_save_hint),
-                    fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
-                )
+                if (!narrow) {
+                    Text(
+                        text = stringResource(R.string.mg_save_hint),
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldSoft
+                    )
+                }
             }
             if (isDirty) {
                 Box(
@@ -417,7 +430,7 @@ fun ManageScreen(
                 }
             }
             GoldSaveButton(
-                text = stringResource(R.string.save_changes),
+                text = stringResource(if (narrow) R.string.save else R.string.save_changes),
                 enabled = isDirty
             ) { viewModel.save() }
         }
@@ -494,11 +507,23 @@ fun ManageScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                 Text(text = stringResource(R.string.move_to), fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite)
-                kindBouquets.forEach { bouquet ->
-                    GhostButton(text = bouquet.name, modifier = Modifier.fillMaxWidth()) {
-                        if (selectedIds.size > 1) viewModel.moveSelectedToBouquet(bouquet.id)
-                        else viewModel.moveSingleToBouquet(focusIdValue, bouquet.id)
-                        moveTargetBouquet = null
+                // The bouquet list scrolls inside AT MOST the remaining
+                // dialog height (the dialog is bounded by the outer Box's
+                // 120dp padding), so with >~8 bouquets the list scrolls
+                // and "Annuler" stays visible instead of being pushed out.
+                // fill = false keeps short lists compact (a plain
+                // weight(1f) would stretch the dialog to its max height
+                // even with 2 bouquets).
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    itemsIndexed(kindBouquets) { _, bouquet ->
+                        GhostButton(text = bouquet.name, modifier = Modifier.fillMaxWidth()) {
+                            if (selectedIds.size > 1) viewModel.moveSelectedToBouquet(bouquet.id)
+                            else viewModel.moveSingleToBouquet(focusIdValue, bouquet.id)
+                            moveTargetBouquet = null
+                        }
                     }
                 }
                 GhostButton(text = stringResource(R.string.cancel)) { moveTargetBouquet = null }
@@ -567,6 +592,11 @@ private fun ManageRow(
     checked: Boolean? = null,
     onClick: () -> Unit
 ) {
+    // Narrow canvas: drop the 38dp order number and the visible 28dp
+    // checkbox (selection is still shown by the gold background/border)
+    // and shrink the icon 46dp -> 36dp, so the title column gets ~102dp
+    // back; on the reference the row stays as it was.
+    val narrow = LocalConfiguration.current.screenWidthDp < 700
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(17.dp))
@@ -578,18 +608,20 @@ private fun ManageRow(
         horizontalArrangement = Arrangement.spacedBy(13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(38.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(if (selected) Color(0x381A1100) else Color(0xFF2A2113)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = ordText, fontSize = 16.sp, fontWeight = FontWeight.Black,
-                color = if (selected) GoldDeep else Gold
-            )
+        if (!narrow) {
+            Box(
+                modifier = Modifier.size(38.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(if (selected) Color(0x381A1100) else Color(0xFF2A2113)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = ordText, fontSize = 16.sp, fontWeight = FontWeight.Black,
+                    color = if (selected) GoldDeep else Gold
+                )
+            }
         }
-        if (checked != null) {
+        if (checked != null && !narrow) {
             // R-S2: icon checkbox (Feather ic_check) instead of the "☑"/"☐"
             // text glyphs: 2px gold border when checked, ic_check inside.
             Box(
@@ -612,7 +644,7 @@ private fun ManageRow(
                 }
             }
         }
-        GoldIconBox(iconRes = iconRes, boxSize = 46.dp, iconSize = 24.dp)
+        GoldIconBox(iconRes = iconRes, boxSize = if (narrow) 36.dp else 46.dp, iconSize = if (narrow) 18.dp else 24.dp)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold,

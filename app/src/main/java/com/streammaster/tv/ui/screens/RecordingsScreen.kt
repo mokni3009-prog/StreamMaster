@@ -89,78 +89,86 @@ fun RecordingsScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(
-                text = stringResource(R.string.recordings_title),
-                fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
-            )
-            if (recordings.isNotEmpty()) {
-                Text(text = stringResource(R.string.recordings_total, formatSize(totalBytes)), fontSize = 16.sp, color = TextMuted)
+    val active = recState as? RecordingState.Active
+    // 2026-11-23: one LazyColumn for the whole screen (was an outer Column
+    // with three nested LazyColumns). The first nested list took all remaining
+    // height, so when two sections were populated the later ones got zero
+    // height and were unreachable — on 1080p as well as on 720p.
+    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    text = stringResource(R.string.recordings_title),
+                    fontSize = 30.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
+                )
+                if (recordings.isNotEmpty()) {
+                    Text(text = stringResource(R.string.recordings_total, formatSize(totalBytes)), fontSize = 16.sp, color = TextMuted)
+                }
             }
         }
 
         // Running recording first, with a Stop button.
-        val active = recState as? RecordingState.Active
         if (active != null) {
             val elapsedS = ((now - active.startedAtMillis) / 1000).toInt()
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(CardSurface)
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(text = "● REC ${formatDuration(elapsedS * 1000L)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
-                    Text(text = active.recording.channelName, fontSize = 15.sp, color = TextMuted)
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(CardSurface)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = "● REC ${formatDuration(elapsedS * 1000L)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+                        Text(text = active.recording.channelName, fontSize = 15.sp, color = TextMuted)
+                    }
+                    GoldButton(text = stringResource(R.string.record_stop), modifier = if (hasActiveRecording) Modifier.focusRequester(firstFocus) else Modifier) { viewModel.stopRecording() }
                 }
-                GoldButton(text = stringResource(R.string.record_stop), modifier = if (hasActiveRecording) Modifier.focusRequester(firstFocus) else Modifier) { viewModel.stopRecording() }
             }
         }
 
         // Scheduled recordings (from the EPG), soonest first.
         if (scheduled.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.scheduled_title),
-                fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
-            )
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(scheduled) { index, rec ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(CardSurface)
-                            // The row itself is focusable (no click of its
-                            // own — its action lives in the Annuler button);
-                            // without this the D-pad can only land on the
-                            // buttons and never on the row.
-                            .tvFocus()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = rec.programTitle, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
-                            Text(
-                                text = "${rec.channelName} · ${dateFormat.format(Date(rec.startMillis))} · " +
-                                    stringResource(
-                                        when (rec.repeat) {
-                                            "daily" -> R.string.repeat_daily
-                                            "weekly" -> R.string.repeat_weekly
-                                            else -> R.string.repeat_once
-                                        }
-                                    ),
-                                fontSize = 15.sp, color = TextMuted
-                            )
+            item {
+                Text(
+                    text = stringResource(R.string.scheduled_title),
+                    fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
+                )
+            }
+            itemsIndexed(scheduled) { index, rec ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(CardSurface)
+                        // The row itself is focusable (no click of its
+                        // own — its action lives in the Annuler button);
+                        // without this the D-pad can only land on the
+                        // buttons and never on the row.
+                        .tvFocus()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = rec.programTitle, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+                        Text(
+                            text = "${rec.channelName} · ${dateFormat.format(Date(rec.startMillis))} · " +
+                                stringResource(
+                                    when (rec.repeat) {
+                                        "daily" -> R.string.repeat_daily
+                                        "weekly" -> R.string.repeat_weekly
+                                        else -> R.string.repeat_once
+                                    }
+                                ),
+                            fontSize = 15.sp, color = TextMuted
+                        )
+                    }
+                    if (confirmDeleteId == rec.id) {
+                        GoldButton(text = stringResource(R.string.confirm_delete)) {
+                            viewModel.cancelScheduled(rec)
+                            confirmDeleteId = null
                         }
-                        if (confirmDeleteId == rec.id) {
-                            GoldButton(text = stringResource(R.string.confirm_delete)) {
-                                viewModel.cancelScheduled(rec)
-                                confirmDeleteId = null
-                            }
-                        } else {
-                            GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnScheduled && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rec.id }
-                        }
+                    } else {
+                        GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnScheduled && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rec.id }
                     }
                 }
             }
@@ -169,83 +177,83 @@ fun RecordingsScreen(
         // Series-link recording rules: every future airing of the title
         // on this channel is recorded automatically (2026-11-22).
         if (seriesRules.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.series_rules_title),
-                fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
-            )
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(seriesRules) { index, rule ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(CardSurface)
-                            // The row itself is focusable (no click of its
-                            // own — its action lives in the Annuler button);
-                            // without this the D-pad can only land on the
-                            // buttons and never on the row.
-                            .tvFocus()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = "▣ ${rule.programTitle}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
-                            Text(
-                                text = "${rule.channelName} · ${stringResource(R.string.series_rule_auto)}",
-                                fontSize = 15.sp, color = TextMuted
-                            )
+            item {
+                Text(
+                    text = stringResource(R.string.series_rules_title),
+                    fontSize = 22.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite
+                )
+            }
+            itemsIndexed(seriesRules) { index, rule ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(CardSurface)
+                        // The row itself is focusable (no click of its
+                        // own — its action lives in the Annuler button);
+                        // without this the D-pad can only land on the
+                        // buttons and never on the row.
+                        .tvFocus()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = "▣ ${rule.programTitle}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+                        Text(
+                            text = "${rule.channelName} · ${stringResource(R.string.series_rule_auto)}",
+                            fontSize = 15.sp, color = TextMuted
+                        )
+                    }
+                    if (confirmDeleteId == rule.id) {
+                        GoldButton(text = stringResource(R.string.confirm_delete)) {
+                            viewModel.cancelSeriesRule(rule)
+                            confirmDeleteId = null
                         }
-                        if (confirmDeleteId == rule.id) {
-                            GoldButton(text = stringResource(R.string.confirm_delete)) {
-                                viewModel.cancelSeriesRule(rule)
-                                confirmDeleteId = null
-                            }
-                        } else {
-                            GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnRule && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rule.id }
-                        }
+                    } else {
+                        GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnRule && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rule.id }
                     }
                 }
             }
         }
 
         if (recordings.isEmpty()) {
-            Text(text = stringResource(R.string.no_recordings), fontSize = 18.sp, color = TextMuted)
+            item {
+                Text(text = stringResource(R.string.no_recordings), fontSize = 18.sp, color = TextMuted)
+            }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                itemsIndexed(recordings) { index, recording ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(CardSurface)
-                            .then(if (focusOnRecording && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
-                            .tvFocus()
-                            .clickable {
-                                if (recording.status != RecordingStatus.RECORDING) {
-                                    navController.navigate(Routes.player("recording", recording.id))
-                                }
+            itemsIndexed(recordings) { index, recording ->
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(CardSurface)
+                        .then(if (focusOnRecording && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        .tvFocus()
+                        .clickable {
+                            if (recording.status != RecordingStatus.RECORDING) {
+                                navController.navigate(Routes.player("recording", recording.id))
                             }
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(text = recording.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
-                            val status = if (recording.status == RecordingStatus.RECORDING) {
-                                stringResource(R.string.recording_in_progress)
-                            } else if (recording.status == RecordingStatus.ERROR) {
-                                stringResource(R.string.recording_failed)
-                            } else {
-                                "${dateFormat.format(Date(recording.startMillis))} · ${formatDuration(recording.durationMs)} · ${formatSize(recording.sizeBytes)}"
-                            }
-                            Text(text = status, fontSize = 15.sp, color = TextMuted)
                         }
-                        if (recording.status != RecordingStatus.RECORDING) {
-                            if (confirmDeleteId == recording.id) {
-                                GoldButton(text = stringResource(R.string.confirm_delete)) {
-                                    viewModel.delete(recording)
-                                    confirmDeleteId = null
-                                }
-                            } else {
-                                GhostButton(text = stringResource(R.string.delete)) { confirmDeleteId = recording.id }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(text = recording.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
+                        val status = if (recording.status == RecordingStatus.RECORDING) {
+                            stringResource(R.string.recording_in_progress)
+                        } else if (recording.status == RecordingStatus.ERROR) {
+                            stringResource(R.string.recording_failed)
+                        } else {
+                            "${dateFormat.format(Date(recording.startMillis))} · ${formatDuration(recording.durationMs)} · ${formatSize(recording.sizeBytes)}"
+                        }
+                        Text(text = status, fontSize = 15.sp, color = TextMuted)
+                    }
+                    if (recording.status != RecordingStatus.RECORDING) {
+                        if (confirmDeleteId == recording.id) {
+                            GoldButton(text = stringResource(R.string.confirm_delete)) {
+                                viewModel.delete(recording)
+                                confirmDeleteId = null
                             }
+                        } else {
+                            GhostButton(text = stringResource(R.string.delete)) { confirmDeleteId = recording.id }
                         }
                     }
                 }

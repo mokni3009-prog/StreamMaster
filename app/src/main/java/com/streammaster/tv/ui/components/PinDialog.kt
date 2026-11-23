@@ -91,8 +91,11 @@ fun PinDialog(
         }
     }
 
-    // .dlg-card shell (prototype): 720dp, padding 40×46, radius 30,
-    // gold gradient, 2.5px border.
+    // .dlg-card shell (prototype): 720dp, padding 32×46, radius 30,
+    // gold gradient, 2.5px border. Vertical padding is 32dp, not the
+    // prototype's 40dp: at 40dp the dialog is ~727dp tall and the bottom
+    // of "Annuler" is cut ~7dp on a 720p canvas (720dp high); at 32dp
+    // it is ~711dp and fits (an invisible change on the reference).
     val cardShape = RoundedCornerShape(30.dp)
     Dialog(
         onDismissRequest = onCancel,
@@ -109,7 +112,7 @@ fun PinDialog(
                     cardShape
                 )
                 .border(2.5.dp, BorderStrong, cardShape)
-                .padding(horizontal = 46.dp, vertical = 40.dp),
+                .padding(horizontal = 46.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {

@@ -285,57 +285,70 @@ fun DetailScreen(
                             )
                             // Actions (prototype `.dt-actions`): Lecture 70dp +
                             // Favori + Plus tard (+ Trailer / Télécharger, approved).
-                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                HeroActionButton(
-                                    text = stringResource(R.string.detail_play),
-                                    primary = true, big = true, iconRes = R.drawable.ic_play,
-                                    modifier = Modifier.focusRequester(firstFocus)
-                                ) {
-                                    navController.navigate(Routes.player(kind, id))
+                            // 2026-11-23: LazyRow (was a plain Row) so the action buttons
+                            // scroll horizontally instead of overflowing (~213dp on 1280)
+                            // and the focused button is brought into view by the remote.
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                item {
+                                    HeroActionButton(
+                                        text = stringResource(R.string.detail_play),
+                                        primary = true, big = true, iconRes = R.drawable.ic_play,
+                                        modifier = Modifier.focusRequester(firstFocus)
+                                    ) {
+                                        navController.navigate(Routes.player(kind, id))
+                                    }
                                 }
-                                HeroActionButton(
-                                    text = if (isFavorite) stringResource(R.string.favorite_remove)
-                                    else stringResource(R.string.favorite),
-                                    primary = false, big = false, iconRes = R.drawable.ic_heart
-                                ) {
-                                    viewModel.toggleFavorite()
+                                item {
+                                    HeroActionButton(
+                                        text = if (isFavorite) stringResource(R.string.favorite_remove)
+                                        else stringResource(R.string.favorite),
+                                        primary = false, big = false, iconRes = R.drawable.ic_heart
+                                    ) {
+                                        viewModel.toggleFavorite()
+                                    }
                                 }
-                                HeroActionButton(
-                                    // R-S3: ic_check icon when active instead
-                                    // of a "✓ " text prefix.
-                                    text = stringResource(R.string.watch_later),
-                                    primary = false, big = false,
-                                    iconRes = if (isWatchLater) R.drawable.ic_check else R.drawable.ic_plus
-                                ) {
-                                    viewModel.toggleWatchLater()
+                                item {
+                                    HeroActionButton(
+                                        // R-S3: ic_check icon when active instead
+                                        // of a "✓ " text prefix.
+                                        text = stringResource(R.string.watch_later),
+                                        primary = false, big = false,
+                                        iconRes = if (isWatchLater) R.drawable.ic_check else R.drawable.ic_plus
+                                    ) {
+                                        viewModel.toggleWatchLater()
+                                    }
                                 }
                                 // Trailer (2026-11-22): provider YouTube link when
                                 // available, else a YouTube search for the title.
-                                HeroActionButton(
-                                    text = stringResource(R.string.trailer),
-                                    primary = false, big = false, iconRes = null
-                                ) {
-                                    TrailerOpener.open(
-                                        context, title,
-                                        state.film?.trailerUrl ?: state.series?.trailerUrl
-                                    )
+                                item {
+                                    HeroActionButton(
+                                        text = stringResource(R.string.trailer),
+                                        primary = false, big = false, iconRes = null
+                                    ) {
+                                        TrailerOpener.open(
+                                            context, title,
+                                            state.film?.trailerUrl ?: state.series?.trailerUrl
+                                        )
+                                    }
                                 }
                                 // Offline download (2026-11-22): films only here;
                                 // series download per episode below.
-                                if (state.film != null) {
-                                    val dlLabel = when (state.downloadStatus) {
-                                        DownloadStatus.DONE -> stringResource(R.string.downloaded)
-                                        DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED -> stringResource(R.string.download_downloading)
-                                        DownloadStatus.PAUSED -> stringResource(R.string.download_paused)
-                                        DownloadStatus.ERROR -> stringResource(R.string.download_retry)
-                                        null -> stringResource(R.string.download)
+                                item {
+                                    if (state.film != null) {
+                                        val dlLabel = when (state.downloadStatus) {
+                                            DownloadStatus.DONE -> stringResource(R.string.downloaded)
+                                            DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED -> stringResource(R.string.download_downloading)
+                                            DownloadStatus.PAUSED -> stringResource(R.string.download_paused)
+                                            DownloadStatus.ERROR -> stringResource(R.string.download_retry)
+                                            null -> stringResource(R.string.download)
+                                        }
+                                        HeroActionButton(
+                                            text = dlLabel,
+                                            primary = false, big = false,
+                                            // R-S3: ic_check when downloaded.
+                                            iconRes = if (state.downloadStatus == DownloadStatus.DONE) R.drawable.ic_check else null
+                                        ) { viewModel.downloadFilm() }
                                     }
-                                    HeroActionButton(
-                                        text = dlLabel,
-                                        primary = false, big = false,
-                                        // R-S3: ic_check when downloaded.
-                                        iconRes = if (state.downloadStatus == DownloadStatus.DONE) R.drawable.ic_check else null
-                                    ) { viewModel.downloadFilm() }
                                 }
                             }
                             // Facts (prototype `.dt-facts`): label 14sp uppercase
@@ -421,8 +434,8 @@ fun DetailScreen(
                             modifier = Modifier.padding(top = 6.dp)
                         ) {
                             SectionHeader(stringResource(R.string.detail_seasons_episodes))
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                state.seasons.forEach { season ->
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(state.seasons) { season ->
                                     SeasonPill(
                                         text = stringResource(R.string.detail_season, season),
                                         selected = state.selectedSeason == season
