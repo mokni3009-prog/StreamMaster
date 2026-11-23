@@ -88,8 +88,7 @@ fun ConfirmDialog(
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
-                            Color(0xFFFFE3A3),
-                            Color(0xFFD99B0E)
+                            listOf(Color(0xFFFFE3A3), Color(0xFFD99B0E))
                         )
                     ),
                 contentAlignment = Alignment.Center

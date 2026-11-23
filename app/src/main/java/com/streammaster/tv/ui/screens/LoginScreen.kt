@@ -116,7 +116,7 @@ fun LoginScreen(
         lastEditedField = field
     }
     fun fieldModifier(field: LoginField): Modifier {
-        var m = Modifier
+        var m: Modifier = Modifier
         if (field == LoginField.NAME) m = m.focusRequester(firstFieldFocus)
         if (field == lastEditedField) m = m.focusRequester(fieldReturnFocus)
         return m

@@ -46,11 +46,15 @@ class LiveViewModel @Inject constructor(
     val selectedChannelId: StateFlow<String?> = _selectedChannelId.asStateFlow()
 
     val state: StateFlow<LiveUiState> = combine(
-        contentRepository.observeBouquets(BouquetKind.LIVE),
-        contentRepository.observeChannels(),
-        settingsRepository.settings,
-        _selectedBouquetId, _selectedChannelId, _showAllBouquets
-    ) { bouquets, channels, settings, bouquetId, channelId, showAll ->
+        combine(
+            contentRepository.observeBouquets(BouquetKind.LIVE),
+            contentRepository.observeChannels(),
+            settingsRepository.settings
+        ) { bouquets, channels, settings -> Triple(bouquets, channels, settings) },
+        combine(
+            _selectedBouquetId, _selectedChannelId, _showAllBouquets
+        ) { bouquetId, channelId, showAll -> Triple(bouquetId, channelId, showAll) }
+    ) { (bouquets, channels, settings), (bouquetId, channelId, showAll) ->
         // Kids mode (2026-11-22): only kid-named bouquets/channels.
         val kidFilteredBouquets = if (settings.kidsMode) bouquets.filter { KidsFilter.isKidCategory(it.name) } else bouquets
         val kidFilteredChannels = if (settings.kidsMode) channels.filter { KidsFilter.isKidCategory(it.category) } else channels

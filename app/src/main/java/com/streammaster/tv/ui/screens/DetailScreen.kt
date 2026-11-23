@@ -109,7 +109,7 @@ fun DetailScreen(
             DetailBackdrop(hue, Modifier.fillMaxSize())
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 44.dp, bottom = 60.dp),
+                contentPadding = PaddingValues(start = 44.dp, end = 44.dp, bottom = 60.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // D01 — top bar: "Retour" pill + gold type badge.

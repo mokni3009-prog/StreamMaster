@@ -35,6 +35,7 @@ import com.streammaster.tv.R
 import com.streammaster.tv.ui.keyboard.KeyboardLayouts
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.CardSurface
+import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
@@ -236,8 +237,7 @@ private fun KbKey(
         isFunction -> m.background(Color(0x8C000000))
         else -> m.background(
             Brush.verticalGradient(
-                Color(0x29FFE89E),
-                Color(0x0FFFE89E)
+                listOf(Color(0x29FFE89E), Color(0x0FFFE89E))
             )
         )
     }

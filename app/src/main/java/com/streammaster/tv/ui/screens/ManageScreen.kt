@@ -570,7 +570,7 @@ private fun ManageRow(
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(17.dp))
-            .background(if (selected) GoldGradient else Color(0x73000000))
+            .then(if (selected) Modifier.background(GoldGradient) else Modifier.background(Color(0x73000000)))
             .border(2.dp, if (selected) BorderStrong else BorderGold, RoundedCornerShape(17.dp))
             .tvFocus()
             .clickable { onClick() }

@@ -151,7 +151,7 @@ fun ParentalScreen(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (settings.pin.isNotEmpty()) GoldGradient else Color(0xFF2A2113))
+                    .then(if (settings.pin.isNotEmpty()) Modifier.background(GoldGradient) else Modifier.background(Color(0xFF2A2113)))
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -502,7 +502,7 @@ private fun PcRow(
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(17.dp))
-            .background(if (selected) GoldGradient else Color(0x73000000))
+            .then(if (selected) Modifier.background(GoldGradient) else Modifier.background(Color(0x73000000)))
             .border(2.dp, if (selected) BorderStrong else BorderGold, RoundedCornerShape(17.dp))
             .tvFocus()
             .clickable { onClick() }

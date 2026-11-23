@@ -151,8 +151,7 @@ fun SelectorDialog(
                                 if (selected) {
                                     Modifier.background(
                                         Brush.linearGradient(
-                                            Color(0x4DE5C158),
-                                            Color(0x1AE5C158)
+                                            listOf(Color(0x4DE5C158), Color(0x1AE5C158))
                                         ),
                                         rowShape
                                     )

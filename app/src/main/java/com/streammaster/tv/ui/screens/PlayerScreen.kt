@@ -875,7 +875,7 @@ private fun PlayerControls(
         )
         Column(
             modifier = Modifier.fillMaxSize()
-                .padding(horizontal = 52.dp, top = 34.dp, bottom = 32.dp),
+                .padding(start = 52.dp, end = 52.dp, top = 34.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Header (PL03).

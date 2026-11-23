@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -251,7 +250,7 @@ fun LiveScreen(
                         onToggleFavorite = { viewModel.toggleFavorite() }
                     )
                     if (channel != null) {
-                        LiveEpgPanel(channel = channel, epg = epg)
+                        LiveEpgPanel(channel = channel, epg = epg, modifier = Modifier.fillMaxWidth().weight(1f))
                     }
                 }
             }
@@ -380,7 +379,7 @@ private fun ChannelCard(channel: Channel, selected: Boolean, onClick: () -> Unit
                 ) {
                     Box(
                         modifier = Modifier.fillMaxHeight().fillMaxWidth(fraction)
-                            .background(if (selected) black else GoldGradient)
+                            .then(if (selected) Modifier.background(black) else Modifier.background(GoldGradient))
                     )
                 }
             }
@@ -548,7 +547,11 @@ private fun LiveViewport(
  *  EPG flow (LiveViewModel.epg); Channel.nowTitle/nowTime/description
  *  are the fallback when the EPG has no program for this channel. */
 @Composable
-private fun LiveEpgPanel(channel: Channel, epg: List<com.streammaster.tv.data.model.EpgProgram>) {
+private fun LiveEpgPanel(
+    channel: Channel,
+    epg: List<com.streammaster.tv.data.model.EpgProgram>,
+    modifier: Modifier = Modifier
+) {
     val nowMs = System.currentTimeMillis()
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     val nowProg = epg.firstOrNull { it.startMillis <= nowMs && it.endMillis > nowMs }
@@ -566,7 +569,7 @@ private fun LiveEpgPanel(channel: Channel, epg: List<com.streammaster.tv.data.mo
     // R-B2: CardSurface with the panel's own 24dp shape, gradient and 2px
     // border, so it carries the --card-shadow.
     CardSurface(
-        modifier = Modifier.fillMaxWidth().weight(1f),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         background = Brush.linearGradient(
             listOf(Color(0xF21E1606), Color(0xFA0D0903))

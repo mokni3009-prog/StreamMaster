@@ -28,6 +28,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -108,7 +110,7 @@ fun EpgScreen(
     val slotW: Dp = 100.dp
     val slotGap: Dp = 10.dp
     val chanW: Dp = 240.dp
-    val gridW: Dp = 12 * slotW + 11 * slotGap
+    val gridW: Dp = slotW * 12 + slotGap * 11
 
     Column(modifier = Modifier.fillMaxSize()) {
         // E01 — section header (.sec-head): gold bar + title + badge.
@@ -171,8 +173,8 @@ fun EpgScreen(
                     val hourStart = winStart + h * 60 * 60 * 1000L
                     Column(
                         modifier = Modifier
-                            .offset(x = h * (2 * slotW + slotGap))
-                            .width(2 * slotW + slotGap)
+                            .offset(x = (slotW * 2 + slotGap) * h)
+                            .width(slotW * 2 + slotGap)
                     ) {
                         Text(
                             text = timeFormat.format(Date(hourStart)),
@@ -239,8 +241,8 @@ fun EpgScreen(
                                 if (clipEnd <= clipStart) return@forEach
                                 val slotFloat = (clipStart - winStart) / (30 * 60 * 1000f)
                                 val span = max(1, ((clipEnd - clipStart) / (30 * 60 * 1000f)).roundToInt())
-                                val cellW = span * slotW + (span - 1) * slotGap
-                                val x = slotFloat * (slotW + slotGap)
+                                val cellW = slotW * span + slotGap * (span - 1)
+                                val x = (slotW + slotGap) * slotFloat
                                 val isReminder = viewModel.isReminder(state.reminders, channel.id, program.title, program.startMillis)
                                 val isScheduled = viewModel.isScheduled(scheduled, channel.id, program.title, program.startMillis)
                                 val isSeriesRule = viewModel.isSeriesRule(state.seriesRules, channel.id, program.title)

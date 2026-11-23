@@ -66,6 +66,7 @@ import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.Gold
+import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldSoft
