@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="match_day_title">Match Day</string>
-    <string name="match_day_today">Today's matches</string>
-    <string name="match_day_tomorrow">Tomorrow's matches</string>
+    <string name="match_day_today">Today\'s matches</string>
+    <string name="match_day_tomorrow">Tomorrow\'s matches</string>
     <string name="match_day_last_update">Last update: %1$s</string>
     <string name="match_day_channels">Channels: %1$s</string>
     <string name="match_day_watch">Watch the match</string>
@@ -14,7 +14,7 @@
     <string name="match_day_started">Started</string>
     <string name="match_day_no_channel">Channel not available in your subscriptions</string>
     <string name="match_day_no_matches">No matches</string>
-    <string name="match_day_error">Couldn't load today's matches — check the internet and try again</string>
+    <string name="match_day_error">Couldn\'t load today\'s matches — check the internet and try again</string>
     <string name="match_day_stadium">Stadium: %1$s</string>
     <string name="match_day_reminder_set">Reminder 15 minutes before the match</string>
     <string name="match_day_reminder_needs_channel">The reminder needs a channel from your subscriptions</string>
