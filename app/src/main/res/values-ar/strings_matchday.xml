@@ -23,5 +23,4 @@
     <string name="update_available_message">النسخة %1$s متوفرة.\n%2$s</string>
     <string name="update_now">حدّث الآن</string>
     <string name="update_later">ذكّرني لاحقًا</string>
-    <string name="match_day_already_started">المباراة بدأت بالفعل.</string>
 </resources>

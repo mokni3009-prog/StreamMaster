@@ -23,5 +23,4 @@
     <string name="update_available_message">La version %1$s est disponible.\n%2$s</string>
     <string name="update_now">Mettre à jour</string>
     <string name="update_later">Me le rappeler plus tard</string>
-    <string name="match_day_already_started">Le match a déjà commencé.</string>
 </resources>
