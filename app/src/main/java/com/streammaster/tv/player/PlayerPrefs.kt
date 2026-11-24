@@ -8,7 +8,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -40,9 +39,6 @@ class BitrateStore @Inject constructor(
         const val DEFAULT_INITIAL_BITRATE = 3_000_000L
     }
 
-    val lastMeasuredBitrate: Flow<Long?> =
-        context.playerPrefsDataStore.data.map { it[LAST_MEASURED_BITRATE] }
-
     suspend fun getLastMeasuredBitrate(): Long? =
         context.playerPrefsDataStore.data.map { it[LAST_MEASURED_BITRATE] }.first()
 
@@ -52,9 +48,6 @@ class BitrateStore @Inject constructor(
             prefs[LAST_MEASURED_BITRATE] = bitrateBps
         }
     }
-
-    val forceRtspTcp: Flow<Boolean> =
-        context.playerPrefsDataStore.data.map { it[FORCE_RTSP_TCP] ?: false }
 
     suspend fun isForceRtspTcp(): Boolean =
         context.playerPrefsDataStore.data.map { it[FORCE_RTSP_TCP] ?: false }.first()

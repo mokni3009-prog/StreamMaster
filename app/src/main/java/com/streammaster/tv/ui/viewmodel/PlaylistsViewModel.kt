@@ -19,6 +19,7 @@ const val MAX_PLAYLISTS = 10
 data class PlaylistFormState(
     val editing: Playlist? = null,
     val name: String = "",
+    val type: com.streammaster.tv.data.model.PlaylistType = com.streammaster.tv.data.model.PlaylistType.XTREAM,
     val serverUrl: String = "",
     val username: String = "",
     val password: String = "",
@@ -44,12 +45,13 @@ class PlaylistsViewModel @Inject constructor(
     fun openAdd() = _form.update { PlaylistFormState(showForm = true) }
     fun openEdit(p: Playlist) = _form.update {
         PlaylistFormState(
-            editing = p, name = p.name, serverUrl = p.serverUrl, username = p.username,
+            editing = p, name = p.name, type = p.type, serverUrl = p.serverUrl, username = p.username,
             password = p.password, portalUrl = p.portalUrl, mac = p.mac, m3uUrl = p.m3uUrl, xmltvUrl = p.xmltvUrl ?: "", showForm = true
         )
     }
     fun closeForm() = _form.update { it.copy(showForm = false, editing = null) }
     fun setName(v: String) = _form.update { it.copy(name = v) }
+    fun setType(v: com.streammaster.tv.data.model.PlaylistType) = _form.update { it.copy(type = v) }
     fun setServerUrl(v: String) = _form.update { it.copy(serverUrl = v) }
     fun setUsername(v: String) = _form.update { it.copy(username = v) }
     fun setPassword(v: String) = _form.update { it.copy(password = v) }
@@ -68,15 +70,15 @@ class PlaylistsViewModel @Inject constructor(
         }
         val base = f.editing ?: Playlist(
             id = java.util.UUID.randomUUID().toString(), name = f.name,
-            type = if (f.m3uUrl.isNotBlank()) com.streammaster.tv.data.model.PlaylistType.M3U
-            else if (f.portalUrl.isNotBlank()) com.streammaster.tv.data.model.PlaylistType.STALKER
-            else com.streammaster.tv.data.model.PlaylistType.XTREAM,
+            type = f.type,
             serverUrl = "", username = "", password = "", portalUrl = "", mac = "", m3uUrl = "",
             isActive = false, expiryDate = "", connections = 1, lastUpdate = "", status = "active"
         )
         val updated = base.copy(
-            name = f.name.ifBlank { base.name }, serverUrl = f.serverUrl, username = f.username,
-            password = f.password, portalUrl = f.portalUrl, mac = f.mac, m3uUrl = f.m3uUrl,
+            name = f.name.ifBlank { base.name }, type = f.type,
+            serverUrl = f.serverUrl, username = f.username,
+            password = f.password, portalUrl = f.portalUrl,
+            mac = f.mac.trim().uppercase(), m3uUrl = f.m3uUrl,
             xmltvUrl = f.xmltvUrl.takeIf { it.isNotBlank() }
         )
         if (f.editing == null) {
@@ -101,7 +103,9 @@ class PlaylistsViewModel @Inject constructor(
         _form.update { it.copy(confirmDelete = null) }
     }
 
-    fun activate(id: String) = viewModelScope.launch { playlistRepository.activatePlaylist(id) }
+    /** L-04 — suspends so the caller can navigate to Loading only after
+     *  the activation is committed (was fire-and-forget). */
+    suspend fun activate(id: String) { playlistRepository.activatePlaylist(id) }
 
     fun refresh(id: String) = viewModelScope.launch {
         val ok = playlistRepository.refreshPlaylist(id)

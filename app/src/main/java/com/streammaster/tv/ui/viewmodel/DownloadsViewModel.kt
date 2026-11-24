@@ -3,7 +3,6 @@ package com.streammaster.tv.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streammaster.tv.data.model.Download
-import com.streammaster.tv.data.model.DownloadStatus
 import com.streammaster.tv.data.repository.DownloadRepository
 import com.streammaster.tv.player.VodDownloadManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,7 +31,4 @@ class DownloadsViewModel @Inject constructor(
     }
 
     fun retry(download: Download) = downloadManager.resume(download.id)
-
-    fun isActive(download: Download): Boolean =
-        download.status == DownloadStatus.DOWNLOADING || download.status == DownloadStatus.QUEUED
 }

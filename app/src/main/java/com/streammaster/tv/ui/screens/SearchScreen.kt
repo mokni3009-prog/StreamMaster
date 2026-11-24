@@ -262,7 +262,7 @@ fun SearchScreen(
         // Narrow canvas only: panel full width, sidebar below it in a
         // vertically scrollable column (weight(1f), sharing the space
         // equally with the results LazyColumn below). Focused keys and
-        // pills scroll themselves into view (scrollIntoView), so the last
+        // pills are brought into view automatically on focus, so the last
         // keyboard row, "Valider", the hint and the whole sidebar stay
         // reachable by remote. The reference branch keeps the old Row.
         if (narrow) {
@@ -856,15 +856,16 @@ private fun FocusableMatchesList(
         return
     }
     val byLeague = matches.groupBy { it.leagueName.ifBlank { "Football" } }
-    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // R-02: a plain Column, not a LazyColumn — this list is rendered
+    // inside an `item { }` of the outer LazyColumn, and a vertically
+    // scrollable list inside one is measured with infinite height.
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         byLeague.forEach { (league, leagueMatches) ->
-            item {
-                Text(
-                    text = league,
-                    fontSize = 20.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = Gold
-                )
-            }
-            items(leagueMatches) { match ->
+            Text(
+                text = league,
+                fontSize = 20.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = Gold
+            )
+            leagueMatches.forEach { match ->
                 FocusableMatchRow(match) { navController.navigate(Routes.MATCH_CENTER) }
             }
         }
@@ -874,6 +875,10 @@ private fun FocusableMatchesList(
 /** Same row as MatchCenterScreen's MatchRow, plus focus + click. */
 @Composable
 private fun FocusableMatchRow(match: LiveMatch, onClick: () -> Unit) {
+    // T-06: a logo that fails to load falls back to the team's
+    // initials (same pattern as LiveScreen/EpgScreen), not a blank box.
+    var homeLogoFailed by remember(match.homeLogo) { mutableStateOf(false) }
+    var awayLogoFailed by remember(match.awayLogo) { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
@@ -884,11 +889,22 @@ private fun FocusableMatchRow(match: LiveMatch, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (!match.homeLogo.isNullOrBlank()) {
+        if (!match.homeLogo.isNullOrBlank() && !homeLogoFailed) {
             AsyncImage(
                 model = match.homeLogo, contentDescription = match.homeTeam,
-                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp)
+                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp),
+                onError = { homeLogoFailed = true }
             )
+        } else {
+            Box(
+                modifier = Modifier.size(36.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = match.homeTeam.take(2).uppercase(), fontSize = 15.sp,
+                    fontWeight = FontWeight.Black, color = GoldBright
+                )
+            }
         }
         Text(
             text = match.homeTeam, fontSize = 17.sp, fontWeight = FontWeight.Bold,
@@ -904,11 +920,22 @@ private fun FocusableMatchRow(match: LiveMatch, onClick: () -> Unit) {
             text = match.awayTeam, fontSize = 17.sp, fontWeight = FontWeight.Bold,
             color = GoldWhite, modifier = Modifier.weight(1f)
         )
-        if (!match.awayLogo.isNullOrBlank()) {
+        if (!match.awayLogo.isNullOrBlank() && !awayLogoFailed) {
             AsyncImage(
                 model = match.awayLogo, contentDescription = match.awayTeam,
-                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp)
+                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp),
+                onError = { awayLogoFailed = true }
             )
+        } else {
+            Box(
+                modifier = Modifier.size(36.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = match.awayTeam.take(2).uppercase(), fontSize = 15.sp,
+                    fontWeight = FontWeight.Black, color = GoldBright
+                )
+            }
         }
         val statusColor = if (match.state == "in") GoldDeep else TextMuted
         val statusBg = if (match.state == "in") Gold else com.streammaster.tv.ui.theme.CardSurface

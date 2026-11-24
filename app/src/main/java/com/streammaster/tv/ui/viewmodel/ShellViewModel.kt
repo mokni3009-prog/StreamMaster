@@ -63,7 +63,8 @@ class ShellViewModel @Inject constructor(
         contentRepository.observeFilms(),
         contentRepository.observeSeries()
     ) { channels, films, series ->
-        channels.count { it.isFavorite } + films.count { it.isFavorite } + series.count { it.isFavorite }
+        // M-05: hidden favourites excluded, like FavorisViewModel.
+        channels.count { it.isFavorite && !it.hidden } + films.count { it.isFavorite && !it.hidden } + series.count { it.isFavorite && !it.hidden }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val playlistCount: StateFlow<Int> = playlistRepository.observePlaylists()
         .map { it.size }

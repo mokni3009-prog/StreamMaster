@@ -68,12 +68,16 @@ class HomeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             userRatingDao.getAll().collect { rows ->
-                setUserRatings(rows.map { row ->
-                    TasteRating(
-                        refId = row.itemId,
-                        kind = ContentKind.valueOf(row.itemType),
-                        stars = row.stars
-                    )
+                // L-08: a stale/hand-written row with an unknown kind
+                // must not crash the Home ViewModel — skip it.
+                setUserRatings(rows.mapNotNull { row ->
+                    runCatching { ContentKind.valueOf(row.itemType) }.getOrNull()?.let { kind ->
+                        TasteRating(
+                            refId = row.itemId,
+                            kind = kind,
+                            stars = row.stars
+                        )
+                    }
                 })
             }
         }
@@ -100,7 +104,10 @@ class HomeViewModel @Inject constructor(
             expiryDaysLeft = daysLeft(active?.expiryDate ?: ""),
             channelCount = channels.size, filmCount = films.size, seriesCount = series.size,
             playlistCount = playlists.size,
-            favoriteCount = channels.count { it.isFavorite } + films.count { it.isFavorite } + series.count { it.isFavorite },
+            // M-05: hidden favourites are excluded here, like
+            // FavorisScreen — otherwise the Home stat (and the sidebar
+            // badge) counts items the Favoris screen never shows.
+            favoriteCount = channels.count { it.isFavorite && !it.hidden } + films.count { it.isFavorite && !it.hidden } + series.count { it.isFavorite && !it.hidden },
             // Dynamic "Récemment vus": progress recorded at pause/stop, cleared at >=95%.
             // Hidden items never appear on Home (same as Live/Epg/Favoris).
             recentFilms = films.filter { !it.hidden && it.recentProgress in 1..94 },

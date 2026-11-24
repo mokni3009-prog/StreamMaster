@@ -30,7 +30,12 @@ class ServerStatusChecker @Inject constructor(
         val base = playlist.serverUrl.trim().trimEnd('/')
         if (base.isBlank()) return@withContext ServerStatus(false, 0, "no server")
         val url = if (playlist.type == PlaylistType.XTREAM) {
-            "$base/player_api.php?username=${playlist.username}&password=${playlist.password}"
+            // SEC-01: credentials go in the URL — encode them so a
+            // username/password with reserved characters cannot break or
+            // inject into the query string.
+            val user = java.net.URLEncoder.encode(playlist.username, "UTF-8")
+            val pass = java.net.URLEncoder.encode(playlist.password, "UTF-8")
+            "$base/player_api.php?username=$user&password=$pass"
         } else base
         val start = SystemClock.elapsedRealtime()
         val req = Request.Builder().url(url).build()

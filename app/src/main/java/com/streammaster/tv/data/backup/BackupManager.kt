@@ -8,10 +8,12 @@ import com.streammaster.tv.data.model.HistoryEntry
 import com.streammaster.tv.data.model.Playlist
 import com.streammaster.tv.data.model.WatchLaterItem
 import com.streammaster.tv.data.repository.ContentRepository
+import com.streammaster.tv.data.repository.MAX_PLAYLISTS
 import com.streammaster.tv.data.repository.PlaylistRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import com.streammaster.tv.data.repository.toEntity
 import com.streammaster.tv.data.repository.toModel
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -53,9 +55,12 @@ class BackupManager @Inject constructor(
     suspend fun export(password: String? = null): String {
         val settings = settingsRepository.settings.first()
         val playlists = playlistRepository.observePlaylists().first()
-        val channels = contentRepository.observeChannels().first()
-        val films = contentRepository.observeFilms().first()
-        val series = contentRepository.observeSeries().first()
+        // OP-15: favourites / custom numbers from ALL playlists, not just
+        // the active one — the old code silently dropped the other nine
+        // subscriptions' favourites from every backup.
+        val channels = contentRepository.observeAllChannels().first()
+        val films = contentRepository.observeAllFilms().first()
+        val series = contentRepository.observeAllSeries().first()
         val favorites = buildList {
             channels.filter { it.isFavorite }.forEach { add("LIVE:${it.id}") }
             films.filter { it.isFavorite }.forEach { add("FILM:${it.id}") }
@@ -92,9 +97,20 @@ class BackupManager @Inject constructor(
             settingsRepository.update { settings }
         }
         if (data.playlists.isNotEmpty()) {
-            val current = playlistRepository.observePlaylists().first()
-            current.forEach { playlistRepository.deletePlaylist(it.id) }
-            data.playlists.forEach { playlistRepository.addPlaylist(it) }
+            // OP-14: validate BEFORE deleting anything — a backup with more
+            // than MAX_PLAYLISTS used to wipe the current playlists and
+            // then fail on addPlaylist's require(), leaving the user with
+            // none. Then replace atomically, and refresh the imported
+            // playlists so they arrive with content, not empty.
+            if (data.playlists.size > MAX_PLAYLISTS) return false
+            val importedIds = db.withTransaction {
+                val current = playlistRepository.observePlaylists().first()
+                current.forEach { playlistRepository.deletePlaylist(it.id) }
+                data.playlists.map { playlistRepository.addPlaylist(it) }
+            }
+            for (id in importedIds) {
+                runCatching { playlistRepository.refreshPlaylist(id) }
+            }
         }
         data.favorites.forEach { fav ->
             val parts = fav.split(":", limit = 2)

@@ -361,7 +361,13 @@ fun LoginScreen(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = fieldValue(field), color = GoldWhite, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    // S-01 — the echo above the keyboard masked the
+                    // password like the field itself (was plain text).
+                    Text(
+                        text = if (field == LoginField.PASSWORD) "•".repeat(fieldValue(field).length)
+                        else fieldValue(field),
+                        color = GoldWhite, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp)
+                    )
                     BuiltInKeyboard(
                         onKey = { c -> setField(field, fieldValue(field) + c) },
                         onAction = { action ->

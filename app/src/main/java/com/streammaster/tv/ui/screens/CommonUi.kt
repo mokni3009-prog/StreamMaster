@@ -34,6 +34,17 @@ import com.streammaster.tv.ui.theme.tvFocus
  *  come from the components agent's Common.kt (CONTRACT §8) and are
  *  imported by the screens that use them; only the helpers below are
  *  screen-local (no shared equivalent exists for them). */
+
+/** T-03 — shared byte-size formatter (was a private copy in both
+ *  RecordingsScreen and DownloadsScreen). */
+internal fun formatSize(bytes: Long): String {
+    return when {
+        bytes >= 1_073_741_824L -> "%.1f Go".format(bytes / 1_073_741_824.0)
+        bytes >= 1_048_576L -> "%.0f Mo".format(bytes / 1_048_576.0)
+        bytes >= 1024L -> "%.0f Ko".format(bytes / 1024.0)
+        else -> "$bytes o"
+    }
+}
 @Composable
 fun GhostButton(
     text: String = "",
@@ -87,9 +98,11 @@ fun SortPill(text: String, selected: Boolean, modifier: Modifier = Modifier, onC
                 if (selected) Color(0xFFFFF8D6) else BorderGold,
                 RoundedCornerShape(20.dp)
             )
+            // T-02: padding BEFORE clickable — after it, the padding
+            // widened the pill visually outside its click area.
+            .padding(horizontal = 18.dp, vertical = 10.dp)
             .tvFocus()
-            .clickable { onClick() }
-            .padding(horizontal = 18.dp, vertical = 10.dp),
+            .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Text(text = text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = if (selected) GoldDeep else GoldWhite)
@@ -107,9 +120,11 @@ fun ReadOnlyField(label: String, value: String, modifier: Modifier = Modifier, o
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xEB080602))
             .border(2.dp, BorderGold, RoundedCornerShape(16.dp))
+            // T-02: padding BEFORE clickable — after it, the padding
+            // widened the field visually outside its click area.
+            .padding(horizontal = 20.dp)
             .tvFocus()
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp),
+            .clickable { onClick() },
         contentAlignment = Alignment.CenterStart
     ) {
         Text(

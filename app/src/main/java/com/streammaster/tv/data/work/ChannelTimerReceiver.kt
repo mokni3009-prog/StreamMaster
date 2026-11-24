@@ -18,9 +18,9 @@ import android.net.Uri
  * the switch is automatic, as §4.58 requires. No PlayerViewModel call is
  * made from here — there is no bus command for "play channel by id"
  * (RemoteBus only has zap up/down), so the deep link is the switch
- * mechanism. See the KNOWN GAP note in [ChannelTimerScheduler]: while
- * the player is already open on another channel, MainActivity queues the
- * link instead of switching; that branch belongs to MainActivity's owner.
+ * mechanism. While the player is already open on another channel,
+ * MainActivity's `maybeNavigateToDeepLink` navigates to the new
+ * channel (OP-13, fixed 2026-11-24) instead of leaving the link queued.
  *
  * NOTE: this receiver must be declared in AndroidManifest.xml
  * (`exported=false`), like ReminderReceiver — the manifest is owned by

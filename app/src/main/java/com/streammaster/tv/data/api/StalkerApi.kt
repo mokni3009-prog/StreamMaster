@@ -2,17 +2,17 @@ package com.streammaster.tv.data.api
 
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
-import com.google.gson.annotations.SerializedName
 import com.streammaster.tv.data.model.Bouquet
 import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.data.model.Channel
 import com.streammaster.tv.data.model.EpgProgram
 import com.streammaster.tv.data.model.Playlist
-import okhttp3.FormBody
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 
 private const val TAG = "StreamMaster"
 
@@ -71,9 +71,14 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
     /** Performs the handshake and returns the session token, or null on failure. */
     suspend fun handshake(playlist: Playlist): String? {
         val portal = portalBase(playlist)
-        val resp = runCatching {
-            okHttpClient.newCall(handshakeRequest(portal, playlist.mac)).execute()
-        }.getOrNull() ?: return null
+        // OP-01: synchronous execute() must never run on the Main thread
+        // (callers refresh from viewModelScope) — dispatch to IO here so
+        // every caller is main-safe.
+        val resp = withContext(Dispatchers.IO) {
+            runCatching {
+                okHttpClient.newCall(handshakeRequest(portal, playlist.mac)).execute()
+            }.getOrNull()
+        } ?: return null
         resp.use {
             if (!it.isSuccessful) {
                 Log.w(TAG, "Stalker handshake failed: HTTP ${it.code}")
@@ -82,7 +87,7 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
             val body = it.body?.string() ?: return null
             return runCatching {
                 val obj = gson.fromJson(body, JsonObject::class.java)
-                obj.getAsJsonObject("js")?.get("token")?.asString
+                obj.optJsonObject("js")?.get("token")?.asString
             }.getOrNull()
         }
     }
@@ -96,9 +101,21 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
             .build()
     }
 
-    private fun getJson(playlist: Playlist, token: String, actionUrl: String): JsonObject? {
+    /** Null-safe array/object readers: some portals answer `js` as an
+     *  object instead of an array (or vice versa) — getAsJsonArray /
+     *  getAsJsonObject throw on the wrong shape, so never call them raw. */
+    private fun JsonObject.optJsonArray(name: String): JsonArray? =
+        runCatching { getAsJsonArray(name) }.getOrNull()
+
+    private fun JsonObject.optJsonObject(name: String): JsonObject? =
+        runCatching { getAsJsonObject(name) }.getOrNull()
+
+    private suspend fun getJson(playlist: Playlist, token: String, actionUrl: String): JsonObject? {
         val req = authedRequest(portalBase(playlist), playlist.mac, token, actionUrl)
-        val resp = runCatching { okHttpClient.newCall(req).execute() }.getOrNull() ?: return null
+        // OP-01: see handshake().
+        val resp = withContext(Dispatchers.IO) {
+            runCatching { okHttpClient.newCall(req).execute() }.getOrNull()
+        } ?: return null
         resp.use {
             if (!it.isSuccessful) return null
             val body = it.body?.string() ?: return null
@@ -111,7 +128,7 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
     suspend fun fetchGenres(playlist: Playlist, token: String): List<StalkerGenre> {
         val json = getJson(playlist, token, "type=stalker_portal&action=get_genres&type=itv")
             ?: getJson(playlist, token, "type=itv&action=get_genres") ?: return emptyList()
-        val arr = json.getAsJsonArray("js") ?: return emptyList()
+        val arr = json.optJsonArray("js") ?: return emptyList()
         return arr.mapNotNull { el ->
             runCatching {
                 val o = el.asJsonObject
@@ -127,7 +144,7 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
         val json = getJson(playlist, token, "type=stalker_portal&action=get_all_channels")
             ?: getJson(playlist, token, "type=itv&action=get_all_channels")
             ?: return emptyList()
-        val arr = json.getAsJsonArray("js") ?: return emptyList()
+        val arr = json.optJsonArray("js") ?: return emptyList()
         return arr.mapNotNull { el ->
             runCatching {
                 val o = el.asJsonObject
@@ -152,7 +169,7 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
             playlist, token,
             "type=stalker_portal&action=create_link&type=itv&cmd=$encoded&forced_storage=undefined&disable_ad=0"
         ) ?: return cmd
-        val js = json.getAsJsonObject("js") ?: return cmd
+        val js = json.optJsonObject("js") ?: return cmd
         return js.get("cmd")?.asString ?: cmd
     }
 
@@ -221,7 +238,7 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
             playlist, token,
             "type=stalker_portal&action=get_epg&ch_id=$chId&period=$periodHours"
         ) ?: return emptyList()
-        val arr = json.getAsJsonArray("js") ?: return emptyList()
+        val arr = json.optJsonArray("js") ?: return emptyList()
         return arr.mapNotNull { el ->
             runCatching {
                 val o = el.asJsonObject
@@ -238,20 +255,9 @@ class StalkerApi(private val okHttpClient: OkHttpClient) {
         }
     }
 
-    /**
-     * Catchup (§4.43): NOT supported for Stalker in this client — no
-     * archive/timeshift endpoint is wired (no `tv_archive` handling, no
-     * timeshift `create_link`). The EPG hides the "Revoir" button for
-     * Stalker channels ("st-…"). If a portal later exposes timeshift,
-     * wire it here and flip this to a per-channel check.
-     */
-    fun supportsCatchup(): Boolean = false
-
-    @Suppress("unused")
-    data class StalkerProfile(
-        @SerializedName("id") val id: String?,
-        @SerializedName("name") val name: String?,
-        @SerializedName("phone") val phone: String?,
-        @SerializedName("ls") val ls: String?
-    )
+    // Catchup (§4.43): NOT supported for Stalker in this client — no
+    // archive/timeshift endpoint is wired (no `tv_archive` handling, no
+    // timeshift `create_link`). The EPG hides the "Revoir" button for
+    // Stalker channels ("st-…"). If a portal later exposes timeshift,
+    // wire it here and add a per-channel check.
 }

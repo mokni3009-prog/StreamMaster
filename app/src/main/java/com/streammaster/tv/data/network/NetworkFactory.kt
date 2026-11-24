@@ -41,6 +41,9 @@ class SingleServerDns(private val serverIp: String) : Dns {
             val buf = ByteArray(2048)
             val packet = DatagramPacket(buf, buf.size)
             socket.receive(packet)
+            // SEC-08: only accept an answer that actually came from the
+            // server we asked (the 16-bit ID check alone is spoofable).
+            if (packet.address != server) return emptyList()
             return parseARecords(packet.data, packet.length, id)
         } finally {
             socket.close()
@@ -112,7 +115,7 @@ object NetworkFactory {
         if (settings.dns == "auto") return Dns.SYSTEM
         val ip = when (settings.dns) {
             "custom" -> settings.dnsCustom.trim().ifEmpty { null }
-            else -> DNS_SERVERS[settings.dns] ?: DNS_SERVERS[settings.dns]
+            else -> DNS_SERVERS[settings.dns]
         } ?: return Dns.SYSTEM
         return SingleServerDns(ip)
     }
@@ -127,7 +130,9 @@ object NetworkFactory {
     }
 
     fun buildOkHttpClient(settings: AppSettings): OkHttpClient {
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
+        // SEC-01: NEVER log request URLs — Xtream calls carry username +
+        // password as query params, and BASIC logs the full URL to logcat.
+        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.NONE }
         return OkHttpClient.Builder()
             .dns(dnsFor(settings))
             .connectTimeout(8, TimeUnit.SECONDS)

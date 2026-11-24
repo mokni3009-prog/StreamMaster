@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_data.xml -->
+<resources>
+    <string name="catchup_revoir">إعادة المشاهدة</string>
+    <string name="match_starts_soon_title">تنطلق المباراة بعد 15 دقيقة</string>
+    <string name="follow_alerts_channel">المتابَع (مسلسلات وأنواع)</string>
+    <string name="follow_alerts_channel_desc">تنبيهات بالإصدارات الجديدة للمسلسلات والأنواع المتابَعة</string>
+    <string name="follow_new_episodes_title">حلقة جديدة</string>
+    <string name="follow_new_episodes_text">%2$s: %1$d حلقة جديدة</string>
+    <string name="follow_new_films_title">أفلام جديدة</string>
+    <string name="follow_new_films_text">وصلت أفلام جديدة %1$s</string>
+</resources>

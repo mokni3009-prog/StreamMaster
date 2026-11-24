@@ -129,7 +129,9 @@ fun WatchLaterScreen(
                                 when (item.kind) {
                                     ContentKind.FILM -> navController.navigate(Routes.detail("film", item.refId))
                                     ContentKind.SERIES -> navController.navigate(Routes.detail("series", item.refId))
-                                    else -> Unit
+                                    // L-24 — LIVE items did nothing (else ->
+                                    // Unit); open the channel in the player.
+                                    ContentKind.LIVE -> navController.navigate(Routes.player("live", item.refId))
                                 }
                             }
                             .padding(16.dp),

@@ -1,6 +1,7 @@
 package com.streammaster.tv.data.prefs
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -10,8 +11,10 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streammaster.tv.data.model.AppSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
+private const val TAG = "StreamMaster"
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 /**
@@ -83,48 +86,56 @@ class SettingsStore(private val context: Context) {
             if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
     }
 
-    val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
-        AppSettings(
-            lang = prefs[KEY_LANG] ?: "fr",
-            dns = prefs[KEY_DNS] ?: "auto",
-            dnsCustom = prefs[KEY_DNS_CUSTOM] ?: "",
-            ua = prefs[KEY_UA] ?: "default",
-            uaCustom = prefs[KEY_UA_CUSTOM] ?: "",
-            format = prefs[KEY_FORMAT] ?: "auto",
-            engine = prefs[KEY_ENGINE] ?: "exo",
-            epgWindow = prefs[KEY_EPG_WINDOW] ?: "24h",
-            autoResume = prefs[KEY_AUTO_RESUME] ?: false,
-            sleepMinutes = prefs[KEY_SLEEP_MINUTES] ?: 0,
-            pin = prefs[KEY_PIN] ?: "",
-            lockedBouquets = decodeLockedBouquets(prefs[KEY_LOCKED_BOUQUETS_JSON] ?: ""),
-            lockedItems = decodeLockedItems(prefs[KEY_LOCKED_ITEMS_JSON] ?: ""),
-            autoStartOnBoot = prefs[KEY_AUTO_START_ON_BOOT] ?: false,
-            appLock = prefs[KEY_APP_LOCK] ?: false,
-            kidsMode = prefs[KEY_KIDS_MODE] ?: false,
-            frameRateSwitch = prefs[KEY_FRAME_RATE_SWITCH] ?: true,
-            externalPlayer = prefs[KEY_EXTERNAL_PLAYER] ?: "",
-            recordingFolderUri = prefs[KEY_RECORDING_FOLDER_URI] ?: "",
-            activeProfileId = prefs[KEY_ACTIVE_PROFILE_ID] ?: "default",
-            updateUrl = prefs[KEY_UPDATE_URL] ?: "",
-            smartFailover = prefs[KEY_SMART_FAILOVER] ?: false,
-            matchCenter = prefs[KEY_MATCH_CENTER] ?: false,
-            goalAlerts = prefs[KEY_GOAL_ALERTS] ?: false,
-            maxSpeed = prefs[KEY_MAX_SPEED] ?: true,
-            remoteEnabled = prefs[KEY_REMOTE_ENABLED] ?: false,
-            remoteCode = prefs[KEY_REMOTE_CODE] ?: "",
-            lastChannelId = prefs[KEY_LAST_CHANNEL],
-            volumeNormalization = prefs[KEY_VOLUME_NORMALIZATION] ?: true,
-            autoArabicSubs = prefs[KEY_AUTO_ARABIC_SUBS] ?: true,
-            dndEnabled = prefs[KEY_DND_ENABLED] ?: false,
-            smartMatchAlerts = prefs[KEY_SMART_MATCH_ALERTS] ?: true,
-            firstRunDone = prefs[KEY_FIRST_RUN_DONE] ?: false,
-            autoBackupWeekly = prefs[KEY_AUTO_BACKUP_WEEKLY] ?: false,
-            subtitleSize = prefs[KEY_SUBTITLE_SIZE] ?: 100,
-            subtitleColor = prefs[KEY_SUBTITLE_COLOR] ?: "#FFFFFF",
-            subtitlePosition = prefs[KEY_SUBTITLE_POSITION] ?: "bottom",
-            pinRecoveryHash = prefs[KEY_PIN_RECOVERY_HASH]
-        )
-    }
+    val settings: Flow<AppSettings> = context.settingsDataStore.data
+        // OP-16: a corrupt/unreadable DataStore file used to throw out of
+        // this Flow and crash every collector (settings are read almost
+        // everywhere) — fall back to defaults instead.
+        .catch { e ->
+            Log.w(TAG, "settings read failed, using defaults", e)
+            emit(AppSettings())
+        }
+        .map { prefs ->
+            AppSettings(
+                lang = prefs[KEY_LANG] ?: "fr",
+                dns = prefs[KEY_DNS] ?: "auto",
+                dnsCustom = prefs[KEY_DNS_CUSTOM] ?: "",
+                ua = prefs[KEY_UA] ?: "default",
+                uaCustom = prefs[KEY_UA_CUSTOM] ?: "",
+                format = prefs[KEY_FORMAT] ?: "auto",
+                engine = prefs[KEY_ENGINE] ?: "exo",
+                epgWindow = prefs[KEY_EPG_WINDOW] ?: "24h",
+                autoResume = prefs[KEY_AUTO_RESUME] ?: false,
+                sleepMinutes = prefs[KEY_SLEEP_MINUTES] ?: 0,
+                pin = prefs[KEY_PIN] ?: "",
+                lockedBouquets = decodeLockedBouquets(prefs[KEY_LOCKED_BOUQUETS_JSON] ?: ""),
+                lockedItems = decodeLockedItems(prefs[KEY_LOCKED_ITEMS_JSON] ?: ""),
+                autoStartOnBoot = prefs[KEY_AUTO_START_ON_BOOT] ?: false,
+                appLock = prefs[KEY_APP_LOCK] ?: false,
+                kidsMode = prefs[KEY_KIDS_MODE] ?: false,
+                frameRateSwitch = prefs[KEY_FRAME_RATE_SWITCH] ?: true,
+                externalPlayer = prefs[KEY_EXTERNAL_PLAYER] ?: "",
+                recordingFolderUri = prefs[KEY_RECORDING_FOLDER_URI] ?: "",
+                activeProfileId = prefs[KEY_ACTIVE_PROFILE_ID] ?: "default",
+                updateUrl = prefs[KEY_UPDATE_URL] ?: "",
+                smartFailover = prefs[KEY_SMART_FAILOVER] ?: false,
+                matchCenter = prefs[KEY_MATCH_CENTER] ?: false,
+                goalAlerts = prefs[KEY_GOAL_ALERTS] ?: false,
+                maxSpeed = prefs[KEY_MAX_SPEED] ?: true,
+                remoteEnabled = prefs[KEY_REMOTE_ENABLED] ?: false,
+                remoteCode = prefs[KEY_REMOTE_CODE] ?: "",
+                lastChannelId = prefs[KEY_LAST_CHANNEL],
+                volumeNormalization = prefs[KEY_VOLUME_NORMALIZATION] ?: true,
+                autoArabicSubs = prefs[KEY_AUTO_ARABIC_SUBS] ?: true,
+                dndEnabled = prefs[KEY_DND_ENABLED] ?: false,
+                smartMatchAlerts = prefs[KEY_SMART_MATCH_ALERTS] ?: true,
+                firstRunDone = prefs[KEY_FIRST_RUN_DONE] ?: false,
+                autoBackupWeekly = prefs[KEY_AUTO_BACKUP_WEEKLY] ?: false,
+                subtitleSize = prefs[KEY_SUBTITLE_SIZE] ?: 100,
+                subtitleColor = prefs[KEY_SUBTITLE_COLOR] ?: "#FFFFFF",
+                subtitlePosition = prefs[KEY_SUBTITLE_POSITION] ?: "bottom",
+                pinRecoveryHash = prefs[KEY_PIN_RECOVERY_HASH]
+            )
+        }
 
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         // Read current value from the flow is racy; instead read prefs directly.

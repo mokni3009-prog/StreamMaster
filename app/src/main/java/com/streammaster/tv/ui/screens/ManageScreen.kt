@@ -52,7 +52,6 @@ import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.data.model.ContentKind
-import com.streammaster.tv.data.model.BouquetKind
 import com.streammaster.tv.ui.components.BuiltInKeyboard
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.KeyboardAction
@@ -293,16 +292,20 @@ fun ManageScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     itemsIndexed(kindBouquets) { index, bouquet ->
+                        // L-02 — per-bouquet counts only exist for LIVE
+                        // (channels carry a bouquetId). Films/series have
+                        // no bouquet link in the model, so the total shown
+                        // on every bouquet row was wrong on every row:
+                        // show no count there instead of a false one.
                         val itemCount = when (draft.kind) {
                             ManageKind.LIVE -> draft.channels.count { it.bouquetId == bouquet.id }
-                            ManageKind.FILMS -> draft.films.size
-                            ManageKind.SERIES -> draft.series.size
+                            else -> null
                         }
                         ManageRow(
                             ordText = (index + 1).toString(),
                             iconRes = R.drawable.ic_folder,
                             title = bouquet.name,
-                            subtitle = stringResource(R.string.mg_elements, itemCount),
+                            subtitle = itemCount?.let { stringResource(R.string.mg_elements, it) } ?: "",
                             badges = listOfNotNull(
                                 if (bouquet.hidden) stringResource(R.string.mg_hidden) else null,
                                 if (bouquet.id in lockedBouquetIds) stringResource(R.string.locked) else null
@@ -338,8 +341,16 @@ fun ManageScreen(
                                 channel?.category?.ifBlank { null },
                                 channel?.quality?.ifBlank { null }
                             ).joinToString(" • ")
-                            ManageKind.FILMS -> "${film?.year ?: ""} • ${film?.genre ?: ""}"
-                            ManageKind.SERIES -> "${stringResource(R.string.seasons_label, serie?.seasons ?: 0)} • ${serie?.genre ?: ""}"
+                            // T-10 — no " • " with an empty side when the
+                            // year/genre is missing.
+                            ManageKind.FILMS -> listOfNotNull(
+                                film?.year?.takeIf { it > 0 }?.toString(),
+                                film?.genre?.ifBlank { null }
+                            ).joinToString(" • ")
+                            ManageKind.SERIES -> listOfNotNull(
+                                serie?.let { stringResource(R.string.seasons_label, it.seasons) },
+                                serie?.genre?.ifBlank { null }
+                            ).joinToString(" • ")
                         }
                         val locked = id in lockedItemIds ||
                             (draft.kind == ManageKind.LIVE && channel?.bouquetId in lockedBouquetIds)
@@ -393,16 +404,16 @@ fun ManageScreen(
                             }${focusChannel?.customNum?.let { " • N° $it" } ?: ""}${
                                 if (selectedIds.size > 1) " • ${stringResource(R.string.mg_sel_count, selectedIds.size)}" else ""
                             }"
-                            draft.selectedBouquetId != null -> "${stringResource(R.string.mg_target_bouquet)} • ${
-                                stringResource(
-                                    R.string.mg_elements,
-                                    when (draft.kind) {
-                                        ManageKind.LIVE -> draft.channels.count { it.bouquetId == draft.selectedBouquetId }
-                                        ManageKind.FILMS -> draft.films.size
-                                        ManageKind.SERIES -> draft.series.size
-                                    }
-                                )
-                            }"
+                            draft.selectedBouquetId != null -> {
+                                // L-02 — the elements count is only
+                                // meaningful for LIVE (see the bouquet
+                                // column above); films/series show the
+                                // target label alone.
+                                val targetLabel = stringResource(R.string.mg_target_bouquet)
+                                if (draft.kind == ManageKind.LIVE) {
+                                    "$targetLabel • ${stringResource(R.string.mg_elements, draft.channels.count { it.bouquetId == draft.selectedBouquetId })}"
+                                } else targetLabel
+                            }
                             else -> stringResource(R.string.mg_no_target)
                         },
                         fontSize = 15.sp, color = GoldSoft
@@ -442,8 +453,13 @@ fun ManageScreen(
                     modifier = Modifier.focusProperties { canFocus = focusId != null }
                 ) {
                     focusId?.let {
-                        if (draft.kind == ManageKind.LIVE) viewModel.reorderChannel(it, -1)
-                        else viewModel.reorderBouquet(it, -1)
+                        // L-01 — films/series used to call reorderBouquet
+                        // with a film/series id: a silent no-op.
+                        when (draft.kind) {
+                            ManageKind.LIVE -> viewModel.reorderChannel(it, -1)
+                            ManageKind.FILMS -> viewModel.reorderFilm(it, -1)
+                            ManageKind.SERIES -> viewModel.reorderSeries(it, -1)
+                        }
                     }
                 }
                 MgActRow(
@@ -453,8 +469,12 @@ fun ManageScreen(
                     modifier = Modifier.focusProperties { canFocus = focusId != null }
                 ) {
                     focusId?.let {
-                        if (draft.kind == ManageKind.LIVE) viewModel.reorderChannel(it, 1)
-                        else viewModel.reorderBouquet(it, 1)
+                        // L-01 — see reorder_up above.
+                        when (draft.kind) {
+                            ManageKind.LIVE -> viewModel.reorderChannel(it, 1)
+                            ManageKind.FILMS -> viewModel.reorderFilm(it, 1)
+                            ManageKind.SERIES -> viewModel.reorderSeries(it, 1)
+                        }
                     }
                 }
                 if (draft.kind == ManageKind.LIVE) {
@@ -482,7 +502,14 @@ fun ManageScreen(
                 ) {
                     focusId?.let {
                         dialogOpenerKey = "rename"
-                        renameTarget = it to if (draft.kind == ManageKind.LIVE) "channel" else "bouquet"
+                        // L-01 — films/series were recorded as "bouquet"
+                        // and renamed via renameBouquet(id): a silent
+                        // no-op (renameBouquet only matches bouquets).
+                        renameTarget = it to when (draft.kind) {
+                            ManageKind.LIVE -> "channel"
+                            ManageKind.FILMS -> "film"
+                            ManageKind.SERIES -> "series"
+                        }
                         renameValue = items.firstOrNull { item -> item.first == it }?.second ?: ""
                     }
                 }
@@ -598,12 +625,27 @@ fun ManageScreen(
                     modifier = Modifier.padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                Text(text = stringResource(if (kind == "channel") R.string.rename_channel else R.string.rename_bouquet), fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite)
+                Text(
+                    text = stringResource(
+                        when (kind) {
+                            "channel" -> R.string.rename_channel
+                            "film" -> R.string.rename_film
+                            "series" -> R.string.rename_series
+                            else -> R.string.rename_bouquet
+                        }
+                    ), fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite)
                 Text(text = stringResource(R.string.mg_rename_hint), fontSize = 16.sp, color = GoldSoft)
                 ReadOnlyField(stringResource(R.string.rename), renameValue, modifier = Modifier.focusRequester(dialogFocus)) { keyboardTarget = "rename" }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GoldButton(text = stringResource(R.string.save)) {
-                        if (kind == "channel") viewModel.renameChannel(id, renameValue) else viewModel.renameBouquet(id, renameValue)
+                        // L-01 — route to the matching rename (was
+                        // renameBouquet for films/series: silent no-op).
+                        when (kind) {
+                            "channel" -> viewModel.renameChannel(id, renameValue)
+                            "film" -> viewModel.renameFilm(id, renameValue)
+                            "series" -> viewModel.renameSeries(id, renameValue)
+                            else -> viewModel.renameBouquet(id, renameValue)
+                        }
                         renameTarget = null
                     }
                     GhostButton(text = stringResource(R.string.cancel)) { renameTarget = null }

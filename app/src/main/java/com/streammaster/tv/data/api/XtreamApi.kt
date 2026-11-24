@@ -1,6 +1,5 @@
 package com.streammaster.tv.data.api
 
-import android.util.Log
 import com.google.gson.annotations.SerializedName
 import com.streammaster.tv.data.model.Bouquet
 import com.streammaster.tv.data.model.BouquetKind
@@ -10,6 +9,11 @@ import com.streammaster.tv.data.model.Episode
 import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.Playlist
 import com.streammaster.tv.data.model.Series
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -19,8 +23,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-
-private const val TAG = "StreamMaster"
 
 /** Live sync progress (R-M3, zero-diff C-2). The Loading screen has no
  *  other channel to the sync: the refresh runs in the repository layer,
@@ -275,14 +277,35 @@ data class XtreamContent(
  */
 class XtreamApi(private val okHttpClient: OkHttpClient) {
 
+    // LG-12: one Retrofit per server base URL — the old service() built a
+    // new Retrofit (and its converter) on EVERY call, including every
+    // getSeriesInfo and every short-EPG fetch.
+    private val serviceCache = mutableMapOf<String, XtreamService>()
+
     private fun service(serverUrl: String): XtreamService {
         val base = serverUrl.trimEnd('/') + "/"
-        return Retrofit.Builder()
-            .baseUrl(base)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(XtreamService::class.java)
+        synchronized(serviceCache) {
+            return serviceCache.getOrPut(base) {
+                Retrofit.Builder()
+                    .baseUrl(base)
+                    .client(okHttpClient)
+                    .addConverterFactory(GsonConverterFactory.create())
+                    .build()
+                    .create(XtreamService::class.java)
+            }
+        }
+    }
+
+    /** LG-12: quality from the stream name, not a constant "FHD" for every
+     *  row ("4K"/"UHD" → 4K, "FHD"/"1080" → FHD, "HD"/"720" → HD). */
+    private fun deriveQuality(name: String): String {
+        val lower = name.lowercase()
+        return when {
+            "4k" in lower || "uhd" in lower -> "4K"
+            "fhd" in lower || "1080" in lower -> "FHD"
+            " hd" in lower || lower.startsWith("hd") || "720" in lower -> "HD"
+            else -> "FHD"
+        }
     }
 
     suspend fun authenticate(playlist: Playlist): XtreamAuth =
@@ -354,7 +377,7 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                 name = s.name?.trim().orEmpty(),
                 code = (s.name?.trim().orEmpty().take(2).uppercase()),
                 category = catName["L$catId"] ?: "Autre",
-                quality = "FHD",
+                quality = deriveQuality(s.name?.trim().orEmpty()),
                 nowTitle = "",
                 nowTime = "",
                 progress = 0,
@@ -378,7 +401,7 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                 title = v.name?.trim().orEmpty(),
                 year = 0,
                 rating = v.rating5 ?: v.rating?.toDoubleOrNull() ?: 0.0,
-                quality = "FHD",
+                quality = deriveQuality(v.name?.trim().orEmpty()),
                 hue = 43,
                 genre = catName["V${v.categoryId}"] ?: "Films",
                 durationMin = 0,
@@ -397,7 +420,7 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                 title = (s.seriesName ?: s.name)?.trim().orEmpty(),
                 seasons = 0, // filled below from get_series_info
                 rating = s.rating5 ?: s.rating?.toDoubleOrNull() ?: 0.0,
-                quality = "FHD",
+                quality = deriveQuality((s.seriesName ?: s.name)?.trim().orEmpty()),
                 hue = 45,
                 genre = catName["S${s.categoryId}"] ?: (s.genre ?: "Séries"),
                 isFavorite = false,
@@ -410,28 +433,28 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
             )
         }
         // Episodes + season counts (best effort, one call per series).
-        // Progress advances per series (series.size is known): this loop
-        // is the slowest part of the sync (one call per series).
+        // LG-12: fetched in parallel (4 at a time) instead of one
+        // sequential call per series — syncing hundreds of series was the
+        // slowest part of the sync. Results are processed in series order
+        // afterwards, so the output order is unchanged.
+        val infos = coroutineScope {
+            val semaphore = Semaphore(4)
+            series.map { s ->
+                async {
+                    val sid = s.id.removePrefix("xt-ser-").toIntOrNull() ?: return@async null
+                    semaphore.withPermit {
+                        runCatching { svc.getSeriesInfo(u, p, sid) }.getOrNull()
+                    }
+                }
+            }.awaitAll()
+        }
+        SyncProgressBus.setStep(2, 90)
         val episodes = mutableListOf<Episode>()
         val seriesWithSeasons = mutableListOf<Series>()
-        val totalSeries = series.size
-        series.forEachIndexed { seriesIdx, s ->
-            fun advance() {
-                if (totalSeries > 0) {
-                    SyncProgressBus.setStep(2, 40 + (55 * (seriesIdx + 1) / totalSeries))
-                }
-            }
-            val sid = s.id.removePrefix("xt-ser-").toIntOrNull()
-            if (sid == null) {
-                seriesWithSeasons += s
-                advance()
-                return@forEachIndexed
-            }
-            val info = runCatching { svc.getSeriesInfo(u, p, sid) }.getOrNull()
+        series.zip(infos).forEach { (s, info) ->
             if (info == null) {
                 seriesWithSeasons += s
-                advance()
-                return@forEachIndexed
+                return@forEach
             }
             val seasonCount = info.seasons?.size ?: 0
             info.episodes?.forEach { (seasonKey, eps) ->
@@ -455,7 +478,6 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
                 }
             }
             seriesWithSeasons += s.copy(seasons = seasonCount)
-            advance()
         }
         SyncProgressBus.setStep(2, 100)
         return XtreamContent(bouquets, channels, films, seriesWithSeasons, episodes, expiry, connections, status)
@@ -523,11 +545,4 @@ class XtreamApi(private val okHttpClient: OkHttpClient) {
     /** Catchup URL for one program (instance helper around [buildTimeshiftUrl]). */
     fun timeshiftUrl(playlist: Playlist, streamId: Int, startMillis: Long, durationMinutes: Int): String =
         buildTimeshiftUrl(playlist.serverUrl, playlist.username, playlist.password, streamId, startMillis, durationMinutes)
-
-    /** Whether this live stream supports catchup: the provider sets
-     *  `tv_archive=1` on archived channels. Only a per-channel signal —
-     *  the Channel model does not carry it, so the EPG shows "Revoir"
-     *  for every Xtream channel and an unsupported one fails on playback
-     *  with the standard error screen. */
-    fun supportsCatchup(stream: XtreamLiveStream): Boolean = stream.tvArchive == 1
 }

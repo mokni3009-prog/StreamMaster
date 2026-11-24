@@ -144,7 +144,9 @@ class MatchDayApi @Inject constructor(
             }
         }
         return DayMatch(
-            id = m.optString("id", "${m.optString("home_team", "")}-${m.optString("away_team", "")}"),
+            // LG-20: the old fallback id "home-away" repeated when the same
+            // two teams played twice in one day — the kickoff disambiguates.
+            id = m.optString("id", "${m.optString("home_team", "")}-${m.optString("away_team", "")}-$kickoffMillis"),
             league = m.optString("league", league).ifBlank { league },
             leagueLogo = m.optString("league_logo", "").takeIf { it.isNotBlank() } ?: leagueLogo,
             homeTeam = m.optString("home_team", "?"),

@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,8 @@ import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.model.Playlist
+import com.streammaster.tv.data.model.PlaylistType
+import com.streammaster.tv.ui.viewmodel.MAC_REGEX
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.components.BuiltInKeyboard
 import com.streammaster.tv.ui.components.CardSurface
@@ -71,6 +74,7 @@ import com.streammaster.tv.ui.viewmodel.MAX_PLAYLISTS
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Playlists (Profil) — Y01 3-column grid (22dp gap), Y02 playlist card
@@ -135,7 +139,8 @@ fun PlaylistsScreen(
     val formFocus = remember { FocusRequester() }
     LaunchedEffect(form.showForm) { if (form.showForm) formFocus.requestFocus() }
     val context = LocalContext.current
-    var keyboardField by remember { mutableStateOf("name") } // name | server | user | pass | xmltv
+    val launchScope = rememberCoroutineScope()
+    var keyboardField by remember { mutableStateOf("name") } // name | server | user | pass | portal | mac | m3u | xmltv
     var keyboardLang by remember { mutableStateOf(KeyboardLanguage.FR) }
     var keyboard123 by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<Int?>(null) }
@@ -205,6 +210,7 @@ fun PlaylistsScreen(
             item {
                 MyPlaylistCard(
                     bouquetCount = myBouquetCount,
+                    focusRequester = myPlaylistFocus,
                     onManage = { navController.navigate(Routes.MANAGE) }
                 )
             }
@@ -212,7 +218,17 @@ fun PlaylistsScreen(
                 PlaylistCard(
                     playlist = playlist,
                     focusRequester = cardFocus(playlist.id),
-                    onLaunch = { viewModel.activate(playlist.id) },
+                    onLaunch = {
+                        // L-04 — activating alone left the user on Profil
+                        // with no visible change: wait for the activation
+                        // (suspend) then go to Loading/Home like Login.
+                        launchScope.launch {
+                            viewModel.activate(playlist.id)
+                            navController.navigate(Routes.LOADING) {
+                                popUpTo(Routes.PLAYLISTS) { inclusive = true }
+                            }
+                        }
+                    },
                     onEdit = { formReturnId = playlist.id; viewModel.openEdit(playlist) },
                     onDelete = { viewModel.askDelete(playlist) }
                 )
@@ -296,9 +312,28 @@ fun PlaylistsScreen(
                     )
                 }
                 ReadOnlyField(stringResource(R.string.field_playlist_name), form.name, modifier = Modifier.focusRequester(formFocus)) { keyboardField = "name" }
-                ReadOnlyField(stringResource(R.string.field_server), form.serverUrl) { keyboardField = "server" }
-                ReadOnlyField(stringResource(R.string.field_username), form.username) { keyboardField = "user" }
-                ReadOnlyField(stringResource(R.string.field_password), "•".repeat(form.password.length)) { keyboardField = "pass" }
+                // L-03 — subscription type (was Xtream-only: no portal/MAC
+                // or M3U fields, so Stalker/M3U could never be added here).
+                // The fields below follow the selected type, like Login.
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SortPill("Xtream", form.type == PlaylistType.XTREAM) { viewModel.setType(PlaylistType.XTREAM) }
+                    SortPill("Stalker", form.type == PlaylistType.STALKER) { viewModel.setType(PlaylistType.STALKER) }
+                    SortPill("M3U", form.type == PlaylistType.M3U) { viewModel.setType(PlaylistType.M3U) }
+                }
+                when (form.type) {
+                    PlaylistType.XTREAM -> {
+                        ReadOnlyField(stringResource(R.string.field_server), form.serverUrl) { keyboardField = "server" }
+                        ReadOnlyField(stringResource(R.string.field_username), form.username) { keyboardField = "user" }
+                        ReadOnlyField(stringResource(R.string.field_password), "•".repeat(form.password.length)) { keyboardField = "pass" }
+                    }
+                    PlaylistType.STALKER -> {
+                        ReadOnlyField(stringResource(R.string.field_portal_url), form.portalUrl) { keyboardField = "portal" }
+                        ReadOnlyField(stringResource(R.string.field_mac), form.mac) { keyboardField = "mac" }
+                    }
+                    PlaylistType.M3U -> {
+                        ReadOnlyField(stringResource(R.string.field_m3u_url), form.m3uUrl) { keyboardField = "m3u" }
+                    }
+                }
                 // Second EPG source (XMLTV) — kept from the current app; the
                 // prototype form has the 4 fields above.
                 ReadOnlyField(stringResource(R.string.field_xmltv_url), form.xmltvUrl) { keyboardField = "xmltv" }
@@ -317,6 +352,9 @@ fun PlaylistsScreen(
                     "server" -> form.serverUrl
                     "user" -> form.username
                     "pass" -> form.password
+                    "portal" -> form.portalUrl
+                    "mac" -> form.mac
+                    "m3u" -> form.m3uUrl
                     "xmltv" -> form.xmltvUrl
                     else -> form.name
                 }
@@ -324,6 +362,9 @@ fun PlaylistsScreen(
                     "server" -> viewModel::setServerUrl
                     "user" -> viewModel::setUsername
                     "pass" -> viewModel::setPassword
+                    "portal" -> viewModel::setPortalUrl
+                    "mac" -> viewModel::setMac
+                    "m3u" -> viewModel::setM3uUrl
                     "xmltv" -> viewModel::setXmltvUrl
                     else -> viewModel::setName
                 }
@@ -348,10 +389,18 @@ fun PlaylistsScreen(
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     GoldButton(text = stringResource(R.string.save)) {
+                        // L-03 — validation per subscription type (was
+                        // Xtream-only: server http + username for all).
                         formError = when {
                             form.name.isBlank() -> R.string.pl_form_error_name
-                            form.serverUrl.isBlank() || !form.serverUrl.startsWith("http") -> R.string.pl_form_error_server
-                            form.username.isBlank() -> R.string.pl_form_error_user
+                            form.type == PlaylistType.XTREAM &&
+                                (form.serverUrl.isBlank() || !form.serverUrl.startsWith("http")) -> R.string.pl_form_error_server
+                            form.type == PlaylistType.XTREAM && form.username.isBlank() -> R.string.pl_form_error_user
+                            form.type == PlaylistType.STALKER &&
+                                (form.portalUrl.isBlank() || !form.portalUrl.startsWith("http")) -> R.string.pl_form_error_portal
+                            form.type == PlaylistType.STALKER && !MAC_REGEX.matches(form.mac.trim()) -> R.string.pl_form_error_mac
+                            form.type == PlaylistType.M3U &&
+                                (form.m3uUrl.isBlank() || !form.m3uUrl.startsWith("http")) -> R.string.pl_form_error_m3u
                             else -> null
                         }
                         if (formError == null) viewModel.saveForm(playlists.size)
@@ -383,6 +432,7 @@ fun PlaylistsScreen(
 @Composable
 private fun MyPlaylistCard(
     bouquetCount: Int,
+    focusRequester: FocusRequester? = null,
     onManage: () -> Unit
 ) {
     // R-B2: same CardSurface treatment as the real playlist cards.
@@ -449,7 +499,10 @@ private fun MyPlaylistCard(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GoldButton(text = stringResource(R.string.my_playlist_manage), modifier = Modifier.weight(1f).focusRequester(myPlaylistFocus)) { onManage() }
+            // C-01 — the card is top-level: its focus requester arrives as
+            // a parameter now (it used to read the local myPlaylistFocus
+            // of PlaylistsScreen -> Unresolved reference).
+            GoldButton(text = stringResource(R.string.my_playlist_manage), modifier = Modifier.weight(1f).then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)) { onManage() }
         }
         }
     }

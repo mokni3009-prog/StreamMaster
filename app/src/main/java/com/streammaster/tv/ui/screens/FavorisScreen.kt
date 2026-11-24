@@ -27,11 +27,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -44,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.data.model.Channel
+import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.GoldBright
@@ -55,7 +58,8 @@ import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.FavorisViewModel
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.SectionHeader
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Favoris — favourite channels, films and series (prototype view-favoris:
  *  numbered sections with count badges, always visible, one empty message
@@ -112,21 +116,26 @@ fun FavorisScreen(
             }
             return@LaunchedEffect
         }
-        when {
+        val (targetRowState, targetIndex) = when {
             inChannels >= 0 -> {
                 listState.scrollToItem(0)
-                channelsRowState.scrollToItem(inChannels)
+                channelsRowState to inChannels
             }
             inFilms >= 0 -> {
                 listState.scrollToItem(1)
-                filmsRowState.scrollToItem(inFilms)
+                filmsRowState to inFilms
             }
             else -> {
                 listState.scrollToItem(2)
-                seriesRowState.scrollToItem(inSeries)
+                seriesRowState to inSeries
             }
         }
-        delay(120) // let the tile compose after the scroll before focusing it
+        targetRowState.scrollToItem(targetIndex)
+        // Wait for the target tile to actually be laid out instead of
+        // guessing with a fixed delay (same pattern as EpgScreen).
+        withTimeoutOrNull(1000) {
+            snapshotFlow { targetRowState.layoutInfo.visibleItemsInfo.any { it.index == targetIndex } }.first { it }
+        }
         focusFor(restoreId).requestFocus()
         focusRestored = true
         initialFocusDone = true
@@ -146,13 +155,21 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(state = channelsRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    // L-25 — a remove button under each tile (toggleFavorite
+                    // existed in the ViewModel but no UI called it). The
+                    // row has focusRestorer so focus survives the removal.
+                    LazyRow(state = channelsRowState, modifier = Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.channels) { index, channel ->
-                            FavChannelCard(
-                                channel = channel,
-                                modifier = Modifier.focusRequester(focusFor(channel.id))
-                                    .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
-                            ) { navController.navigate(Routes.player("live", channel.id)) }
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FavChannelCard(
+                                    channel = channel,
+                                    modifier = Modifier.focusRequester(focusFor(channel.id))
+                                        .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                ) { navController.navigate(Routes.player("live", channel.id)) }
+                                GhostButton(text = stringResource(R.string.fav_remove)) {
+                                    viewModel.toggleFavorite(ContentKind.LIVE, channel.id, false)
+                                }
+                            }
                         }
                     }
                 }
@@ -168,17 +185,22 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(state = filmsRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    LazyRow(state = filmsRowState, modifier = Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.films) { index, film ->
-                            PosterTile(
-                                title = film.title, hue = film.hue,
-                                code = film.title.take(2).uppercase(), isFavorite = true,
-                                quality = film.quality, rating = film.rating, year = film.year,
-                                unstable = film.isBroken,
-                                modifier = Modifier.focusRequester(focusFor(film.id))
-                                    .then(if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
-                            ) {
-                                navController.navigate(Routes.detail("film", film.id))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PosterTile(
+                                    title = film.title, hue = film.hue,
+                                    code = film.title.take(2).uppercase(), isFavorite = true,
+                                    quality = film.quality, rating = film.rating, year = film.year,
+                                    unstable = film.isBroken,
+                                    modifier = Modifier.focusRequester(focusFor(film.id))
+                                        .then(if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
+                                ) {
+                                    navController.navigate(Routes.detail("film", film.id))
+                                }
+                                GhostButton(text = stringResource(R.string.fav_remove)) {
+                                    viewModel.toggleFavorite(ContentKind.FILM, film.id, false)
+                                }
                             }
                         }
                     }
@@ -195,17 +217,22 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(state = seriesRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    LazyRow(state = seriesRowState, modifier = Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.series) { index, series ->
-                            PosterTile(
-                                title = series.title, hue = series.hue,
-                                code = series.title.take(2).uppercase(), isFavorite = true,
-                                quality = series.quality, rating = series.rating,
-                                seasons = series.seasons, unstable = series.isBroken,
-                                modifier = Modifier.focusRequester(focusFor(series.id))
-                                    .then(if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
-                            ) {
-                                navController.navigate(Routes.detail("series", series.id))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PosterTile(
+                                    title = series.title, hue = series.hue,
+                                    code = series.title.take(2).uppercase(), isFavorite = true,
+                                    quality = series.quality, rating = series.rating,
+                                    seasons = series.seasons, unstable = series.isBroken,
+                                    modifier = Modifier.focusRequester(focusFor(series.id))
+                                        .then(if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
+                                ) {
+                                    navController.navigate(Routes.detail("series", series.id))
+                                }
+                                GhostButton(text = stringResource(R.string.fav_remove)) {
+                                    viewModel.toggleFavorite(ContentKind.SERIES, series.id, false)
+                                }
                             }
                         }
                     }

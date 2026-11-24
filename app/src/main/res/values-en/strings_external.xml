@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_external.xml -->
+<resources>
+    <string name="drive_title">Google Drive</string>
+    <string name="drive_description">Save your settings and backup on your Google Drive account (small JSON files only).</string>
+    <string name="drive_status_linked">Linked to %1$s</string>
+    <string name="drive_status_not_linked">Not linked</string>
+    <string name="drive_status_need_oauth">OAuth setup required: enter your Google Client ID first.</string>
+    <string name="drive_status_token_expired">Linked, but the token has expired — reconnect.</string>
+    <string name="drive_client_set">Client ID saved.</string>
+    <string name="drive_link">Link Google Drive</string>
+    <string name="drive_unlink">Unlink Google Drive</string>
+    <string name="drive_unlinked">Google Drive unlinked.</string>
+    <string name="drive_enter_client_id">Enter the OAuth Client ID</string>
+    <string name="drive_client_id_title">Google OAuth Client ID</string>
+    <string name="drive_client_id_hint">Android Client ID from your Google Cloud Console project (create it in your Google account, then paste it here).</string>
+    <string name="drive_client_saved">Client ID saved.</string>
+    <string name="drive_need_oauth">You must first set up OAuth from your Google account: create a project in Google Cloud Console, enable the Drive API (drive.file scope) and copy the Android Client ID here.</string>
+    <string name="drive_signin_pending">Client ID saved. Google sign-in on the device is not wired yet: it will be enabled once the auth library is added.</string>
+    <string name="drive_not_linked">Google Drive is not linked.</string>
+    <string name="drive_backup_title">Drive backup</string>
+    <string name="drive_backup_now">Back up to Drive</string>
+    <string name="drive_restore_now">Restore from Drive</string>
+    <string name="drive_backup_ok">Backup sent to Drive.</string>
+    <string name="drive_restore_ok">Backup restored from Drive.</string>
+    <string name="drive_restore_failed">Restore failed.</string>
+    <string name="drive_no_backup">No backup on Drive.</string>
+    <string name="drive_error">Google Drive error. Try again.</string>
+    <string name="drive_backup_not_wired">Drive backup is not wired to the backup manager yet.</string>
+    <string name="drive_never_apk">The APK and updates stay on GitHub Releases — never on Drive.</string>
+    <string name="cast_button">Cast</string>
+    <string name="cast_unavailable">Cast unavailable</string>
+    <string name="cast_pick_device">Choose a Cast device</string>
+    <string name="cast_no_device">No Chromecast device found.</string>
+    <string name="cast_play">Play</string>
+    <string name="cast_pause">Pause</string>
+    <string name="cast_disconnect">Disconnect</string>
+    <string name="sub_dl_button">AR subtitles</string>
+    <string name="sub_dl_downloading">Downloading…</string>
+    <string name="sub_dl_done">AR subtitles ✓</string>
+    <string name="sub_dl_not_found">No Arabic subtitle found</string>
+    <string name="sub_dl_need_key">API key required</string>
+    <string name="sub_dl_need_login">OpenSubtitles sign-in required</string>
+    <string name="sub_dl_error">Download failed</string>
+    <string name="sub_api_key_title">OpenSubtitles API key</string>
+    <string name="sub_api_key_hint">Create a free account on opensubtitles.com, copy your API key (API consumers) and paste it here. The key is only sent to api.opensubtitles.com.</string>
+</resources>

@@ -1,6 +1,5 @@
 package com.streammaster.tv.data.update
 
-import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
@@ -9,8 +8,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import javax.inject.Inject
 import javax.inject.Singleton
-
-private const val TAG = "StreamMaster"
 
 data class UpdateInfo(
     val available: Boolean,
@@ -49,7 +46,10 @@ class AppUpdateChecker @Inject constructor(
 ) {
     private val gson = Gson()
 
-    suspend fun check(updateUrl: String = DEFAULT_UPDATE_URL, currentVersionCode: Int = 120): UpdateInfo =
+    // OP-11: default must match the shipped versionCode (build.gradle.kts:
+    // 121) — callers that omit it used to compare the remote code against
+    // 120 and report 121 as "newer" than itself.
+    suspend fun check(updateUrl: String = DEFAULT_UPDATE_URL, currentVersionCode: Int = 121): UpdateInfo =
         withContext(Dispatchers.IO) {
             val none = UpdateInfo(false, "", "", "")
             if (updateUrl.isBlank()) return@withContext none

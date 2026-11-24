@@ -3,7 +3,6 @@ package com.streammaster.tv.player.remote
 import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
-import android.os.Build
 import android.view.KeyEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -94,17 +93,13 @@ class RemoteCommandHandler @Inject constructor(
         )
     }
 
-    @Suppress("DEPRECATION")
+    // D-07: minSdk is 23 (app/build.gradle.kts), so the pre-23 branch
+    // (setStreamMute) was dead — ADJUST_TOGGLE_MUTE covers every device.
     private fun toggleMute() {
-        val am = audioManager()
-        if (Build.VERSION.SDK_INT >= 23) {
-            am.adjustStreamVolume(
-                AudioManager.STREAM_MUSIC,
-                AudioManager.ADJUST_TOGGLE_MUTE,
-                AudioManager.FLAG_SHOW_UI
-            )
-        } else {
-            am.setStreamMute(AudioManager.STREAM_MUSIC, !am.isStreamMute(AudioManager.STREAM_MUSIC))
-        }
+        audioManager().adjustStreamVolume(
+            AudioManager.STREAM_MUSIC,
+            AudioManager.ADJUST_TOGGLE_MUTE,
+            AudioManager.FLAG_SHOW_UI
+        )
     }
 }

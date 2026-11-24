@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_external.xml -->
+<resources>
+    <string name="drive_title">Google Drive</string>
+    <string name="drive_description">احفظ إعداداتك ونسختك الاحتياطية على حساب Google Drive (ملفات JSON صغيرة فقط).</string>
+    <string name="drive_status_linked">مرتبط بـ %1$s</string>
+    <string name="drive_status_not_linked">غير مرتبط</string>
+    <string name="drive_status_need_oauth">يلزم إعداد OAuth: أدخل أولًا Client ID الخاص بـ Google.</string>
+    <string name="drive_status_token_expired">مرتبط، لكن الرمز انتهى — أعد الاتصال.</string>
+    <string name="drive_client_set">تم حفظ Client ID.</string>
+    <string name="drive_link">ربط Google Drive</string>
+    <string name="drive_unlink">إلغاء ربط Google Drive</string>
+    <string name="drive_unlinked">تم إلغاء ربط Google Drive.</string>
+    <string name="drive_enter_client_id">أدخل Client ID الخاص بـ OAuth</string>
+    <string name="drive_client_id_title">Client ID الخاص بـ Google OAuth</string>
+    <string name="drive_client_id_hint">Client ID الخاص بنظام Android من مشروعك في Google Cloud Console (أنشئه في حسابك على Google ثم الصقه هنا).</string>
+    <string name="drive_client_saved">تم حفظ Client ID.</string>
+    <string name="drive_need_oauth">يجب إعداد OAuth من حسابك على Google أولًا: أنشئ مشروعًا في Google Cloud Console، وفعّل Drive API (النطاق drive.file)، وانسخ Client ID الخاص بنظام Android هنا.</string>
+    <string name="drive_signin_pending">تم حفظ Client ID. تسجيل الدخول بـ Google على الجهاز غير مربوط بعد: سيُفعّل بعد إضافة مكتبة المصادقة.</string>
+    <string name="drive_not_linked">Google Drive غير مرتبط.</string>
+    <string name="drive_backup_title">نسخة احتياطية على Drive</string>
+    <string name="drive_backup_now">احفظ على Drive</string>
+    <string name="drive_restore_now">استعد من Drive</string>
+    <string name="drive_backup_ok">تم إرسال النسخة الاحتياطية إلى Drive.</string>
+    <string name="drive_restore_ok">تمت استعادة النسخة الاحتياطية من Drive.</string>
+    <string name="drive_restore_failed">تعذّرت الاستعادة.</string>
+    <string name="drive_no_backup">لا توجد نسخة احتياطية على Drive.</string>
+    <string name="drive_error">خطأ في Google Drive. حاول مجددًا.</string>
+    <string name="drive_backup_not_wired">نسخة Drive الاحتياطية غير مربوطة بمدير النسخ الاحتياطي حاليًا.</string>
+    <string name="drive_never_apk">الـAPK والتحديثات تبقى على GitHub Releases — وليست على Drive أبدًا.</string>
+    <string name="cast_button">بث</string>
+    <string name="cast_unavailable">البث غير متاح</string>
+    <string name="cast_pick_device">اختر جهاز بث</string>
+    <string name="cast_no_device">لم يتم العثور على جهاز Chromecast.</string>
+    <string name="cast_play">تشغيل</string>
+    <string name="cast_pause">إيقاف مؤقت</string>
+    <string name="cast_disconnect">قطع الاتصال</string>
+    <string name="sub_dl_button">ترجمة عربية</string>
+    <string name="sub_dl_downloading">جارٍ التنزيل…</string>
+    <string name="sub_dl_done">ترجمة عربية ✓</string>
+    <string name="sub_dl_not_found">لم يتم العثور على ترجمة عربية</string>
+    <string name="sub_dl_need_key">يلزم مفتاح API</string>
+    <string name="sub_dl_need_login">يلزم تسجيل الدخول إلى OpenSubtitles</string>
+    <string name="sub_dl_error">فشل التنزيل</string>
+    <string name="sub_api_key_title">مفتاح API الخاص بـ OpenSubtitles</string>
+    <string name="sub_api_key_hint">أنشئ حسابًا مجانيًا على opensubtitles.com، وانسخ مفتاح API الخاص بك (API consumers) والصقه هنا. لا يُرسل المفتاح إلا إلى api.opensubtitles.com.</string>
+</resources>

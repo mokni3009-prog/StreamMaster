@@ -56,7 +56,6 @@
     <string name="ns_onboarding_retry">Réessayer le test</string>
     <string name="ns_onboarding_syncing">Synchronisation des chaînes, films et séries en arrière-plan…</string>
     <string name="ns_onboarding_sync_done">Synchronisation terminée.</string>
-    <string name="ns_onboarding_finish">Terminer</string>
     <string name="ns_onboarding_next">Suivant</string>
     <string name="ns_onboarding_back">Retour</string>
     <string name="ns_onboarding_add">Ajouter et tester</string>
@@ -75,7 +74,6 @@
     <!-- Channel timer (§4.58) -->
     <string name="ns_timer_title">Minuteur de chaîne</string>
     <string name="ns_timer_subtitle">Bascule automatique vers la chaîne choisie à l\'heure choisie.</string>
-    <string name="ns_timer_channel">Chaîne</string>
     <string name="ns_timer_choose_channel">Choisir une chaîne</string>
     <string name="ns_timer_hour">Heure</string>
     <string name="ns_timer_minute">Minute</string>
@@ -86,6 +84,8 @@
     <string name="ns_timer_scheduled">Minuteur programmé : %1$s à %2$s.</string>
     <string name="ns_timer_cancelled">Minuteur annulé.</string>
     <string name="ns_timer_pick_channel_first">Choisissez d\'abord une chaîne.</string>
+    <string name="ns_timer_failed">La programmation du minuteur a échoué.</string>
+    <string name="ns_timer_duplicate">Ce minuteur est déjà programmé.</string>
 
     <!-- Watch Tonight (§4.36) -->
     <string name="ns_tonight_title">Quoi regarder ce soir ?</string>
@@ -93,13 +93,11 @@
     <string name="ns_tonight_time">Combien de temps avez-vous ?</string>
     <string name="ns_tonight_minutes">%1$d min</string>
     <string name="ns_tonight_live">En direct</string>
-    <string name="ns_tonight_now">En cours : %1$s</string>
     <string name="ns_tonight_episode">Série • ~45 min / épisode</string>
     <string name="ns_tonight_empty">Rien ne correspond à ce temps disponible. Essayez une durée plus longue.</string>
     <string name="ns_tonight_picks">Nos propositions (%1$d)</string>
 
     <!-- Smart lists (§4.51) -->
-    <string name="ns_smartlists_empty">Aucune liste intelligente pour le moment.</string>
 
     <!-- Cleanup (§4.36.6) -->
     <string name="ns_cleanup_title">Nettoyage des playlists</string>
@@ -112,6 +110,5 @@
     <string name="ns_cleanup_clean">Aucun doublon ni contenu mort détecté.</string>
     <string name="ns_cleanup_merged">Doublons fusionnés : %1$s conservé.</string>
     <string name="ns_cleanup_deleted">Supprimé : %1$s.</string>
-    <string name="ns_cleanup_dead_reason_dead">Lien mort (ne répond plus)</string>
     <string name="ns_cleanup_unsupported">La suppression des films et séries demande encore les méthodes DAO correspondantes (voir rapport).</string>
 </resources>

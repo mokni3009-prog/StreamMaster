@@ -1,10 +1,17 @@
 package com.streammaster.tv.data.drive
 
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import javax.inject.Inject
-import javax.inject.Singleton
+import org.json.JSONObject
+
+private const val TAG = "StreamMaster"
 
 /**
  * SPEC §4.63 — Google Drive client: the app's backup JSON
@@ -30,11 +37,19 @@ import javax.inject.Singleton
  *     [linkWithTokens] is the seam the sign-in builder calls once the
  *     auth library is added. Until then [uploadBackup]/[downloadBackup]
  *     return [DriveResult.NotConfigured] / [DriveResult.NotLinked].
+ *
+ * Token refresh (OP-18): [bearer] renews an expired access token from the
+ * stored refresh token (Google's oauth2 token endpoint, public Android
+ * client — client_id only, no secret) before giving up with NotLinked.
  */
-@Singleton
-class DriveClient @Inject constructor(
+// CS-06: this client is built MANUALLY by DriveScreen (DriveClient(prefs)),
+// never injected by Hilt — so it must not carry @Inject (Hilt has no
+// binding for DriveService/DrivePrefs and the first @Inject attempt would
+// fail the build). Keep it a plain class.
+class DriveClient(
     private val prefs: DrivePrefs,
-    private val service: DriveService = driveService()
+    private val service: DriveService = driveService(),
+    private val httpClient: OkHttpClient = OkHttpClient()
 ) {
 
     companion object {
@@ -55,8 +70,42 @@ class DriveClient @Inject constructor(
     private suspend fun bearer(): String? {
         val state = prefs.state.first()
         if (state.needsOAuthSetup) return null
-        if (!state.hasValidToken) return null
-        return "Bearer ${state.accessToken}"
+        if (state.hasValidToken) return "Bearer ${state.accessToken}"
+        // OP-18: expired access token + stored refresh token → renew it
+        // instead of staying NotLinked forever (tokens live ~1h).
+        return refreshAccessToken(state)
+    }
+
+    /** Exchanges the stored refresh token for a new access token (Google
+     *  OAuth2 token endpoint). Returns the new "Bearer …" value, or null
+     *  when the refresh fails (revoked token, no network, bad client id) —
+     *  the caller then reports NotLinked as before. */
+    private suspend fun refreshAccessToken(state: DrivePrefs.DriveState): String? {
+        if (state.refreshToken.isBlank() || state.clientId.isBlank()) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val body = FormBody.Builder()
+                    .add("client_id", state.clientId)
+                    .add("grant_type", "refresh_token")
+                    .add("refresh_token", state.refreshToken)
+                    .build()
+                val req = Request.Builder()
+                    .url("https://oauth2.googleapis.com/token")
+                    .post(body)
+                    .build()
+                val jsonText = httpClient.newCall(req).execute().use { resp ->
+                    if (!resp.isSuccessful) return@runCatching null
+                    resp.body?.string() ?: return@runCatching null
+                }
+                val json = JSONObject(jsonText)
+                val token = json.optString("access_token", "")
+                val expiresIn = json.optLong("expires_in", 3600L)
+                if (token.isBlank()) return@runCatching null
+                prefs.setAccessToken(token, expiresIn)
+                "Bearer $token"
+            }.onFailure { Log.w(TAG, "Drive token refresh failed", it) }
+                .getOrNull()
+        }
     }
 
     /**

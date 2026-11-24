@@ -57,18 +57,23 @@ class TimeshiftBuffer @Inject constructor(
     private var recordJob: Job? = null
     private var out: FileOutputStream? = null
 
-    /** The temp file being written, null when nothing is buffered. */
+    /** The temp file being written, null when nothing is buffered.
+     *  D-06: private — nothing outside this class reads it (callers use
+     *  [active] / [stop] / [discard]). */
     @Volatile
-    var file: File? = null
-        private set
+    private var file: File? = null
 
     /** True while the recorder is running. */
     @Volatile
     var active: Boolean = false
         private set
 
-    fun dir(): File =
-        File(context.getExternalFilesDir(null), "timeshift").apply { mkdirs() }
+    fun dir(): File {
+        // R-11: getExternalFilesDir(null) can return null — fall back to
+        // the internal files dir instead of throwing NPE.
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(base, "timeshift").apply { mkdirs() }
+    }
 
     /**
      * Starts capturing [url] into a fresh temp file. Returns false when a

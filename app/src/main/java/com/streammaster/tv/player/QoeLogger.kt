@@ -37,21 +37,16 @@ enum class QoeEventType {
 /**
  * Storage behind [QoeLogger].
  *
- * CONTRACT §5 says the data agent provides `data.db.QoeDao` + a `qoe_events` Room
- * table and the player writes via that DAO. At the time this file was written the
- * data agent had not created `QoeDao` yet, so the player does NOT reference it
- * directly — it depends only on this small interface. The data agent must:
- *   1. create `QoeEventEntity` + `QoeDao` in `data/db/` (table `qoe_events`),
- *   2. add a `RoomQoeStore @Singleton` that maps [QoeEvent] -> entity and
- *      inserts it, and bind it to [QoeStore] in `di/AppModule.kt`.
- * Until that binding exists Hilt falls back to [LoggingQoeStore] (logcat only),
- * which keeps the player compiling and running.
+ * The current approved storage is logcat: `di/AppModule.kt` binds [QoeStore]
+ * to [LoggingQoeStore]. A Room-backed store (`qoe_events` table + QoeDao,
+ * provided by the data agent) can replace this binding later without
+ * touching the player — the [QoeLogger] only depends on this interface.
  */
 interface QoeStore {
     suspend fun log(event: QoeEvent)
 }
 
-/** Fallback store: QoE events go to logcat until the Room binding lands. */
+/** Current store: QoE events go to logcat (see [QoeStore]). */
 @Singleton
 class LoggingQoeStore @Inject constructor() : QoeStore {
     override suspend fun log(event: QoeEvent) {

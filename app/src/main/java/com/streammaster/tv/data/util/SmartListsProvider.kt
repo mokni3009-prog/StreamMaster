@@ -3,6 +3,7 @@ package com.streammaster.tv.data.util
 import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.Series
 import java.util.Calendar
+import java.util.Locale
 
 /**
  * Smart lists (§4.51): groups generated automatically from the catalog —
@@ -30,6 +31,11 @@ object SmartListsProvider {
     private const val MAX_ITEMS = 20
     private const val TOP_GENRES = 3
 
+    /** LG-20: locale-independent id slug — lowercase() without a locale
+     *  (e.g. Turkish "I") and raw spaces used to collide distinct genres. */
+    private fun slug(s: String): String =
+        s.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), "-")
+
     fun getSmartLists(films: List<Film>, series: List<Series>): List<SmartList> {
         val out = mutableListOf<SmartList>()
         val year = Calendar.getInstance().get(Calendar.YEAR)
@@ -43,7 +49,7 @@ object SmartListsProvider {
             .forEach { (genre, items) ->
                 if (items.size >= 2) {
                     out += SmartList(
-                        id = "smart-films-genre-${genre.lowercase().replace(" ", "-")}",
+                        id = "smart-films-genre-${slug(genre)}",
                         title = "Films $genre $year",
                         films = items.sortedByDescending { it.rating }.take(MAX_ITEMS)
                     )
@@ -84,7 +90,7 @@ object SmartListsProvider {
             .forEach { (genre, items) ->
                 if (items.size >= 2) {
                     out += SmartList(
-                        id = "smart-series-genre-${genre.lowercase().replace(" ", "-")}",
+                        id = "smart-series-genre-${slug(genre)}",
                         title = "Séries $genre",
                         series = items.sortedByDescending { it.rating }.take(MAX_ITEMS)
                     )

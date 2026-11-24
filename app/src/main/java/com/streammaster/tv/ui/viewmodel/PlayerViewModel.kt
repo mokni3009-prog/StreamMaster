@@ -18,8 +18,6 @@ import com.streammaster.tv.data.repository.RecordingRepository
 import com.streammaster.tv.data.repository.SettingsRepository
 import com.streammaster.tv.player.DisplayMode
 import com.streammaster.tv.player.EpisodeResumeStore
-import com.streammaster.tv.player.INTRO_FILM_S
-import com.streammaster.tv.player.INTRO_SERIES_S
 import com.streammaster.tv.player.OUTRO_FILM_S
 import com.streammaster.tv.player.OUTRO_SERIES_S
 import com.streammaster.tv.player.PlaybackState
@@ -215,19 +213,29 @@ class PlayerViewModel @Inject constructor(
                 } else playFilm(film)
             }
             "series" -> {
-                val series = contentRepository.getSeries(id) ?: return@launch
-                // §4.1 — resume the episode the user actually stopped on
-                // (EpisodeResumeStore), not always S1E1; fall back to S1E1
-                // when the saved episode is gone.
-                val resume = runCatching { episodeResumeStore.get(id) }.getOrNull()
-                val resumeEpisode = resume?.let { r ->
-                    contentRepository.getEpisodes(id, r.season)
-                        .firstOrNull { it.number == r.number }
+                // DetailScreen passes "seriesId:S01E07" when the user taps
+                // one episode (code = "S{season:02}E{number:02}", built in
+                // XtreamApi; "E{number}" only when the code is blank), and
+                // the plain series id for «Reprendre». Split on the first
+                // ":" — a bare id keeps the old resume behaviour.
+                val parts = id.split(":", limit = 2)
+                val seriesId = parts[0]
+                val episodeRef = parts.getOrNull(1)?.takeIf { it.isNotBlank() }
+                val series = contentRepository.getSeries(seriesId) ?: return@launch
+                val episode = if (episodeRef != null) {
+                    resolveTappedEpisode(series, episodeRef)
+                } else {
+                    // §4.1 — resume the episode the user actually stopped on
+                    // (EpisodeResumeStore), not always S1E1; fall back to S1E1
+                    // when the saved episode is gone.
+                    val resume = runCatching { episodeResumeStore.get(seriesId) }.getOrNull()
+                    resume?.let { r ->
+                        contentRepository.getEpisodes(seriesId, r.season)
+                            .firstOrNull { it.number == r.number }
+                    } ?: contentRepository.getEpisodes(seriesId, 1).firstOrNull()
                 }
-                val episode = resumeEpisode
-                    ?: contentRepository.getEpisodes(id, 1).firstOrNull()
                 _ui.update { it.copy(series = series, episode = episode) }
-                if (settingsRepository.isLocked(ContentKind.SERIES, id)) {
+                if (settingsRepository.isLocked(ContentKind.SERIES, seriesId)) {
                     _ui.update { it.copy(pinRequired = true) }
                 } else if (episode != null) playEpisode(series, episode)
             }
@@ -246,7 +254,10 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun playLive(channel: Channel) {
-        previousChannelId = _ui.value.channel?.id?.takeIf { it != channel.id } ?: previousChannelId
+        // L-03: _ui.channel is already the NEW channel by the time playLive
+        // is called (playChannel/checkPin update _ui first), so the old
+        // "previous" computation here always saw the new id. The previous
+        // id is now captured in playChannel() before the _ui update.
         playerManager.play(PlaybackItem.Live(channel))
         observeEpgFor(channel.id)
         viewModelScope.launch { contentRepository.recordHistory(ContentKind.LIVE, channel.id, channel.name) }
@@ -277,7 +288,6 @@ class PlayerViewModel @Inject constructor(
         } else 0L
         playerManager.play(PlaybackItem.Movie(film), resumeMs)
         viewModelScope.launch { contentRepository.recordHistory(ContentKind.FILM, film.id, film.title) }
-        skipIntroIfNeeded(INTRO_FILM_S.toLong(), resumeMs)
     }
 
     private fun playEpisode(series: Series, episode: Episode) {
@@ -285,8 +295,39 @@ class PlayerViewModel @Inject constructor(
             val resumeMs = episodeResumeMs(series, episode)
             playerManager.play(PlaybackItem.EpisodeItem(series, episode), resumeMs)
             contentRepository.recordHistory(ContentKind.SERIES, series.id, series.title)
-            skipIntroIfNeeded(INTRO_SERIES_S.toLong(), resumeMs)
         }
+    }
+
+    /**
+     * Resolves the episode DetailScreen encoded in the id ("S01E07", or
+     * "E7" when the episode code is blank). "SxxEyy" gives the season
+     * directly; a bare "Eyy" has no season, so seasons are scanned in
+     * order (bounded by the series' season count). Returns null when the
+     * reference matches nothing — the caller then shows nothing rather
+     * than playing the wrong episode.
+     */
+    private suspend fun resolveTappedEpisode(series: Series, ref: String): Episode? {
+        val seasonEpisode = Regex("""^S(\d+)E(\d+)$""", RegexOption.IGNORE_CASE)
+            .matchEntire(ref.trim())
+        if (seasonEpisode != null) {
+            val season = seasonEpisode.groupValues[1].toIntOrNull() ?: return null
+            val number = seasonEpisode.groupValues[2].toIntOrNull() ?: return null
+            val episodes = runCatching {
+                contentRepository.getEpisodes(series.id, season)
+            }.getOrNull().orEmpty()
+            return episodes.firstOrNull { it.code.equals(ref.trim(), ignoreCase = true) }
+                ?: episodes.firstOrNull { it.number == number }
+        }
+        val episodeOnly = Regex("""^E(\d+)$""", RegexOption.IGNORE_CASE)
+            .matchEntire(ref.trim()) ?: return null
+        val number = episodeOnly.groupValues[1].toIntOrNull() ?: return null
+        for (season in 1..series.seasons.coerceAtLeast(1)) {
+            val episodes = runCatching {
+                contentRepository.getEpisodes(series.id, season)
+            }.getOrNull().orEmpty()
+            episodes.firstOrNull { it.number == number }?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -307,36 +348,12 @@ class PlayerViewModel @Inject constructor(
         return if (progress in 5..94) stored.positionMs else 0L
     }
 
-    /**
-     * Resume info for a series (§4.1 — used by the Detail builder for the
-     * «Reprendre» button): the episode the user stopped on + its position.
-     * Returns null when there is nothing to resume (no saved episode, or
-     * its progress is outside 5–94%). The episode id is "S{season}E{number}"
-     * inside this series (e.g. "S2E5"); resolve it with
-     * `contentRepository.getEpisodes(seriesId, season)`.
-     */
-    suspend fun resumeInfoFor(seriesId: String): Pair<String, Long>? {
-        val stored = runCatching { episodeResumeStore.get(seriesId) }.getOrNull()
-            ?: return null
-        val episodes = runCatching {
-            contentRepository.getEpisodes(seriesId, stored.season)
-        }.getOrNull().orEmpty()
-        val episode = episodes.firstOrNull { it.number == stored.number } ?: return null
-        val durationMs = episode.durationMin * 60_000L
-        if (durationMs <= 0) return null
-        val progress = (stored.positionMs * 100 / durationMs).toInt()
-        if (progress !in 5..94) return null
-        return "S${stored.season}E${stored.number}" to stored.positionMs
-    }
-
-    private fun skipIntroIfNeeded(introS: Long, startMs: Long) {
-        if (startMs < introS * 1000L) {
-            playerManager.seekTo(introS * 1000L)
-            _ui.update { it.copy(introSkipped = true) }
-        }
-    }
-
-    /** Outro skip is driven by the screen observing position/duration. */
+    /** Outro skip is driven by the screen observing position/duration.
+     *  L-01: the ENGINE owns series auto-advance (checkOutro /
+     *  handleVodEnded → advanceToNextEpisode + NextEpisode event) — the
+     *  ViewModel must not advance too, or the race skips/replays an
+     *  episode. Only the film branch stays here (it only mirrors the
+     *  engine's own film-end handling and sets the filmFinished flag). */
     fun onPositionAdvanced(positionMs: Long, durationMs: Long) {
         val kind = _ui.value.kind
         val outroS = when (kind) { "film" -> OUTRO_FILM_S.toLong(); "series" -> OUTRO_SERIES_S.toLong(); else -> return }
@@ -346,14 +363,25 @@ class PlayerViewModel @Inject constructor(
                     playerManager.stop()
                     _ui.update { it.copy(filmFinished = true) }
                 }
-                "series" -> playNextEpisode()
+                "series" -> Unit // Engine advances (see above); do NOT call playNextEpisode here.
             }
         }
     }
 
+    /** Manual "next episode" (also kept for the screen's next button).
+     *  L-01 guard: if the engine already auto-advanced (its NextEpisode
+     *  event is what updates _ui.episode), just sync the screen to the
+     *  episode actually playing instead of advancing a second time. */
     fun playNextEpisode() = viewModelScope.launch {
         val series = _ui.value.series ?: return@launch
         val current = _ui.value.episode ?: return@launch
+        val playing = playerManager.state.value.item as? PlaybackItem.EpisodeItem
+        if (playing != null && playing.series.id == series.id &&
+            (playing.episode.season != current.season || playing.episode.number != current.number)
+        ) {
+            _ui.update { it.copy(episode = playing.episode) }
+            return@launch
+        }
         val episodes = contentRepository.getEpisodes(series.id, current.season)
         val next = episodes.firstOrNull { it.number == current.number + 1 }
             ?: contentRepository.getEpisodes(series.id, current.season + 1).firstOrNull()
@@ -367,6 +395,9 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun playChannel(channel: Channel) {
+        // L-03: capture the previous channel BEFORE _ui switches to the new
+        // one — playLive() can no longer see the old id.
+        _ui.value.channel?.id?.takeIf { it != channel.id }?.let { previousChannelId = it }
         _ui.update { it.copy(channel = channel, kind = "live", id = channel.id) }
         playLive(channel)
     }

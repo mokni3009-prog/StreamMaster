@@ -35,9 +35,6 @@ import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.TonightPick
 import com.streammaster.tv.ui.viewmodel.WatchTonightViewModel
 
-/** Route for the "Quoi regarder ce soir ?" screen (§4.36). Registered by the nav builder. */
-const val WATCH_TONIGHT_ROUTE = "watch_tonight"
-
 /**
  * "Quoi regarder ce soir ?" (§4.36): asks how much time the user has,
  * offers 3–4 picks that fit. Tapping a pick plays it (live) or opens its

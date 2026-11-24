@@ -84,6 +84,7 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocusBorderless
 import com.streammaster.tv.ui.viewmodel.LiveViewModel
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -212,6 +213,11 @@ fun LiveScreen(
     val narrow = LocalConfiguration.current.screenWidthDp < 700
     val scope = rememberCoroutineScope()
     var digitBuffer by remember { mutableStateOf("") }
+    // R-04: one pending digit-resolution job at a time — each new digit
+    // cancels the previous one (same pattern as PlayerViewModel.onDigit),
+    // and the buffer is captured before the delay so a second digit
+    // cannot make the first job resolve an emptied buffer.
+    var digitJob by remember { mutableStateOf<Job?>(null) }
     // Double-click detection (V11): last OK click on the same channel.
     var lastClickChannelId by remember { mutableStateOf<String?>(null) }
     var lastClickMillis by remember { mutableStateOf(0L) }
@@ -242,10 +248,12 @@ fun LiveScreen(
                         KeyEvent.KEYCODE_6 -> '6'; KeyEvent.KEYCODE_7 -> '7'; KeyEvent.KEYCODE_8 -> '8'
                         KeyEvent.KEYCODE_9 -> '9'; else -> null
                     } ?: return@onPreviewKeyEvent false
-                    digitBuffer = (digitBuffer + digit).take(2)
-                    scope.launch {
+                    val buffer = (digitBuffer + digit).take(2)
+                    digitBuffer = buffer
+                    digitJob?.cancel()
+                    digitJob = scope.launch {
                         kotlinx.coroutines.delay(1500)
-                        val found = viewModel.resolveChannelNumber(digitBuffer)
+                        val found = viewModel.resolveChannelNumber(buffer)
                         if (found != null) openChannel(found.id)
                         else showToast(context, context.getString(R.string.channel_not_found))
                         digitBuffer = ""

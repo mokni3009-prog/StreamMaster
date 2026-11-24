@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -37,11 +38,11 @@ class SpeedTest(
     )
 
     companion object {
-        /** Cloudflare public speed-test endpoint (free, no key). */
-        const val DEFAULT_TEST_URL = "https://speed.cloudflare.com/__down?bytes=20000000"
-
         /** 20 MB requested; the read loop also stops at [MAX_DURATION_MS]. */
         const val TEST_BYTES = 20_000_000L
+
+        /** Cloudflare public speed-test endpoint (free, no key). */
+        const val DEFAULT_TEST_URL = "https://speed.cloudflare.com/__down?bytes=$TEST_BYTES"
 
         /** Hard cap for one test run. */
         const val MAX_DURATION_MS = 30_000L
@@ -50,46 +51,56 @@ class SpeedTest(
         const val MIN_DURATION_MS = 2_000L
     }
 
+    /**
+     * LG-20: the cancel flag used to be ONE shared field — two concurrent
+     * measures on the same instance cancelled each other. Each measure now
+     * owns its flag; cancel() targets the latest run.
+     */
     @Volatile
-    private var cancelled = false
+    private var currentCancel: AtomicBoolean? = null
 
     fun cancel() {
-        cancelled = true
+        currentCancel?.set(true)
     }
 
     suspend fun measure(
         url: String = DEFAULT_TEST_URL,
         onProgress: ((bytesRead: Long) -> Unit)? = null
     ): Result = withContext(Dispatchers.IO) {
-        cancelled = false
-        val request = Request.Builder().url(url).build()
-        val startMs = System.currentTimeMillis()
-        var bytesRead = 0L
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IllegalStateException("speed test HTTP ${response.code}")
-            }
-            val body = response.body ?: throw IllegalStateException("empty speed test body")
-            val buffer = ByteArray(32 * 1024)
-            body.byteStream().use { stream ->
-                while (true) {
-                    coroutineContext.ensureActive()
-                    if (cancelled) throw CancellationException("speed test cancelled")
-                    val elapsed = System.currentTimeMillis() - startMs
-                    if (elapsed >= MAX_DURATION_MS) break
-                    val read = stream.read(buffer)
-                    if (read < 0) break
-                    bytesRead += read
-                    onProgress?.invoke(bytesRead)
+        val cancelled = AtomicBoolean(false)
+        currentCancel = cancelled
+        try {
+            val request = Request.Builder().url(url).build()
+            val startMs = System.currentTimeMillis()
+            var bytesRead = 0L
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("speed test HTTP ${response.code}")
+                }
+                val body = response.body ?: throw IllegalStateException("empty speed test body")
+                val buffer = ByteArray(32 * 1024)
+                body.byteStream().use { stream ->
+                    while (true) {
+                        coroutineContext.ensureActive()
+                        if (cancelled.get()) throw CancellationException("speed test cancelled")
+                        val elapsed = System.currentTimeMillis() - startMs
+                        if (elapsed >= MAX_DURATION_MS) break
+                        val read = stream.read(buffer)
+                        if (read < 0) break
+                        bytesRead += read
+                        onProgress?.invoke(bytesRead)
+                    }
                 }
             }
+            var durationMs = System.currentTimeMillis() - startMs
+            if (durationMs < MIN_DURATION_MS) {
+                // A tiny/fast download still counts, but do not divide by ~0.
+                durationMs = MIN_DURATION_MS
+            }
+            val mbps = bytesRead * 8.0 / (durationMs / 1000.0) / 1_000_000.0
+            Result(mbps = mbps, bytesDownloaded = bytesRead, durationMs = durationMs)
+        } finally {
+            if (currentCancel === cancelled) currentCancel = null
         }
-        var durationMs = System.currentTimeMillis() - startMs
-        if (durationMs < MIN_DURATION_MS) {
-            // A tiny/fast download still counts, but do not divide by ~0.
-            durationMs = MIN_DURATION_MS
-        }
-        val mbps = bytesRead * 8.0 / (durationMs / 1000.0) / 1_000_000.0
-        Result(mbps = mbps, bytesDownloaded = bytesRead, durationMs = durationMs)
     }
 }

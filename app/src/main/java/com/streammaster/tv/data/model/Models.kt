@@ -1,7 +1,5 @@
 package com.streammaster.tv.data.model
 
-import kotlinx.coroutines.flow.Flow
-
 enum class PlaylistType { XTREAM, STALKER, M3U }
 enum class BouquetKind { LIVE, FILMS, SERIES }
 enum class ContentKind { LIVE, FILM, SERIES }

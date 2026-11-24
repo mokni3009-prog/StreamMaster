@@ -70,8 +70,8 @@ fun DownloadsScreen(
     val restoreFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun focusFor(id: String) = restoreFocusRequesters.getOrPut(id) { FocusRequester() }
     val listState = rememberLazyListState()
-    // Focus (2026-11-23, m-09): the status button swaps GhostButton ⏸ /
-    // GoldButton ▶ / GoldButton retry — different nodes, so pressing it
+    // Focus (2026-11-23, m-09): the status button swaps GhostButton (pause) /
+    // GoldButton (play) / GoldButton retry — different nodes, so pressing it
     // disposed the focused node. Each row's status button owns a stable
     // requester; the click schedules a re-focus on the new button after
     // the status change recomposes. Same treatment for the confirm-delete
@@ -172,14 +172,20 @@ fun DownloadsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             when (download.status) {
                                 DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED -> {
+                                    // T-05 — vector icon instead of the "⏸"
+                                    // text glyph (GhostButton already takes
+                                    // an iconRes).
                                     GhostButton(
-                                        text = "⏸",
+                                        iconRes = R.drawable.ic_pause,
                                         modifier = Modifier.focusRequester(statusFocusFor(download.id))
                                     ) { refocusStatus(download.id); viewModel.pause(download) }
                                 }
                                 DownloadStatus.PAUSED -> {
+                                    // T-05 — vector icon instead of the "▶"
+                                    // text glyph (GoldButton iconRes).
                                     GoldButton(
-                                        text = "▶",
+                                        text = "",
+                                        iconRes = R.drawable.ic_play,
                                         modifier = Modifier.focusRequester(statusFocusFor(download.id))
                                     ) { refocusStatus(download.id); viewModel.resume(download) }
                                 }
@@ -214,11 +220,3 @@ fun DownloadsScreen(
     }
 }
 
-private fun formatSize(bytes: Long): String {
-    return when {
-        bytes >= 1_073_741_824L -> "%.1f Go".format(bytes / 1_073_741_824.0)
-        bytes >= 1_048_576L -> "%.0f Mo".format(bytes / 1_048_576.0)
-        bytes >= 1024L -> "%.0f Ko".format(bytes / 1024.0)
-        else -> "$bytes o"
-    }
-}

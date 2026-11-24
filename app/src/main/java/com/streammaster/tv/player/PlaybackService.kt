@@ -100,6 +100,19 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        // R-07: START_STICKY restarts can resurrect the service while the
+        // player is idle (no item, not playing) — acquiring WakeLock +
+        // WifiLock then would hold them forever with nothing to stop the
+        // service. Stop instead; a real play() starts it again.
+        // (play() sets state.item synchronously right after start(), before
+        // this onCreate can run on the main thread, so a live start is
+        // never mistaken for idle here.)
+        val state = playerManager.state.value
+        if (state.item == null && !state.isPlaying) {
+            Log.i(TAG, "PlaybackService restarted while idle — stopping without acquiring locks")
+            stopSelf()
+            return
+        }
         createNotificationChannel()
         val player = playerManager.exoPlayer
         if (player != null) {

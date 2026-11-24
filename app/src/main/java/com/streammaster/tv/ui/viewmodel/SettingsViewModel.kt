@@ -166,23 +166,28 @@ class SettingsViewModel @Inject constructor(
 
     /** ST05 — reset to defaults. Like the prototype's resetSettings(): the
      *  PIN and the parental locks are KEPT, everything else returns to the
-     *  app defaults (and the draft is reset the same way). */
+     *  app defaults (and the draft is reset the same way). L-05 — the
+     *  reset also keeps the state that is not a "setting": first run,
+     *  last channel, update URL, recording folder, remote, Match Center
+     *  and smart failover (a fresh AppSettings() used to wipe them all,
+     *  e.g. the onboarding wizard re-appeared on the next launch). */
     fun resetToDefaults() = viewModelScope.launch {
-        val keptPin = settings.value.pin
-        val keptBouquets = settings.value.lockedBouquets
-        val keptItems = settings.value.lockedItems
-        val keptProfile = settings.value.activeProfileId
-        val keptRecoveryHash = settings.value.pinRecoveryHash
-        settingsRepository.update {
-            AppSettings(
-                pin = keptPin, lockedBouquets = keptBouquets,
-                lockedItems = keptItems, activeProfileId = keptProfile,
-                pinRecoveryHash = keptRecoveryHash
-            )
-        }
-        _draft.value = SettingsDraft(
-            pin = keptPin, loaded = true
+        val current = settings.value
+        val reset = AppSettings(
+            pin = current.pin, lockedBouquets = current.lockedBouquets,
+            lockedItems = current.lockedItems, activeProfileId = current.activeProfileId,
+            pinRecoveryHash = current.pinRecoveryHash,
+            firstRunDone = current.firstRunDone,
+            lastChannelId = current.lastChannelId,
+            updateUrl = current.updateUrl,
+            recordingFolderUri = current.recordingFolderUri,
+            remoteEnabled = current.remoteEnabled,
+            remoteCode = current.remoteCode,
+            matchCenter = current.matchCenter,
+            smartFailover = current.smartFailover
         )
+        settingsRepository.update { reset }
+        _draft.value = draftFrom(reset)
         _messageRes.value = com.streammaster.tv.R.string.st_reset_done
     }
 
@@ -288,8 +293,10 @@ class SettingsViewModel @Inject constructor(
     fun checkServerStatus() = viewModelScope.launch {
         if (_serverChecking.value) return@launch
         _serverChecking.value = true
-        val playlist = playlistRepository.observePlaylists().first()
-            .firstOrNull { it.isActive } ?: playlistRepository.observePlaylists().first().firstOrNull()
+        // L-17 — read the playlist list once (was observePlaylists().first()
+        // twice: the Elvis branch re-read the whole list).
+        val playlists = playlistRepository.observePlaylists().first()
+        val playlist = playlists.firstOrNull { it.isActive } ?: playlists.firstOrNull()
         _serverStatus.value = playlist?.let { serverStatusChecker.check(it) }
         _serverChecking.value = false
     }
@@ -298,7 +305,10 @@ class SettingsViewModel @Inject constructor(
     fun checkForUpdate() = viewModelScope.launch {
         if (_checkingUpdate.value) return@launch
         _checkingUpdate.value = true
-        val url = settingsRepository.settings.first().updateUrl
+        // L-18 — check the URL from the draft when it is loaded (editing
+        // the URL then pressing "check" used to test the old saved URL).
+        val url = if (_draft.value.loaded) _draft.value.updateUrl
+        else settingsRepository.settings.first().updateUrl
         _updateInfo.value = appUpdateChecker.check(url, BuildConfig.VERSION_CODE)
         _checkingUpdate.value = false
     }
@@ -313,7 +323,7 @@ class SettingsViewModel @Inject constructor(
                 .setDescription("Mise à jour")
                 .setMimeType("application/vnd.android.package-archive")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "stream-master.apk")
+                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "stream-master.apk")
             val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             dm.enqueue(request)
             _messageRes.value = com.streammaster.tv.R.string.update_downloading

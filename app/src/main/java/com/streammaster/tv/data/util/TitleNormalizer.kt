@@ -18,7 +18,11 @@ object TitleNormalizer {
     private val QUALITY_WORDS = setOf("hd", "fhd", "uhd", "4k", "8k", "sd")
     private val SEASON_EPISODE = Regex("s\\d{1,2}e\\d{1,2}")
     private val YEAR_SUFFIX = Regex("\\(\\d{4}\\)")
-    private val NON_ALNUM = Regex("[^a-z0-9 ]")
+    // OP-04: keep Arabic letters (\u0600-\u06FF) — the old [^a-z0-9 ] wiped
+    // every Arabic title to "", which merged all Arabic channels into one
+    // backup group, matched every Arabic EPG program to any Arabic rule,
+    // and collapsed the EPG byName map to a single "" key.
+    private val NON_ALNUM = Regex("[^a-z0-9\\u0600-\\u06FF ]")
 
     fun normalize(raw: String): String {
         var s = Normalizer.normalize(raw, Normalizer.Form.NFD)

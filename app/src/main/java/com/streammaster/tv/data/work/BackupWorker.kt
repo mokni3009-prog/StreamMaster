@@ -59,7 +59,9 @@ class BackupWorker(
             pruneOld(dir)
             Result.success()
         } catch (e: Exception) {
-            Result.retry()
+            // OP-19: cap retries — a permanently failing export must not
+            // reschedule forever.
+            if (runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
         }
     }
 
@@ -72,6 +74,8 @@ class BackupWorker(
     companion object {
         const val UNIQUE_NAME = "auto-backup-weekly"
         const val BACKUP_DIR = "backups"
+        /** OP-19 — retries are for transient failures only. */
+        const val MAX_ATTEMPTS = 3
 
         /** Weekly backups kept on disk; older ones are deleted. */
         const val KEEP_LAST = 4

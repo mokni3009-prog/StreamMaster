@@ -58,10 +58,6 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 
-/** Route for the Match Day screen (§4.35). The link builder wires this
- *  into the sidebar navigation; the screen itself is standalone. */
-const val MATCH_DAY_ROUTE = "match_day"
-
 /**
  * Match Day (§4.35) — today's (and tomorrow's) key matches, grouped by
  * league, with the gold identity of the app. Each card shows the
@@ -204,6 +200,8 @@ fun MatchDayScreen(
                 stringResource(R.string.match_day_no_channel)
             MatchDayViewModel.REMINDER_SET ->
                 stringResource(R.string.match_day_reminder_set)
+            MatchDayViewModel.ALREADY_STARTED ->
+                stringResource(R.string.match_day_already_started)
             else -> null
         }
         if (messageText != null) {

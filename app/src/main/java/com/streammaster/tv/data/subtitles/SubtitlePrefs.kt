@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 private val Context.subtitleDataStore: DataStore<Preferences> by preferencesDataStore(name = "subtitles")
@@ -25,7 +26,10 @@ class SubtitlePrefs(private val context: Context) {
         val KEY_API_KEY = stringPreferencesKey("openSubtitlesApiKey")
     }
 
-    val apiKey: Flow<String> = context.subtitleDataStore.data.map { it[KEY_API_KEY] ?: "" }
+    // OP-16: a corrupt DataStore file must not crash collectors.
+    val apiKey: Flow<String> = context.subtitleDataStore.data
+        .catch { emit("") }
+        .map { it[KEY_API_KEY] ?: "" }
 
     suspend fun setApiKey(apiKey: String) {
         context.subtitleDataStore.edit { it[KEY_API_KEY] = apiKey.trim() }

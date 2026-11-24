@@ -50,7 +50,10 @@ fun ChannelEntity.toModel(): Channel = Channel(
 
 fun Channel.toEntity(playlistId: String, orderIndex: Int, backupUrls: List<String> = emptyList()): ChannelEntity =
     ChannelEntity(
-        id = id, num = num, name = customName ?: name, code = code, category = category,
+        // LG-05: store the ORIGINAL name here, never the custom one —
+        // toModel() displays customName ?: name, so baking the custom name
+        // into `name` made un-renaming impossible.
+        id = id, num = num, name = name, code = code, category = category,
         quality = quality, nowTitle = nowTitle, nowTime = nowTime, progress = progress, hue = hue,
         description = description, nextEncoded = Converters.encodePairs(next),
         isFavorite = isFavorite, isBroken = isBroken, streamUrl = streamUrl,
@@ -130,9 +133,6 @@ fun HistoryEntity.toModel(): HistoryEntry = HistoryEntry(
     kind = runCatching { ContentKind.valueOf(kind) }.getOrDefault(ContentKind.LIVE),
     refId = refId, title = title, timestampMillis = timestampMillis
 )
-
-fun HistoryEntry.toEntity(): HistoryEntity =
-    HistoryEntity(id = id, kind = kind.name, refId = refId, title = title, timestampMillis = timestampMillis)
 
 fun ReminderEntity.toModel(): Reminder = Reminder(channelId, programTitle, startMillis)
 fun Reminder.toEntity(): ReminderEntity = ReminderEntity(channelId, programTitle, startMillis)

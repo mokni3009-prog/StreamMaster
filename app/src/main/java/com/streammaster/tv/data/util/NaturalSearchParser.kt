@@ -59,9 +59,11 @@ object NaturalSearchParser {
         "thriller" to "Thriller",
         "اثارة" to "Thriller",
         "تشويق" to "Thriller",
-        "science-fiction" to "Science-fiction",
         "science fiction" to "Science-fiction",
-        "sci-fi" to "Science-fiction",
+        // LG-10: "science-fiction" / "sci-fi" can never match — normalize()
+        // turns "-" into a space before matching, so the keys must use
+        // spaces too.
+        "sci fi" to "Science-fiction",
         "خيال علمي" to "Science-fiction",
         "animation" to "Animation",
         "كرتون" to "Animation",
@@ -126,7 +128,9 @@ object NaturalSearchParser {
 
     private fun containsAny(normalized: String, words: List<String>): Boolean {
         val padded = " $normalized "
-        return words.any { padded.contains(" $it ") || normalized.contains(it) }
+        // LG-09: whole words only — the old `normalized.contains(it)` made
+        // "knowledge" match "now" (Tonight) and "matchbox" match MatchesToday.
+        return words.any { padded.contains(" $it ") }
     }
 
     fun parseIntent(rawQuery: String): SearchIntent {

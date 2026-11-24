@@ -78,7 +78,6 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextShadowCrisp
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.ProfilesViewModel
-import com.streammaster.tv.ui.viewmodel.PlayerExtrasViewModel
 import com.streammaster.tv.ui.viewmodel.ShellViewModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -220,12 +219,12 @@ fun Shell(
     // the goal alert (§4.33), which is exempt by spec and keeps working.
     // Today GoalAlertPopup is the only ambient overlay Shell owns, so it
     // renders unconditionally below; any future ambient overlay added to
-    // Shell must check `dndEnabled` first. (The goal alert's system
+    // Shell must check the DND state first. (The goal alert's system
     // notification when the app is backgrounded lives in
     // GoalAlertService, and toasts in GoldToastHost/AppNavHost — both
     // outside this file, so their DND muting belongs to their owners.)
-    val extrasViewModel: PlayerExtrasViewModel = hiltViewModel()
-    val dndEnabled by extrasViewModel.dndEnabled.collectAsState()
+    // D-03: the old `dndEnabled` collect here was dead — no overlay
+    // ever read it — so it was removed instead of kept as a subscription.
     Box(modifier = Modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Sidebar (model .sidebar: 360dp, gradient, 2px right border, shadow).
@@ -440,8 +439,8 @@ fun Shell(
             if (!kidsMode) kidsPinOpen = false
         }
         // Goal alert popup (2026-11-22): small gold card over every screen.
-        // DND-exempt (§4.54/§4.33): it shows even when `dndEnabled` is
-        // on — hence no `!dndEnabled` condition here.
+        // DND-exempt (§4.54/§4.33): it shows even when DND is on — hence
+        // no DND condition here.
         if (currentGoalAlert != null) {
             GoalAlertPopup(
                 alert = currentGoalAlert!!,
@@ -627,10 +626,13 @@ private fun TopBar(
     // pill is hidden first (Flux + clock stay) so the search pill keeps room.
     val narrow = LocalConfiguration.current.screenWidthDp < 700
     var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    // T-04: wake at the next minute boundary, not every 30s — the clock
+    // (minutes) was up to 30s late and the date at midnight likewise.
     LaunchedEffect(Unit) {
         while (true) {
-            delay(30_000)
-            nowMillis = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            nowMillis = now
+            delay(60_000 - (now % 60_000))
         }
     }
     val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }

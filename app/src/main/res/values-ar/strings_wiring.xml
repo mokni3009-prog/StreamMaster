@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_wiring.xml -->
+<resources>
+    <string name="nav_match_day">يوم المباراة</string>
+    <string name="nav_watch_tonight">ماذا نشاهد؟</string>
+    <string name="nav_diagnostics">التشخيص</string>
+    <string name="nav_epg_health">صحة الدليل</string>
+    <string name="nav_usb_files">ملفات USB</string>
+    <string name="nav_channel_timer">المؤقت</string>
+    <string name="nav_cleanup">التنظيف</string>
+    <string name="nav_drive">Google Drive</string>
+</resources>

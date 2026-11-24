@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -70,11 +69,24 @@ fun MultiViewScreen(
     // Initial focus: the first tile (slot 0).
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // L-20 — remember which tile opened the picker, so closing it
+    // returns focus to THAT tile (the old code always re-focused tile 0,
+    // even when the user was on another tile).
+    val tileFocusRequesters = remember { mutableMapOf<Int, FocusRequester>() }
+    fun tileFocusFor(index: Int) = tileFocusRequesters.getOrPut(index) { FocusRequester() }
+    var pickerOpener by remember { mutableStateOf<Int?>(null) }
     // The picker is a same-window overlay: when it closes, the focused
-    // picker item is disposed, so focus returns to the first tile —
+    // picker item is disposed, so focus returns to the opener tile —
     // otherwise the D-pad is left with no focus.
     LaunchedEffect(pickerSlot) {
-        if (pickerSlot == null) firstFocus.requestFocus()
+        if (pickerSlot != null) {
+            pickerOpener = pickerSlot
+        } else {
+            val opener = pickerOpener ?: 0
+            if (opener == 0) firstFocus.requestFocus()
+            else tileFocusRequesters[opener]?.requestFocus()
+            pickerOpener = null
+        }
     }
     // Back closes the picker first, instead of leaving the screen.
     BackHandler(enabled = pickerSlot != null) { viewModel.closePicker() }
@@ -105,7 +117,11 @@ fun MultiViewScreen(
                                 if (channel == null) viewModel.openPicker(index)
                                 else navController.navigate(Routes.player("live", channel.id))
                             },
-                            modifier = if (index == 0) Modifier.weight(1f).focusRequester(firstFocus) else Modifier.weight(1f)
+                            // T-04 — one modifier chain (was two identical
+                            // if/else branches differing only in the
+                            // focusRequester).
+                            modifier = Modifier.weight(1f)
+                                .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier.focusRequester(tileFocusFor(index)))
                         )
                     }
                 }

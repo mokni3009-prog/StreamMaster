@@ -73,14 +73,20 @@ fun SplashScreen(
 ) {
     val hasPlaylist by viewModel.hasPlaylist.collectAsState()
     val lockRequired by viewModel.lockRequired.collectAsState()
+    val settingsLoaded by viewModel.settingsLoaded.collectAsState()
     val unlocked by viewModel.unlocked.collectAsState()
     val pinError by viewModel.pinError.collectAsState()
     val startupTarget by viewModel.startupTarget.collectAsState()
     var skipRequested by remember { mutableStateOf(false) }
     // Initial focus: the skip button (only when no app lock — the PIN
-    // dialog owns focus then).
+    // dialog owns focus then). L-06 — keyed on the loaded lock value:
+    // the old LaunchedEffect(Unit) read the cold default `false` in the
+    // first frame and focused Skip even when the PIN dialog was about
+    // to appear a moment later.
     val skipFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { if (!lockRequired) skipFocus.requestFocus() }
+    LaunchedEffect(settingsLoaded, lockRequired) {
+        if (settingsLoaded && !lockRequired) skipFocus.requestFocus()
+    }
     LaunchedEffect(hasPlaylist, unlocked, skipRequested, startupTarget) {
         if (lockRequired && !unlocked) return@LaunchedEffect
         // Wait for the startup decision (Onboarding / ResumeChannel /

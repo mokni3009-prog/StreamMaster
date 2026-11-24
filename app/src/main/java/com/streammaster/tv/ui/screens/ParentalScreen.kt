@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
@@ -123,8 +124,21 @@ fun ParentalScreen(
     val items: List<ParentalItem> = when (kind) {
         ManageKind.LIVE -> channels.filter { it.bouquetId == selectedBouquetId }
             .map { ParentalItem(it.id, it.customName ?: it.name, it.category, it.bouquetId, R.drawable.ic_tv) }
-        ManageKind.FILMS -> films.map { ParentalItem(it.id, it.customName ?: it.title, "${it.year} • ${it.genre}", null, R.drawable.ic_film) }
-        ManageKind.SERIES -> series.map { ParentalItem(it.id, it.customName ?: it.title, "${stringResource(R.string.seasons_label, it.seasons)} • ${it.genre}", null, R.drawable.ic_layers) }
+        // T-10 — no " • " with an empty side when year/genre is missing.
+        ManageKind.FILMS -> films.map {
+            ParentalItem(
+                it.id, it.customName ?: it.title,
+                listOfNotNull(it.year.takeIf { y -> y > 0 }?.toString(), it.genre.ifBlank { null }).joinToString(" • "),
+                null, R.drawable.ic_film
+            )
+        }
+        ManageKind.SERIES -> series.map {
+            ParentalItem(
+                it.id, it.customName ?: it.title,
+                listOfNotNull(stringResource(R.string.seasons_label, it.seasons), it.genre.ifBlank { null }).joinToString(" • "),
+                null, R.drawable.ic_layers
+            )
+        }
     }
     fun lockedCountFor(k: ManageKind): Int = when (k) {
         ManageKind.LIVE -> channels.count { viewModel.isItemLocked(k, it.id, it.bouquetId) }
@@ -202,16 +216,18 @@ fun ParentalScreen(
                     itemsIndexed(kindBouquets) { index, bouquet ->
                         val locked = viewModel.isBouquetLocked(kind, bouquet.id)
                         val partial = viewModel.isBouquetPartial(kind, bouquet.id)
+                        // L-02 — same as ManageScreen: per-bouquet counts
+                        // only exist for LIVE; films/series show no count
+                        // instead of the (wrong) list total on every row.
                         val itemCount = when (kind) {
                             ManageKind.LIVE -> channels.count { it.bouquetId == bouquet.id }
-                            ManageKind.FILMS -> films.size
-                            ManageKind.SERIES -> series.size
+                            else -> null
                         }
                         PcRow(
                             ord = index + 1,
                             iconRes = R.drawable.ic_folder,
                             title = bouquet.name,
-                            subtitle = stringResource(R.string.mg_elements, itemCount),
+                            subtitle = itemCount?.let { stringResource(R.string.mg_elements, it) } ?: "",
                             badges = listOfNotNull(
                                 if (locked) stringResource(R.string.locked) else null,
                                 if (partial) stringResource(R.string.pc_partial) else null,
@@ -280,16 +296,15 @@ fun ParentalScreen(
                     Text(
                         text = when {
                             selectedItem != null -> "${stringResource(R.string.pc_target_item)} • ${selectedBouquet?.name ?: ""}"
-                            selectedBouquet != null -> "${stringResource(R.string.pc_target_bouquet)} • ${
-                                stringResource(
-                                    R.string.mg_elements,
-                                    when (kind) {
-                                        ManageKind.LIVE -> channels.count { it.bouquetId == selectedBouquet.id }
-                                        ManageKind.FILMS -> films.size
-                                        ManageKind.SERIES -> series.size
-                                    }
-                                )
-                            }"
+                            // L-02 — count only for LIVE (see above).
+                            selectedBouquet != null -> if (kind == ManageKind.LIVE) {
+                                "${stringResource(R.string.pc_target_bouquet)} • ${
+                                    stringResource(
+                                        R.string.mg_elements,
+                                        channels.count { it.bouquetId == selectedBouquet.id }
+                                    )
+                                }"
+                            } else stringResource(R.string.pc_target_bouquet)
                             else -> stringResource(R.string.pc_no_target)
                         },
                         fontSize = 15.sp, color = GoldSoft
@@ -610,6 +625,10 @@ internal fun MgActRow(
                 },
                 RoundedCornerShape(16.dp)
             )
+            // L-10 — a disabled row leaves the focus path (was focusable
+            // with a dead OK press). Centralised here so every MgActRow
+            // caller (Manage + Parental) gets it.
+            .focusProperties { canFocus = enabled }
             .tvFocus()
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 18.dp),

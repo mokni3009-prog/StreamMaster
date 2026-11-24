@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_wiring.xml -->
+<resources>
+    <string name="nav_match_day">Match Day</string>
+    <string name="nav_watch_tonight">What to watch?</string>
+    <string name="nav_diagnostics">Diagnostics</string>
+    <string name="nav_epg_health">EPG health</string>
+    <string name="nav_usb_files">USB files</string>
+    <string name="nav_channel_timer">Timer</string>
+    <string name="nav_cleanup">Cleanup</string>
+    <string name="nav_drive">Google Drive</string>
+</resources>

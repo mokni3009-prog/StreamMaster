@@ -26,15 +26,24 @@ data class XmlTvResult(
  */
 object XmlTvParser {
 
-    private val DATE_FORMATS = listOf(
-        SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US),
-        SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
-    ).onEach { it.timeZone = TimeZone.getTimeZone("UTC") }
-
     fun parse(input: InputStream): XmlTvResult {
         val handler = Handler()
         val factory = SAXParserFactory.newInstance()
         factory.isNamespaceAware = false
+        // SEC-06 (XXE): an XMLTV file comes from an untrusted URL — never
+        // allow DOCTYPE / external entities (file read / SSRF). Features
+        // are set best-effort: a parser that rejects one still parses.
+        runCatching {
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        }
+        runCatching {
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+        }
+        runCatching {
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        }
+        factory.isXIncludeAware = false
+        factory.isExpandEntityReferences = false
         val parser = factory.newSAXParser()
         parser.parse(input, handler)
         return XmlTvResult(handler.channels, handler.programs)
@@ -43,7 +52,14 @@ object XmlTvParser {
     fun parseDate(raw: String?): Long? {
         if (raw.isNullOrBlank()) return null
         val cleaned = raw.trim()
-        for (fmt in DATE_FORMATS) {
+        // OP-17: SimpleDateFormat is not thread-safe — never share the
+        // formatters (an EPG worker + a manual refresh used to corrupt
+        // each other's parses). Fresh instances per call are cheap here.
+        val formats = listOf(
+            SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US),
+            SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
+        ).onEach { it.timeZone = TimeZone.getTimeZone("UTC") }
+        for (fmt in formats) {
             runCatching { return fmt.parse(cleaned)?.time }.getOrNull()?.let { return it }
             // Try without the offset part if the first format failed.
             runCatching { return fmt.parse(cleaned.substringBefore(' '))?.time }

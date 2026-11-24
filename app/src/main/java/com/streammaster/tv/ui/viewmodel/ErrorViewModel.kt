@@ -26,6 +26,4 @@ class ErrorViewModel @Inject constructor(
             is PlaybackItem.DownloadItem -> playerManager.play(item)
         }
     }
-
-    fun stop() = playerManager.stop()
 }

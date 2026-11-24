@@ -156,10 +156,26 @@ class ParentalViewModel @Inject constructor(
         else com.streammaster.tv.R.string.pc_unlocked_toast
     }
 
-    /** "Tout verrouiller (cet onglet)": lock every bouquet of the tab. */
+    /** "Tout verrouiller (cet onglet)": lock every bouquet of the tab.
+     *  L-12 — for FILMS/SERIES the bouquet ids alone lock nothing (the
+     *  KDoc above: films/series have no bouquetId, only item locks apply
+     *  to them), so lock the tab's items themselves instead. LIVE keeps
+     *  the bouquet locks (enforced on channels via isItemLocked). */
     fun lockAll(kind: ManageKind) {
-        val ids = bouquetsFor(kind).map { it.id }
-        _draft.update { d -> d.copy(bouquets = d.bouquets + (kind.name to ids)) }
+        when (kind) {
+            ManageKind.LIVE -> {
+                val ids = bouquetsFor(kind).map { it.id }
+                _draft.update { d -> d.copy(bouquets = d.bouquets + (kind.name to ids)) }
+            }
+            ManageKind.FILMS -> {
+                val ids = films.value.map { it.id }.toSet()
+                _draft.update { d -> d.copy(items = d.items + ids) }
+            }
+            ManageKind.SERIES -> {
+                val ids = series.value.map { it.id }.toSet()
+                _draft.update { d -> d.copy(items = d.items + ids) }
+            }
+        }
         _toastRes.value = com.streammaster.tv.R.string.pc_locked_toast
     }
 

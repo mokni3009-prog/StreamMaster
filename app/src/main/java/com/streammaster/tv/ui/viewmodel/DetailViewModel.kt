@@ -75,19 +75,6 @@ data class DetailUiState(
     val downloadNoticeRes: Int? = null
 )
 
-/**
- * §4.53 — one user star rating (UI-layer shape, mapped from the Room
- * `UserRating` row — same fields, but `itemType` as [ContentKind] here).
- * Feed rows to the §4.36.1 taste engine by mapping them to
- * `HomeViewModel.TasteRating(refId = itemId, kind = itemType, stars)`.
- */
-data class UserRating(
-    val itemType: ContentKind,
-    val itemId: String,
-    val stars: Int,
-    val updatedAt: Long
-)
-
 /** §4.49 — provider credits for one title (cast names + director). */
 data class VodCredits(
     val cast: List<String>,
@@ -141,6 +128,11 @@ class DetailViewModel @Inject constructor(
     private val creditsCache = mutableMapOf<String, VodCredits>()
     /** Ids whose credits fetch already failed this session — not retried. */
     private val creditsMissed = mutableSetOf<String>()
+    /** M-03: one Retrofit per active playlist base URL — loadCredits
+     *  used to build a new Retrofit (and service) for every title, up
+     *  to 60 times per actor tap. */
+    private var cachedRetrofit: Retrofit? = null
+    private var cachedRetrofitBase: String? = null
     private var actorJob: Job? = null
 
     fun load(kind: String, id: String) = viewModelScope.launch {
@@ -220,11 +212,16 @@ class DetailViewModel @Inject constructor(
         val numericId = id.removePrefix("xt-vod-").removePrefix("xt-ser-").toIntOrNull()
             ?: return null
         val base = playlist.serverUrl.trimEnd('/') + "/"
-        val retrofit = Retrofit.Builder()
-            .baseUrl(base)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
+        val retrofit = if (cachedRetrofitBase == base) {
+            cachedRetrofit!!
+        } else {
+            Retrofit.Builder()
+                .baseUrl(base)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .also { cachedRetrofit = it; cachedRetrofitBase = base }
+        }
         return runCatching {
             if (kind == "film") {
                 val info = retrofit.create(VodInfoService::class.java)
@@ -293,11 +290,14 @@ class DetailViewModel @Inject constructor(
             val series = contentRepository.observeSeries().first()
             val foundFilms = mutableListOf<Film>()
             val foundSeries = mutableListOf<Series>()
-            var scanned = 0
+            // L-03: one scan budget per kind — a single shared counter
+            // let 60+ films eat the whole budget so the series loop
+            // broke on its first iteration and never showed any works.
+            var scannedFilms = 0
             for (film in films) {
-                if (foundFilms.size >= MAX_ACTOR_WORKS || scanned >= MAX_ACTOR_SCAN) break
+                if (foundFilms.size >= MAX_ACTOR_WORKS || scannedFilms >= MAX_ACTOR_SCAN) break
                 ensureActive()
-                scanned++
+                scannedFilms++
                 if (creditsFor("film", film.id)?.cast
                         ?.any { it.equals(name, ignoreCase = true) } == true
                 ) {
@@ -305,10 +305,11 @@ class DetailViewModel @Inject constructor(
                     _state.update { it.copy(actorWorksFilms = foundFilms.toList()) }
                 }
             }
+            var scannedSeries = 0
             for (s in series) {
-                if (foundSeries.size >= MAX_ACTOR_WORKS || scanned >= MAX_ACTOR_SCAN) break
+                if (foundSeries.size >= MAX_ACTOR_WORKS || scannedSeries >= MAX_ACTOR_SCAN) break
                 ensureActive()
-                scanned++
+                scannedSeries++
                 if (creditsFor("series", s.id)?.cast
                         ?.any { it.equals(name, ignoreCase = true) } == true
                 ) {
@@ -330,29 +331,26 @@ class DetailViewModel @Inject constructor(
         }
     }
 
-    /** §4.53 — save the user's star rating (1..5) for the current title. */
+    /** §4.53 — save the user's star rating (1..5) for the current title.
+     *  T-05: 0 clears the rating (deletes the row) — tapping the
+     *  already-selected star in the UI sends 0. */
     fun setUserRating(stars: Int) {
         val s = _state.value
         val kind = if (s.kind == "series") ContentKind.SERIES else ContentKind.FILM
         val id = s.film?.id ?: s.series?.id ?: return
+        if (stars <= 0) {
+            viewModelScope.launch {
+                userRatingDao.deleteRating(kind.name, id)
+            }
+            _state.update { it.copy(userStars = 0) }
+            return
+        }
         val clamped = stars.coerceIn(1, 5)
         viewModelScope.launch {
             userRatingDao.setRating(kind.name, id, clamped, System.currentTimeMillis())
         }
         _state.update { it.copy(userStars = clamped) }
     }
-
-    /** §4.53 — every stored rating, for the §4.36.1 taste engine
-     *  (map each row to `TasteRating(refId = itemId, kind, stars)`). */
-    suspend fun getAllUserRatings(): List<UserRating> =
-        userRatingDao.getAll().first().map { row ->
-            UserRating(
-                itemType = ContentKind.valueOf(row.itemType),
-                itemId = row.itemId,
-                stars = row.stars,
-                updatedAt = row.updatedAt
-            )
-        }
 
     /** Offline download status of the current film (series use per-episode
      *  downloads; their status lives on the Downloads screen). */

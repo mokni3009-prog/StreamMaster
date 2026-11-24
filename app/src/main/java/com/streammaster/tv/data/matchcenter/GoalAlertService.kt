@@ -9,10 +9,12 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streammaster.tv.R
@@ -30,14 +32,21 @@ import javax.inject.Inject
 
 private val Context.goalAlertsDataStore: DataStore<Preferences> by preferencesDataStore(name = "goal_alerts")
 private val KEY_SEEN_GOALS = stringSetPreferencesKey("seenGoals")
+/** LG-17 — ordered replacement for [KEY_SEEN_GOALS]: a "\n"-joined list,
+ *  newest last, so pruning the oldest 300 never drops a recent goal
+ *  (a Set has no order, so takeLast(300) on it was arbitrary). */
+private val KEY_SEEN_GOALS_LIST = stringPreferencesKey("seenGoalsList")
 /** §4.36.8 — pre-match alerts already sent ("pre:<espn event id>"). */
 private val KEY_SEEN_PRE_MATCH_ALERTS = stringSetPreferencesKey("seenPreMatchAlerts")
+/** LG-17 — ordered replacement for [KEY_SEEN_PRE_MATCH_ALERTS]. */
+private val KEY_SEEN_PRE_MATCH_ALERTS_LIST = stringPreferencesKey("seenPreMatchAlertsList")
 
 private const val SERVICE_CHANNEL_ID = "goal_alerts_service"
 private const val ALERT_CHANNEL_ID = "goal_alerts"
 private const val SERVICE_NOTIFICATION_ID = 1004
 private const val POLL_INTERVAL_MS = 30_000L
 private const val MAX_SEEN_GOALS = 300
+private const val TAG = "GoalAlerts"
 /** §4.36.8 — warn this long before kickoff. */
 private const val PRE_MATCH_LEAD_MS = 15 * 60_000L
 
@@ -133,7 +142,11 @@ class GoalAlertService : Service() {
             pollJob = serviceScope.launch {
                 var seeded = false
                 while (true) {
-                    pollOnce(seedOnly = !seeded)
+                    // OP-05: a DataStore IO failure used to kill this loop
+                    // silently (and the exception escaped the coroutine) —
+                    // log it and keep polling instead.
+                    runCatching { pollOnce(seedOnly = !seeded) }
+                        .onFailure { Log.w(TAG, "goal poll failed, will retry", it) }
                     seeded = true
                     delay(POLL_INTERVAL_MS)
                 }
@@ -152,7 +165,7 @@ class GoalAlertService : Service() {
 
     private suspend fun pollOnce(seedOnly: Boolean) {
         val matches = runCatching { api.fetchToday() }.getOrDefault(emptyList())
-        val seen = loadSeen().toMutableSet()
+        val seen = loadSeen().toMutableList()
         val fresh = mutableListOf<GoalAlert>()
         for (match in matches) {
             for (goal in match.goals) {
@@ -173,8 +186,10 @@ class GoalAlertService : Service() {
                 }
             }
         }
-        // Prune the seen set so it never grows without bound.
-        saveSeen(seen.toList().takeLast(MAX_SEEN_GOALS).toSet())
+        // Prune the seen list so it never grows without bound. LG-17: the
+        // list is insertion-ordered (oldest first), so takeLast drops the
+        // oldest goals — never a recent one.
+        saveSeen(seen.takeLast(MAX_SEEN_GOALS))
         for (alert in fresh) {
             bus.emit(alert)
             if (!AppForeground.isForeground) postSystemNotification(alert)
@@ -199,7 +214,7 @@ class GoalAlertService : Service() {
             .getOrDefault(true)
         if (!enabled) return
         val now = System.currentTimeMillis()
-        val seen = loadSeenPreMatch().toMutableSet()
+        val seen = loadSeenPreMatch().toMutableList()
         var changed = false
         for (match in matches) {
             if (match.state != "pre" || match.startMillis <= 0L) continue
@@ -211,15 +226,22 @@ class GoalAlertService : Service() {
             changed = true
             postPreMatchNotification(match)
         }
-        if (changed) saveSeenPreMatch(seen.toList().takeLast(MAX_SEEN_GOALS).toSet())
+        if (changed) saveSeenPreMatch(seen.takeLast(MAX_SEEN_GOALS))
     }
 
-    private suspend fun loadSeenPreMatch(): Set<String> =
-        applicationContext.goalAlertsDataStore.data.first()[KEY_SEEN_PRE_MATCH_ALERTS] ?: emptySet()
+    /** LG-17 — ordered (oldest first); migrates once from the old
+     *  unordered stringSet key. Goal keys never contain "\n". */
+    private suspend fun loadSeenPreMatch(): List<String> {
+        val prefs = applicationContext.goalAlertsDataStore.data.first()
+        val list = prefs[KEY_SEEN_PRE_MATCH_ALERTS_LIST]
+        if (!list.isNullOrBlank()) return list.split("\n").filter { it.isNotBlank() }
+        return (prefs[KEY_SEEN_PRE_MATCH_ALERTS] ?: emptySet()).toList()
+    }
 
-    private suspend fun saveSeenPreMatch(keys: Set<String>) {
+    private suspend fun saveSeenPreMatch(keys: List<String>) {
         applicationContext.goalAlertsDataStore.edit { prefs ->
-            prefs[KEY_SEEN_PRE_MATCH_ALERTS] = keys
+            prefs[KEY_SEEN_PRE_MATCH_ALERTS_LIST] = keys.joinToString("\n")
+            prefs.remove(KEY_SEEN_PRE_MATCH_ALERTS)
         }
     }
 
@@ -251,12 +273,19 @@ class GoalAlertService : Service() {
         }
     }
 
-    private suspend fun loadSeen(): Set<String> =
-        applicationContext.goalAlertsDataStore.data.first()[KEY_SEEN_GOALS] ?: emptySet()
+    /** LG-17 — ordered (oldest first); migrates once from the old
+     *  unordered stringSet key. Goal keys never contain "\n". */
+    private suspend fun loadSeen(): List<String> {
+        val prefs = applicationContext.goalAlertsDataStore.data.first()
+        val list = prefs[KEY_SEEN_GOALS_LIST]
+        if (!list.isNullOrBlank()) return list.split("\n").filter { it.isNotBlank() }
+        return (prefs[KEY_SEEN_GOALS] ?: emptySet()).toList()
+    }
 
-    private suspend fun saveSeen(keys: Set<String>) {
+    private suspend fun saveSeen(keys: List<String>) {
         applicationContext.goalAlertsDataStore.edit { prefs ->
-            prefs[KEY_SEEN_GOALS] = keys
+            prefs[KEY_SEEN_GOALS_LIST] = keys.joinToString("\n")
+            prefs.remove(KEY_SEEN_GOALS)
         }
     }
 

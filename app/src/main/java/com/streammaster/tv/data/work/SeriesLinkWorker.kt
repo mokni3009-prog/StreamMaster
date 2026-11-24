@@ -27,12 +27,16 @@ class SeriesLinkWorker(
             entryPoint.seriesLinkScanner().scan()
             Result.success()
         } catch (e: Exception) {
-            Result.retry()
+            // OP-19: cap retries — a permanently failing scan must not
+            // reschedule forever.
+            if (runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
         }
     }
 
     companion object {
         const val UNIQUE_NAME = "series-link-scan"
+        /** OP-19 — retries are for transient failures only. */
+        const val MAX_ATTEMPTS = 3
 
         fun enqueue(context: Context) {
             val request = PeriodicWorkRequestBuilder<SeriesLinkWorker>(6, TimeUnit.HOURS)

@@ -196,7 +196,10 @@
 
   function refreshStatus() {
     if (!code) return;
-    fetch('/api/status?code=' + encodeURIComponent(code))
+    // S-04 — the pairing code travels in the X-Remote-Code header only
+    // (the server accepts it there); it used to ride in the ?code=
+    // query string on every 2s poll, where URLs get logged.
+    fetch('/api/status', { headers: { 'X-Remote-Code': code } })
       .then(function (r) {
         if (r.status === 401) { showCodeBox(); return null; }
         return r.json();

@@ -32,13 +32,11 @@ import com.streammaster.tv.ui.theme.Danger
 import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.DiagnosticsViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-/** Route for the diagnostics screen (§4.38). Registered by the nav builder. */
-const val DIAGNOSTICS_ROUTE = "diagnostics"
 
 /**
  * Diagnostics screen (§4.38): server status, network, session stall/error
@@ -123,7 +121,10 @@ fun DiagnosticsScreen(
         } else {
             val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
             state.recentErrors.forEach { event ->
-                CardSurface(modifier = Modifier.fillMaxWidth()) {
+                // L-09 — error cards are focusable (read-only, but the
+                // remote can scroll the list through them; before, the
+                // only focusable element was the check-server button).
+                CardSurface(modifier = Modifier.fillMaxWidth().tvFocus()) {
                     Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = fmt.format(Date(event.timestampMillis)),

@@ -31,11 +31,17 @@ class PlaylistRefreshWorker(
     override suspend fun doWork(): Result {
         val active = playlistRepository.getActive() ?: return Result.success()
         val ok = runCatching { playlistRepository.refreshPlaylist(active.id) }.getOrDefault(false)
-        return if (ok) Result.success() else Result.retry()
+        if (ok) return Result.success()
+        // OP-19: a permanently failing refresh (bad credentials, dead
+        // server) used to retry forever — cap the retries, then fail so
+        // WorkManager stops rescheduling.
+        return if (runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
     }
 
     companion object {
         const val UNIQUE_NAME = "playlist-refresh"
+        /** OP-19 — retries are for transient failures only. */
+        const val MAX_ATTEMPTS = 3
 
         fun enqueue(context: Context) {
             val request = PeriodicWorkRequestBuilder<PlaylistRefreshWorker>(12, TimeUnit.HOURS)

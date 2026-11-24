@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_data.xml -->
+<resources>
+    <string name="catchup_revoir">Watch again</string>
+    <string name="match_starts_soon_title">Kick-off in 15 minutes</string>
+    <string name="follow_alerts_channel">Followed (series and genres)</string>
+    <string name="follow_alerts_channel_desc">Alerts for new releases of followed series and genres</string>
+    <string name="follow_new_episodes_title">New episode</string>
+    <string name="follow_new_episodes_text">%2$s: %1$d new episode(s)</string>
+    <string name="follow_new_films_title">New films</string>
+    <string name="follow_new_films_text">New %1$s films have arrived</string>
+</resources>

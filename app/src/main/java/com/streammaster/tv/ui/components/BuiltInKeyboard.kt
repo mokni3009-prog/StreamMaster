@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,12 +36,9 @@ import androidx.compose.ui.unit.sp
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.keyboard.KeyboardLayouts
 import com.streammaster.tv.ui.theme.BorderGold
-import com.streammaster.tv.ui.components.CardSurface
-import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldGradient
 import com.streammaster.tv.ui.theme.GoldWhite
-import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 
 /**
@@ -57,8 +53,8 @@ import com.streammaster.tv.ui.theme.tvFocus
  * - [onKey] receives every typed character (letters, digits, symbols).
  * - [onAction] receives every action, including [KeyboardAction.Char] for
  *   the same characters. Callers that use [onKey] for text should ignore
- *   [KeyboardAction.Char] in [onAction] (see [KeyboardSheet] for the
- *   reference wiring); callers that prefer a single callback can use
+ *   [KeyboardAction.Char] in [onAction] (see the callers — Login,
+ *   Manage, Playlists — for the reference wiring); callers that prefer a single callback can use
  *   [onAction] alone and ignore [onKey].
  *
  * Shift is local state: French defaults to uppercase ON (like the
@@ -307,99 +303,5 @@ private fun KbKey(
                 maxLines = 1
             )
         }
-    }
-}
-
-/**
- * Bottom-sheet wrapper around [BuiltInKeyboard] (CONTRACT §8).
- *
- * Shows the target field label, the current text (read-only display — the
- * keyboard is the only way to edit it), the keyboard itself, and
- * Validate / Retour buttons. Used by login fields, rename dialogs, custom
- * DNS / User-Agent values and the add-playlist form.
- *
- * Owns the text, language and mode state internally and reports the final
- * text through [onValidate]; [onClose] is called by the Retour button
- * (or a [KeyboardAction.Close] from the keyboard).
- */
-@Composable
-fun KeyboardSheet(
-    fieldLabel: String,
-    initialText: String = "",
-    language: KeyboardLanguage = KeyboardLanguage.FR,
-    onValidate: (String) -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var text by remember { mutableStateOf(initialText) }
-    var lang by remember { mutableStateOf(language) }
-    var mode by remember { mutableStateOf(KeyboardMode.LETTERS) }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xFF0D0A04), RoundedCornerShape(20.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            text = fieldLabel,
-            color = Gold,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-        // Current text — read-only display box (never an editable TextField).
-        // R-B2: CardSurface component (12dp) so the box carries the
-        // prototype --card-shadow instead of a flat background.
-        CardSurface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text(
-                text = text.ifEmpty { "…" },
-                color = if (text.isEmpty()) TextMuted else GoldWhite,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-            )
-        }
-        BuiltInKeyboard(
-            onKey = { c -> text += c },
-            onAction = { action ->
-                when (action) {
-                    is KeyboardAction.Char -> Unit // already handled via onKey
-                    KeyboardAction.Backspace -> text = text.dropLast(1)
-                    KeyboardAction.Space -> text += " "
-                    KeyboardAction.Shift -> Unit // handled inside BuiltInKeyboard
-                    KeyboardAction.SwitchLanguage ->
-                        lang = if (lang == KeyboardLanguage.FR) KeyboardLanguage.AR else KeyboardLanguage.FR
-
-                    KeyboardAction.Switch123 ->
-                        mode = if (mode == KeyboardMode.LETTERS) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS
-
-                    KeyboardAction.Validate -> onValidate(text)
-                    KeyboardAction.Close -> onClose()
-                }
-            },
-            language = lang,
-            mode = mode
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            GoldButton(
-                text = "Valider",
-                onClick = { onValidate(text) },
-                modifier = Modifier.weight(1f)
-            )
-            GoldButton(
-                text = "Retour",
-                onClick = onClose,
-                modifier = Modifier.weight(1f),
-                outlined = true
-            )
-        }
-        Spacer(modifier = Modifier.height(2.dp))
     }
 }

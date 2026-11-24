@@ -47,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -112,6 +113,8 @@ import com.streammaster.tv.ui.viewmodel.MatchCenterViewModel
 import com.streammaster.tv.ui.viewmodel.PlayerExtrasViewModel
 import com.streammaster.tv.ui.viewmodel.PlayerViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -229,6 +232,9 @@ fun PlayerScreen(
     // Programme panel (PL09) and volume OSD (PL08) state.
     var epgPanelOpen by remember { mutableStateOf(false) }
     var volumeOsd by remember { mutableStateOf(false) }
+    // L-06: bumped on every volume step; the hide-timer effect below
+    // keys on it, so the 3s timer resets instead of firing mid-adjustment.
+    var volumeOsdVersion by remember { mutableStateOf(0) }
     // Scores dialog focus: the Refresh button. On close, focus returns
     // to the last focused control (B-P3).
     val scoresFocus = remember { FocusRequester() }
@@ -249,11 +255,11 @@ fun PlayerScreen(
     // On close, focus returns to the last focused control (B-P3).
     val programmeFocus = remember { FocusRequester() }
     val epgListState = rememberLazyListState()
-    val epgRowFocusers = remember(epgPrograms.map { epgProgramKey(it) }) {
-        epgPrograms.associate { epgProgramKey(it) to FocusRequester() }
-    }
+    // M-07: one stable map for the whole panel lifetime — rebuilding it
+    // on every EPG wave orphaned the requester a pending focus asked for.
+    val epgRowFocusers = remember { mutableMapOf<String, FocusRequester>() }
     var epgPanelEverOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(epgPanelOpen, epgPrograms.isNotEmpty()) {
+    LaunchedEffect(epgPanelOpen, epgPrograms.size) {
         if (epgPanelOpen) {
             epgPanelEverOpen = true
             if (epgPrograms.isEmpty()) {
@@ -264,8 +270,12 @@ fun PlayerScreen(
                     now in it.startMillis until it.endMillis
                 }.coerceAtLeast(0)
                 epgListState.scrollToItem(nowIndex)
-                delay(80)
-                epgRowFocusers[epgProgramKey(epgPrograms[nowIndex])]?.requestFocus()
+                // Wait for the row to actually be laid out instead of
+                // guessing with a fixed delay (same pattern as HomeScreen).
+                withTimeoutOrNull(1000) {
+                    snapshotFlow { epgListState.layoutInfo.visibleItemsInfo.any { it.index == nowIndex } }.first { it }
+                }
+                epgRowFocusers.getOrPut(epgProgramKey(epgPrograms[nowIndex])) { FocusRequester() }.requestFocus()
             }
         } else if (epgPanelEverOpen && ui.controlsVisible && !playback.isPip) {
             restoreLastControlFocus()
@@ -363,6 +373,7 @@ fun PlayerScreen(
         volumeMax = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         volumeLevel = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         volumeOsd = true
+        volumeOsdVersion++
         viewModel.showControls()
     }
 
@@ -375,6 +386,10 @@ fun PlayerScreen(
         )
         volumeLevel = am.getStreamVolume(AudioManager.STREAM_MUSIC)
         volumeMax = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        // L-06: re-arm the 3s hide timer on every step — without this
+        // the OSD vanished mid-adjustment when pressed repeatedly.
+        volumeOsd = true
+        volumeOsdVersion++
         viewModel.showControls()
     }
 
@@ -383,7 +398,9 @@ fun PlayerScreen(
     // (timeout or Back) focus returns to the last focused control (B-P3).
     val volumeFocus = remember { FocusRequester() }
     var volumeOsdEverOpen by remember { mutableStateOf(false) }
-    LaunchedEffect(volumeOsd) {
+    // L-06: the effect restarts on every volume step (version bump),
+    // so the 3s hide timer resets instead of firing mid-adjustment.
+    LaunchedEffect(volumeOsd, volumeOsdVersion) {
         if (volumeOsd) {
             volumeOsdEverOpen = true
             volumeFocus.requestFocus()
@@ -412,6 +429,30 @@ fun PlayerScreen(
                 RemoteCommand.ShowInfo -> viewModel.showControls()
                 RemoteCommand.OpenAudio -> selector = "audio"
                 RemoteCommand.OpenSubtitles -> selector = "subs"
+                // L-09: navigation commands die here — Shell owns them
+                // but is not composed on the player route. Stop
+                // playback and navigate, with Shell's popUpTo /
+                // launchSingleTop / restoreState.
+                RemoteCommand.GoHome, RemoteCommand.GoSearch, RemoteCommand.GoEpg,
+                RemoteCommand.GoSettings, RemoteCommand.GoDirect, RemoteCommand.GoRecordings,
+                RemoteCommand.GoFavoris, RemoteCommand.GoMatchCenter -> {
+                    val target = when (cmd) {
+                        RemoteCommand.GoHome -> Routes.HOME
+                        RemoteCommand.GoSearch -> Routes.SEARCH
+                        RemoteCommand.GoEpg -> Routes.EPG
+                        RemoteCommand.GoSettings -> Routes.SETTINGS
+                        RemoteCommand.GoDirect -> Routes.LIVE
+                        RemoteCommand.GoRecordings -> Routes.RECORDINGS
+                        RemoteCommand.GoFavoris -> Routes.FAVORIS
+                        else -> Routes.MATCH_CENTER
+                    }
+                    viewModel.stop()
+                    navController.navigate(target) {
+                        popUpTo(Routes.HOME) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
                 else -> Unit
             }
         }
@@ -472,6 +513,10 @@ fun PlayerScreen(
         if (ui.filmFinished) {
             showToast(context, context.getString(R.string.film_finished))
             viewModel.clearFilmFinished()
+            // L-05: write focusedId like exitPlayer() does, so the
+            // parent screen restores focus onto the finished film
+            // instead of its first element.
+            navController.previousBackStackEntry?.savedStateHandle?.set("focusedId", id)
             navController.popBackStack()
         }
     }
@@ -831,7 +876,7 @@ fun PlayerScreen(
                                         // focusable). The 1.03 scale +
                                         // halo come from tvFocus itself.
                                         .focusRequester(
-                                            epgRowFocusers[epgProgramKey(prog)] ?: FocusRequester()
+                                            epgRowFocusers.getOrPut(epgProgramKey(prog)) { FocusRequester() }
                                         )
                                         .tvFocus()
                                         .padding(12.dp),
@@ -1538,14 +1583,16 @@ private fun FsCtrlButton(
             .clip(RoundedCornerShape(31.dp))
             .background(Color(0xD20C0802))
             .border(2.dp, BorderGold, RoundedCornerShape(31.dp))
+            // T-02: padding BEFORE clickable — after it, the padding
+            // widened the button visually outside its click area.
+            .padding(horizontal = 20.dp)
             // B-P3: the requester must come BEFORE tvFocus (which owns
             // the focusable); gaining focus reports the key so the
             // screen can restore this exact button after auto-hide.
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvFocus()
             .onFocusChanged { if (it.isFocused) focusId?.let { id -> onFocused?.invoke(id) } }
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp),
+            .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Row(
@@ -1938,7 +1985,11 @@ private fun PlayerListsOverlay(
             }
             val focusIndex = bouquets.indexOfFirst { it.id == target }.coerceAtLeast(0)
             bouquetsListState.scrollToItem(focusIndex)
-            delay(80)
+            // Wait for the bouquet row to actually be laid out instead
+            // of guessing with a fixed delay (same pattern as HomeScreen).
+            withTimeoutOrNull(1000) {
+                snapshotFlow { bouquetsListState.layoutInfo.visibleItemsInfo.any { it.index == focusIndex } }.first { it }
+            }
             firstFocus.requestFocus()
         }
     }

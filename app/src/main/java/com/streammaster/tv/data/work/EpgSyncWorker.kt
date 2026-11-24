@@ -29,12 +29,16 @@ class EpgSyncWorker(
             epgRepository.refreshEpg(active.id)
             Result.success()
         } catch (e: Exception) {
-            Result.retry()
+            // OP-19: cap retries — a permanently failing sync must not
+            // reschedule forever.
+            if (runAttemptCount >= MAX_ATTEMPTS) Result.failure() else Result.retry()
         }
     }
 
     companion object {
         const val UNIQUE_NAME = "epg-sync"
+        /** OP-19 — retries are for transient failures only. */
+        const val MAX_ATTEMPTS = 3
 
         fun enqueue(context: Context) {
             val request = PeriodicWorkRequestBuilder<EpgSyncWorker>(6, TimeUnit.HOURS)

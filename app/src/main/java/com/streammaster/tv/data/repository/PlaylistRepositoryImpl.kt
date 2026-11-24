@@ -2,11 +2,14 @@ package com.streammaster.tv.data.repository
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.room.withTransaction
 import com.streammaster.tv.R
 import com.streammaster.tv.data.api.M3uParser
 import com.streammaster.tv.data.api.StalkerApi
@@ -21,9 +24,11 @@ import com.streammaster.tv.data.prefs.SettingsStore
 import com.streammaster.tv.data.util.TitleNormalizer
 import com.streammaster.tv.data.work.ReminderScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.text.SimpleDateFormat
@@ -67,19 +72,31 @@ class PlaylistRepositoryImpl @Inject constructor(
 
     override suspend fun deletePlaylist(id: String) {
         val wasActive = db.playlistDao().getById(id)?.isActive == true
-        db.channelDao().deleteByPlaylist(id)
-        db.filmDao().deleteByPlaylist(id)
-        db.seriesDao().deleteByPlaylist(id)
-        db.bouquetDao().deleteByPlaylist(id)
-        db.playlistDao().deleteById(id)
+        // LG-07: all of this is one atomic replacement — a crash mid-delete
+        // used to leave a half-deleted playlist behind.
+        db.withTransaction {
+            // LG-02: episodes and EPG rows have no FK cascade, so delete
+            // them explicitly or they stay orphaned forever.
+            val channelIds = db.channelDao().getAll(id).map { it.id }
+            channelIds.forEach { db.epgDao().deleteRange(it, 0L, Long.MAX_VALUE) }
+            db.seriesDao().getAll(id).forEach { db.episodeDao().deleteBySeries(it.id) }
+            db.channelDao().deleteByPlaylist(id)
+            db.filmDao().deleteByPlaylist(id)
+            db.seriesDao().deleteByPlaylist(id)
+            db.bouquetDao().deleteByPlaylist(id)
+            db.playlistDao().deleteById(id)
+        }
         if (wasActive) {
             db.playlistDao().getAll().firstOrNull()?.let { activatePlaylist(it.id) }
         }
     }
 
     override suspend fun activatePlaylist(id: String) {
-        db.playlistDao().deactivateAll()
-        db.playlistDao().activate(id)
+        // LG-07: deactivate + activate must not be observable half-done.
+        db.withTransaction {
+            db.playlistDao().deactivateAll()
+            db.playlistDao().activate(id)
+        }
     }
 
     override suspend fun getActive(): Playlist? = db.playlistDao().getActive()?.toModel()
@@ -190,6 +207,10 @@ class PlaylistRepositoryImpl @Inject constructor(
      *  ReminderScheduler.initialize; created defensively here too). */
     private fun postFollowNotification(title: String, text: String, id: Int) {
         runCatching {
+            // LG-20: without POST_NOTIFICATIONS the notify() call is a
+            // silent no-op on Android 13+ — skip the work; and without a
+            // contentIntent tapping the notification did nothing.
+            if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 nm.getNotificationChannel(ReminderScheduler.CHANNEL_ID) == null
@@ -204,10 +225,20 @@ class PlaylistRepositoryImpl @Inject constructor(
                     }
                 )
             }
+            val openIntent = context.packageManager
+                .getLaunchIntentForPackage(context.packageName)
+                ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val pending = openIntent?.let {
+                PendingIntent.getActivity(
+                    context, id, it,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
             val notification = NotificationCompat.Builder(context, ReminderScheduler.CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(text)
+                .setContentIntent(pending)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true)
                 .build()
@@ -224,46 +255,100 @@ class PlaylistRepositoryImpl @Inject constructor(
         val oldSeries = db.seriesDao().getAll(pid).associateBy { it.id }
         val oldBouquets = db.bouquetDao().getAll(pid).associateBy { it.id }
 
-        db.bouquetDao().upsertAll(content.bouquets.map { b ->
-            val old = oldBouquets[b.id]
-            b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
-        })
-        db.channelDao().upsertAll(content.channels.mapIndexed { idx, c ->
-            val old = oldChannels[c.id]
-            if (old == null) c.toEntity(pid, idx)
-            else c.toEntity(pid, idx).copy(
-                isFavorite = old.isFavorite,
-                hidden = old.hidden,
-                customNum = old.customNum,
-                customName = old.customName,
-                bouquetId = old.bouquetId,
-                backupUrlsEncoded = old.backupUrlsEncoded,
-                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
-                isBroken = old.isBroken
+        // LG-07: the whole merge is one transaction — a crash mid-sync
+        // used to leave half a catalog behind.
+        db.withTransaction {
+            db.bouquetDao().upsertAll(content.bouquets.map { b ->
+                val old = oldBouquets[b.id]
+                b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
+            })
+            db.channelDao().upsertAll(content.channels.mapIndexed { idx, c ->
+                val old = oldChannels[c.id]
+                if (old == null) c.toEntity(pid, idx)
+                else c.toEntity(pid, idx).copy(
+                    isFavorite = old.isFavorite,
+                    hidden = old.hidden,
+                    customNum = old.customNum,
+                    customName = old.customName,
+                    bouquetId = old.bouquetId,
+                    backupUrlsEncoded = old.backupUrlsEncoded,
+                    logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                    isBroken = old.isBroken
+                )
+            })
+            db.filmDao().upsertAll(content.films.mapIndexed { idx, f ->
+                val old = oldFilms[f.id]
+                if (old == null) f.toEntity(pid, idx)
+                // LG-04: keep the user's rename like channels do (the old
+                // code dropped customName on every refresh).
+                else f.toEntity(pid, idx).copy(
+                    isFavorite = old.isFavorite, hidden = old.hidden,
+                    customName = old.customName
+                )
+            })
+            db.seriesDao().upsertAll(content.series.mapIndexed { idx, s ->
+                val old = oldSeries[s.id]
+                if (old == null) s.toEntity(pid, idx)
+                else s.toEntity(pid, idx).copy(
+                    isFavorite = old.isFavorite, hidden = old.hidden,
+                    customName = old.customName
+                )
+            })
+            db.episodeDao().upsertAll(content.episodes.map { it.toEntity() })
+            // LG-01: delete what the provider no longer returns, so removed
+            // content does not accumulate forever. Only when the provider
+            // actually returned rows (an empty answer must never wipe).
+            pruneRemoved(
+                pid,
+                bouquetIds = content.bouquets.map { it.id },
+                channelIds = content.channels.map { it.id },
+                filmIds = content.films.map { it.id },
+                seriesIds = content.series.map { it.id },
+                removedSeriesIds = oldSeries.keys - content.series.map { it.id }.toSet()
             )
-        })
-        db.filmDao().upsertAll(content.films.mapIndexed { idx, f ->
-            val old = oldFilms[f.id]
-            if (old == null) f.toEntity(pid, idx)
-            else f.toEntity(pid, idx).copy(isFavorite = old.isFavorite, hidden = old.hidden)
-        })
-        db.seriesDao().upsertAll(content.series.mapIndexed { idx, s ->
-            val old = oldSeries[s.id]
-            if (old == null) s.toEntity(pid, idx)
-            else s.toEntity(pid, idx).copy(isFavorite = old.isFavorite, hidden = old.hidden)
-        })
-        db.episodeDao().upsertAll(content.episodes.map { it.toEntity() })
-        val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
-        db.playlistDao().upsert(
-            playlist.copy(
-                expiryDate = content.expiryDate,
-                connections = content.connections,
-                status = content.status,
-                lastUpdate = now
-            ).toEntity()
-        )
-        recomputeBackupUrls()
+            val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
+            db.playlistDao().upsert(
+                playlist.copy(
+                    expiryDate = content.expiryDate,
+                    connections = content.connections,
+                    status = content.status,
+                    lastUpdate = now
+                ).toEntity()
+            )
+            recomputeBackupUrls()
+        }
         return true
+    }
+
+    /** LG-01 — removes stored rows whose id is absent from the fresh
+     *  fetch (channels / films / series / bouquets), plus episodes of
+     *  series the provider dropped. Skips a kind entirely when the
+     *  provider returned nothing for it. */
+    private suspend fun pruneRemoved(
+        pid: String,
+        bouquetIds: List<String>,
+        channelIds: List<String>,
+        filmIds: List<String>,
+        seriesIds: List<String>,
+        removedSeriesIds: Set<String>
+    ) {
+        if (bouquetIds.isNotEmpty()) {
+            db.bouquetDao().deleteNotIn(pid, bouquetIds)
+        }
+        if (channelIds.isNotEmpty()) {
+            db.channelDao().deleteNotIn(pid, channelIds)
+        }
+        if (filmIds.isNotEmpty()) {
+            db.filmDao().deleteNotIn(pid, filmIds)
+        }
+        if (seriesIds.isNotEmpty()) {
+            db.seriesDao().deleteNotIn(pid, seriesIds)
+            // Episodes carry no playlistId: drop only the episodes of
+            // series that existed here and are gone now.
+            for (removedId in removedSeriesIds) {
+                db.episodeDao().deleteBySeries(removedId)
+            }
+        }
     }
 
     private suspend fun refreshStalker(playlist: Playlist): Boolean {
@@ -271,68 +356,95 @@ class PlaylistRepositoryImpl @Inject constructor(
         val pid = playlist.id
         val oldChannels = db.channelDao().getAll(pid).associateBy { it.id }
         val oldBouquets = db.bouquetDao().getAll(pid).associateBy { it.id }
-        db.bouquetDao().upsertAll(content.bouquets.map { b ->
-            val old = oldBouquets[b.id]
-            b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
-        })
-        db.channelDao().upsertAll(content.channels.mapIndexed { idx, c ->
-            val old = oldChannels[c.id]
-            if (old == null) c.toEntity(pid, idx)
-            else c.toEntity(pid, idx).copy(
-                isFavorite = old.isFavorite,
-                hidden = old.hidden,
-                customNum = old.customNum,
-                customName = old.customName,
-                bouquetId = old.bouquetId,
-                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
-                isBroken = old.isBroken
+        // LG-07: one transaction for the whole merge.
+        db.withTransaction {
+            db.bouquetDao().upsertAll(content.bouquets.map { b ->
+                val old = oldBouquets[b.id]
+                b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
+            })
+            db.channelDao().upsertAll(content.channels.mapIndexed { idx, c ->
+                val old = oldChannels[c.id]
+                if (old == null) c.toEntity(pid, idx)
+                else c.toEntity(pid, idx).copy(
+                    isFavorite = old.isFavorite,
+                    hidden = old.hidden,
+                    customNum = old.customNum,
+                    customName = old.customName,
+                    bouquetId = old.bouquetId,
+                    logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                    isBroken = old.isBroken
+                )
+            })
+            pruneRemoved(
+                pid,
+                bouquetIds = content.bouquets.map { it.id },
+                channelIds = content.channels.map { it.id },
+                filmIds = emptyList(),
+                seriesIds = emptyList(),
+                removedSeriesIds = emptySet()
             )
-        })
-        val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
-        db.playlistDao().upsert(playlist.copy(status = content.status, lastUpdate = now).toEntity())
-        recomputeBackupUrls()
+            val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
+            db.playlistDao().upsert(playlist.copy(status = content.status, lastUpdate = now).toEntity())
+            recomputeBackupUrls()
+        }
         return true
     }
 
     private suspend fun refreshM3u(playlist: Playlist): Boolean {
         val url = playlist.m3uUrl.ifEmpty { return false }
         val req = Request.Builder().url(url).build()
-        val resp = runCatching { okHttpClient.newCall(req).execute() }.getOrNull() ?: return false
+        // OP-01: synchronous execute() must never run on the Main thread
+        // (callers refresh from viewModelScope) — dispatch to IO here.
+        val resp = withContext(Dispatchers.IO) {
+            runCatching { okHttpClient.newCall(req).execute() }.getOrNull()
+        } ?: return false
         val text = resp.use { if (!it.isSuccessful) return false; it.body?.string() ?: return false }
         val parsed = M3uParser.parse(text, url)
         if (parsed.channels.isEmpty()) return false
         val pid = playlist.id
         val oldChannels = db.channelDao().getAll(pid).associateBy { it.id }
         val oldBouquets = db.bouquetDao().getAll(pid).associateBy { it.id }
-        db.bouquetDao().upsertAll(parsed.bouquets.map { b ->
-            val old = oldBouquets[b.id]
-            b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
-        })
-        db.channelDao().upsertAll(parsed.channels.mapIndexed { idx, c ->
-            val old = oldChannels[c.id]
-            if (old == null) c.toEntity(pid, idx)
-            else c.toEntity(pid, idx).copy(
-                isFavorite = old.isFavorite,
-                hidden = old.hidden,
-                customNum = old.customNum,
-                customName = old.customName,
-                bouquetId = old.bouquetId,
-                logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
-                isBroken = old.isBroken
+        // LG-07: one transaction for the whole merge.
+        db.withTransaction {
+            db.bouquetDao().upsertAll(parsed.bouquets.map { b ->
+                val old = oldBouquets[b.id]
+                b.toEntity(pid).copy(hidden = old?.hidden ?: false, order = old?.order ?: b.order)
+            })
+            db.channelDao().upsertAll(parsed.channels.mapIndexed { idx, c ->
+                val old = oldChannels[c.id]
+                if (old == null) c.toEntity(pid, idx)
+                else c.toEntity(pid, idx).copy(
+                    isFavorite = old.isFavorite,
+                    hidden = old.hidden,
+                    customNum = old.customNum,
+                    customName = old.customName,
+                    bouquetId = old.bouquetId,
+                    logoUrl = c.logoUrl?.takeIf { it.isNotBlank() } ?: old.logoUrl,
+                    isBroken = old.isBroken
+                )
+            })
+            pruneRemoved(
+                pid,
+                bouquetIds = parsed.bouquets.map { it.id },
+                channelIds = parsed.channels.map { it.id },
+                filmIds = emptyList(),
+                seriesIds = emptyList(),
+                removedSeriesIds = emptySet()
             )
-        })
-        val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
-        // Remember the XMLTV URL (if the playlist advertises one) in serverUrl
-        // so EpgRepository can use it for M3U EPG refreshes.
-        val xmlTv = parsed.xmlTvUrl
-        db.playlistDao().upsert(
-            playlist.copy(
-                lastUpdate = now,
-                status = "Actif",
-                serverUrl = xmlTv ?: playlist.serverUrl
-            ).toEntity()
-        )
-        recomputeBackupUrls()
+            val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.FRANCE).format(Date())
+            // LG-03: the XMLTV URL belongs in the dedicated xmltvUrl field,
+            // NOT in serverUrl (which ServerStatusChecker and the M3U EPG
+            // branch used to mistake for the playlist server).
+            val xmlTv = parsed.xmlTvUrl
+            db.playlistDao().upsert(
+                playlist.copy(
+                    lastUpdate = now,
+                    status = "Actif",
+                    xmltvUrl = xmlTv ?: playlist.xmltvUrl
+                ).toEntity()
+            )
+            recomputeBackupUrls()
+        }
         return true
     }
 
@@ -348,13 +460,21 @@ class PlaylistRepositoryImpl @Inject constructor(
     private suspend fun recomputeBackupUrls() {
         val all = db.channelDao().getAllChannels()
         val byName = all.groupBy { TitleNormalizer.normalize(it.name) }
-        for ((_, group) in byName) {
-            val urls = group.map { it.streamUrl }.distinct()
+        for ((name, group) in byName) {
+            // LG-13: a blank normalized name (punctuation-only title) must
+            // never group channels together — those channels get no backups
+            // (their stale ones are cleared), they are not backups of each
+            // other.
+            val urls = if (name.isBlank()) emptyList()
+            else group.map { it.streamUrl }.distinct()
             for (channel in group) {
                 val backups = urls.filter { it != channel.streamUrl }.take(3)
-                db.channelDao().updateBackupUrls(
-                    channel.id, Converters.encodeStrings(backups)
-                )
+                val encoded = Converters.encodeStrings(backups)
+                // LG-13: one UPDATE per channel was N+1 on every refresh —
+                // only write when the backup set actually changed.
+                if (encoded != channel.backupUrlsEncoded) {
+                    db.channelDao().updateBackupUrls(channel.id, encoded)
+                }
             }
         }
     }

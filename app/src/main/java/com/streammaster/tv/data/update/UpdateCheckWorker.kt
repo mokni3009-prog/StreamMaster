@@ -16,12 +16,13 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.streammaster.tv.BuildConfig
+import com.streammaster.tv.data.work.WorkerEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /** An update the automatic check found (§4.25b). */
@@ -67,17 +68,20 @@ object UpdatePromptState {
      *  update whose versionCode is no longer newer than the installed
      *  build (i.e. the user already updated) is dropped. */
     suspend fun loadPending(context: Context) {
-        val pending = context.updatePromptDataStore.data.map { prefs ->
-            val code = prefs[KEY_VERSION_CODE] ?: 0
-            val url = prefs[KEY_DOWNLOAD_URL].orEmpty()
-            if (code <= 0 || url.isBlank()) null
-            else PendingUpdate(
-                version = prefs[KEY_VERSION].orEmpty(),
-                versionCode = code,
-                changelog = prefs[KEY_CHANGELOG].orEmpty(),
-                downloadUrl = url
-            )
-        }.first()
+        // OP-16: a corrupt DataStore file must not crash the launch.
+        val pending = runCatching {
+            context.updatePromptDataStore.data.map { prefs ->
+                val code = prefs[KEY_VERSION_CODE] ?: 0
+                val url = prefs[KEY_DOWNLOAD_URL].orEmpty()
+                if (code <= 0 || url.isBlank()) null
+                else PendingUpdate(
+                    version = prefs[KEY_VERSION].orEmpty(),
+                    versionCode = code,
+                    changelog = prefs[KEY_CHANGELOG].orEmpty(),
+                    downloadUrl = url
+                )
+            }.first()
+        }.getOrNull()
         if (pending != null && pending.versionCode > BuildConfig.VERSION_CODE) {
             set(pending)
         } else {
@@ -113,9 +117,18 @@ class UpdateCheckWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        // OP-10: the old code always checked DEFAULT_UPDATE_URL with a bare
+        // OkHttpClient() — the user's custom updateUrl and the DI client
+        // (DNS/UA/timeouts) were ignored by the automatic check.
+        val entryPoint = EntryPointAccessors.fromApplication(
+            applicationContext, WorkerEntryPoint::class.java
+        )
+        val url = runCatching {
+            entryPoint.settingsStore().settings.first().updateUrl
+        }.getOrDefault("").ifBlank { DEFAULT_UPDATE_URL }
         val info = runCatching {
-            AppUpdateChecker(OkHttpClient())
-                .check(DEFAULT_UPDATE_URL, BuildConfig.VERSION_CODE)
+            AppUpdateChecker(entryPoint.okHttpClient())
+                .check(url, BuildConfig.VERSION_CODE)
         }.getOrNull() ?: return Result.success()
         if (info.available && info.downloadUrl.isNotBlank()) {
             UpdatePromptState.save(
@@ -164,7 +177,10 @@ object UpdateDownloader {
             .setDescription("Mise à jour")
             .setMimeType("application/vnd.android.package-archive")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "stream-master.apk")
+            // SEC-07: the public Downloads folder is world-writable — the
+            // APK could be swapped before the install tap. The app-private
+            // external files dir is only writable by this app.
+            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "stream-master.apk")
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         dm.enqueue(request)
         true

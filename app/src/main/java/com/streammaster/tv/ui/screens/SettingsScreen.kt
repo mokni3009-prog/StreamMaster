@@ -315,17 +315,17 @@ fun SettingsScreen(
     )
     // ST11 — extra rows approved after the prototype, kept after the 12.
     val extraRows = listOf(
-        SettingRowDef("autoStart", R.drawable.ic_play, R.string.auto_start, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("autoStart", R.drawable.ic_play, R.string.auto_start, R.string.st_toggle_desc, R.string.st_auto_start_detail,
             if (draft.autoStartOnBoot) onText else offText, null, R.string.st_choose) { viewModel.setAutoStartOnBoot(!draft.autoStartOnBoot) },
-        SettingRowDef("appLock", R.drawable.ic_lock, R.string.app_lock, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("appLock", R.drawable.ic_lock, R.string.app_lock, R.string.st_toggle_desc, R.string.st_app_lock_detail,
             if (draft.appLock) onText else offText, null, R.string.st_choose) { viewModel.setAppLock(!draft.appLock) },
-        SettingRowDef("kidsMode", R.drawable.ic_shield, R.string.kids_mode, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("kidsMode", R.drawable.ic_shield, R.string.kids_mode, R.string.st_toggle_desc, R.string.st_kids_mode_detail,
             if (draft.kidsMode) onText else offText, null, R.string.st_choose) { viewModel.setKidsMode(!draft.kidsMode) },
-        SettingRowDef("frameRate", R.drawable.ic_tv, R.string.frame_rate_switch, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("frameRate", R.drawable.ic_tv, R.string.frame_rate_switch, R.string.st_toggle_desc, R.string.st_frame_rate_detail,
             if (draft.frameRateSwitch) onText else offText, null, R.string.st_choose) { viewModel.setFrameRateSwitch(!draft.frameRateSwitch) },
-        SettingRowDef("goalAlerts", R.drawable.ic_alert, R.string.goal_alerts, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("goalAlerts", R.drawable.ic_alert, R.string.goal_alerts, R.string.st_toggle_desc, R.string.st_goal_alerts_detail,
             if (draft.goalAlerts) onText else offText, null, R.string.st_choose) { viewModel.setGoalAlerts(!draft.goalAlerts) },
-        SettingRowDef("maxSpeed", R.drawable.ic_wifi, R.string.max_speed, R.string.st_toggle_desc, R.string.st_toggle_desc,
+        SettingRowDef("maxSpeed", R.drawable.ic_wifi, R.string.max_speed, R.string.st_toggle_desc, R.string.st_max_speed_detail,
             if (draft.maxSpeed) onText else offText, null, R.string.st_choose) { viewModel.setMaxSpeed(!draft.maxSpeed) },
         // §4.54 — do-not-disturb toggle (player button + popup gate: player builder).
         SettingRowDef("dnd", R.drawable.ic_bell, R.string.dnd_title, R.string.st_dnd_desc, R.string.st_dnd_detail,
@@ -371,7 +371,11 @@ fun SettingsScreen(
         },
         // §4.47 — download speed test (Cloudflare public endpoint).
         SettingRowDef("speedTest", R.drawable.ic_trending_up, R.string.speed_test_title, R.string.st_speed_test_desc, R.string.st_speed_test_detail,
-            speedTestText, null, R.string.speed_test_action) { if (!speedTesting) viewModel.runSpeedTest() },
+            speedTestText, null, R.string.speed_test_action) {
+            // D-09 — tapping while a test runs cancels it (cancelSpeedTest
+            // was dead: no caller ever used it).
+            if (speedTesting) viewModel.cancelSpeedTest() else viewModel.runSpeedTest()
+        },
         // §4.42 — backup password (built-in keyboard; never stored).
         SettingRowDef("backupPassword", R.drawable.ic_lock, R.string.backup_password_title, R.string.st_backup_password_desc, R.string.st_backup_password_detail,
             if (backupPassword.isBlank()) stringResource(R.string.backup_password_empty)

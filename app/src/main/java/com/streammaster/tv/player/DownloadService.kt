@@ -16,6 +16,7 @@ import com.streammaster.tv.data.repository.DownloadRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
@@ -43,6 +44,15 @@ class DownloadService : Service() {
     lateinit var downloadManager: VodDownloadManager
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // R-03: a single collector for the life of the service (started once in
+    // onCreate), not one per onStartCommand — repeated starts used to pile
+    // up parallel collectors competing on startForeground/stopSelf.
+    private var collectJob: Job? = null
+    // Only stop the service once a download has actually been seen: the
+    // service is started just before the row flips to DOWNLOADING, so an
+    // early "no active download" emission must not kill it mid-queue.
+    private var seenActiveDownload = false
 
     companion object {
         const val ACTION_CANCEL = "com.streammaster.tv.action.CANCEL_DOWNLOAD"
@@ -77,6 +87,23 @@ class DownloadService : Service() {
                 )
             }
         }
+        collectJob = serviceScope.launch {
+            downloadRepository.observeDownloads().collectLatest { list ->
+                val active = list.firstOrNull { it.status == DownloadStatus.DOWNLOADING }
+                if (active == null) {
+                    // Queue empty (or between files): stop, but only after
+                    // at least one download was seen — the manager restarts
+                    // the service for the next file.
+                    if (seenActiveDownload) stopSelf()
+                    return@collectLatest
+                }
+                seenActiveDownload = true
+                val pct = if (active.totalBytes > 0) {
+                    (active.downloadedBytes * 100 / active.totalBytes).toInt().coerceIn(0, 100)
+                } else 0
+                startForegroundNotification(active.title, pct, active.totalBytes)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -85,21 +112,6 @@ class DownloadService : Service() {
             return START_NOT_STICKY
         }
         startForegroundNotification(getString(R.string.download_starting), 0, -1)
-        serviceScope.launch {
-            downloadRepository.observeDownloads().collectLatest { list ->
-                val active = list.firstOrNull { it.status == DownloadStatus.DOWNLOADING }
-                if (active == null) {
-                    // Queue empty (or between files): stop; the manager
-                    // restarts the service for the next file.
-                    stopSelf()
-                    return@collectLatest
-                }
-                val pct = if (active.totalBytes > 0) {
-                    (active.downloadedBytes * 100 / active.totalBytes).toInt().coerceIn(0, 100)
-                } else 0
-                startForegroundNotification(active.title, pct, active.totalBytes)
-            }
-        }
         return START_NOT_STICKY
     }
 
@@ -128,6 +140,8 @@ class DownloadService : Service() {
     }
 
     override fun onDestroy() {
+        collectJob?.cancel()
+        collectJob = null
         serviceScope.cancel()
         super.onDestroy()
     }

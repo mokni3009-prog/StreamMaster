@@ -45,10 +45,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.snapshotFlow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
-import kotlinx.coroutines.delay
 import coil.compose.AsyncImage
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
 import com.streammaster.tv.data.util.TitleNormalizer
@@ -117,7 +119,11 @@ fun EpgScreen(
         val idx = state.channels.indexOfFirst { it.id == focusedId }
         if (idx >= 0) {
             listState.scrollToItem(idx)
-            delay(120)
+            // Wait for the channel cell to actually be laid out instead
+            // of guessing with a fixed delay (same pattern as LiveScreen).
+            withTimeoutOrNull(1000) {
+                snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+            }
             channelFocusRequesters[focusedId]?.requestFocus()
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
@@ -134,7 +140,16 @@ fun EpgScreen(
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     val winStart = state.windowStartMillis
     val winEnd = winStart + 6 * 60 * 60 * 1000L
-    val now = System.currentTimeMillis()
+    // L-07: "now" ticks every minute — a plain read-once value left
+    // EN DIRECT / Catchup state stale for tens of minutes on a static
+    // screen (isCurrent / isEnded are derived from it below).
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            now = System.currentTimeMillis()
+        }
+    }
     // Program whose action dialog (reminder / record) is open.
     var programAction by remember { mutableStateOf<Pair<com.streammaster.tv.data.model.Channel, com.streammaster.tv.data.model.EpgProgram>?>(null) }
 

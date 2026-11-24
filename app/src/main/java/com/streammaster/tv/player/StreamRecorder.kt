@@ -76,9 +76,14 @@ class StreamRecorder(private val okHttpClient: OkHttpClient) {
         if (first.contains("#EXT-X-STREAM-INF")) {
             playlistUrl = pickBestVariant(first, playlistUrl) ?: return Result.Failed("variant")
         }
-        val downloaded = HashSet<String>()
+        // L-13: the set is pruned to the last 1000 segments (a hours-long
+        // recording used to keep every segment URL in memory forever), and
+        // segments that keep failing (404s) end the recording with Failed
+        // instead of polling the playlist silently forever.
+        val downloaded = LinkedHashSet<String>()
         var totalBytes = 0L
         var failures = 0
+        var segmentFailures = 0
         while (isActive()) {
             val text = fetchText(playlistUrl)
             if (text == null) {
@@ -92,7 +97,16 @@ class StreamRecorder(private val okHttpClient: OkHttpClient) {
             for (segment in parseSegments(text, playlistUrl)) {
                 if (!isActive()) break
                 if (!downloaded.add(segment)) continue
-                val bytes = fetchBytes(segment) ?: continue // skip a missing segment
+                if (downloaded.size > 1000) {
+                    val eldest = downloaded.iterator()
+                    if (eldest.hasNext()) { eldest.next(); eldest.remove() }
+                }
+                val bytes = fetchBytes(segment)
+                if (bytes == null) {
+                    if (++segmentFailures >= 10) return Result.Failed("segments")
+                    continue // skip a missing segment
+                }
+                segmentFailures = 0
                 out.write(bytes)
                 totalBytes += bytes.size
                 onBytes(totalBytes)

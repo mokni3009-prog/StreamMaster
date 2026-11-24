@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,12 +36,10 @@ import com.streammaster.tv.ui.theme.Danger
 import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.EpgChannelHealth
 import com.streammaster.tv.ui.viewmodel.EpgHealthReason
 import com.streammaster.tv.ui.viewmodel.EpgHealthViewModel
-
-/** Route for the EPG health screen (§4.41). Registered by the nav builder. */
-const val EPG_HEALTH_ROUTE = "epg_health"
 
 private enum class EpgFilter { ALL, WITH, WITHOUT }
 
@@ -81,6 +80,15 @@ fun EpgHealthScreen(
                 )
             }
         }
+        // L-28 — the xmltvConfigured flag was computed but never read:
+        // hint at the XMLTV fix while any channel lacks a guide and no
+        // XMLTV source is configured.
+        if (!state.xmltvConfigured && state.withoutGuide > 0) {
+            Text(
+                text = stringResource(R.string.ns_epg_fix_xmltv),
+                fontSize = 17.sp, fontWeight = FontWeight.Bold, color = GoldBright
+            )
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SortPill(stringResource(R.string.ns_epg_filter_all), filter == EpgFilter.ALL, modifier = Modifier.focusRequester(firstFocus)) { filter = EpgFilter.ALL }
             SortPill(stringResource(R.string.ns_epg_filter_with), filter == EpgFilter.WITH) { filter = EpgFilter.WITH }
@@ -107,7 +115,10 @@ fun EpgHealthScreen(
 
 @Composable
 private fun EpgHealthRow(row: EpgChannelHealth, onAddXmltv: () -> Unit) {
-    CardSurface(modifier = Modifier.fillMaxWidth()) {
+    // L-08 — rows are focusable (read-only: OK does nothing, but the
+    // remote can scroll the list through them; without it a list of
+    // guided rows had no focusable element at all).
+    CardSurface(modifier = Modifier.fillMaxWidth().tvFocus().clickable { }) {
         Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(text = row.channelName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
@@ -121,10 +132,16 @@ private fun EpgHealthRow(row: EpgChannelHealth, onAddXmltv: () -> Unit) {
             if (!row.hasGuide) {
                 val (reasonRes, fixRes) = when (row.reason) {
                     EpgHealthReason.NO_EPG_ID -> R.string.ns_epg_reason_no_id to R.string.ns_epg_fix_id
-                    EpgHealthReason.PROVIDER_NO_EPG -> R.string.ns_epg_reason_provider to R.string.ns_epg_fix_xmltv
+                    // L-27 — was wrongly mapped to ns_epg_fix_xmltv ("add
+                    // an XMLTV source"); the dedicated provider text is
+                    // ns_epg_fix_provider.
+                    EpgHealthReason.PROVIDER_NO_EPG -> R.string.ns_epg_reason_provider to R.string.ns_epg_fix_provider
                     EpgHealthReason.XMLTV_DOWN_OR_MISMATCH -> R.string.ns_epg_reason_xmltv to R.string.ns_epg_fix_xmltv
                     EpgHealthReason.PROVIDER_NO_GUIDE -> R.string.ns_epg_reason_unknown to R.string.ns_epg_fix_retry
-                    EpgHealthReason.HAS_GUIDE -> R.string.ns_epg_reason_unknown to R.string.ns_epg_fix_retry
+                    // L-29 — the HAS_GUIDE arm is deleted (unreachable
+                    // inside if (!row.hasGuide)); the else keeps the when
+                    // exhaustive.
+                    else -> R.string.ns_epg_reason_unknown to R.string.ns_epg_fix_retry
                 }
                 Text(text = stringResource(reasonRes), fontSize = 17.sp, color = TextMuted)
                 Text(text = stringResource(fixRes), fontSize = 17.sp, fontWeight = FontWeight.Bold, color = GoldBright)

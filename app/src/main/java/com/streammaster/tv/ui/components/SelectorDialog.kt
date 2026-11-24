@@ -95,13 +95,10 @@ fun SelectorDialog(
     // all, focus falls back to the Annuler button.
     val cancelFocus = remember { FocusRequester() }
     LaunchedEffect(options.size, selectedId) {
-        try {
-            if (options.isNotEmpty()) {
-                focusRequesters.getOrNull(selectedIndex)?.requestFocus()
-            } else {
-                cancelFocus.requestFocus()
-            }
-        } catch (_: Exception) {
+        if (options.isNotEmpty()) {
+            focusRequesters.getOrNull(selectedIndex)?.requestFocus()
+        } else {
+            cancelFocus.requestFocus()
         }
     }
 

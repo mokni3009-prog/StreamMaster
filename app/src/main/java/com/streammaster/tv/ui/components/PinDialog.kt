@@ -95,10 +95,12 @@ fun PinDialog(
     val firstKeyFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
-        try {
-            firstKeyFocus.requestFocus()
-        } catch (_: Exception) {
-        }
+        firstKeyFocus.requestFocus()
+    }
+    // L-26 — clear the entry when the caller reports a wrong PIN (was
+    // left full, forcing the user to delete 4 digits by hand first).
+    LaunchedEffect(errorMessage) {
+        if (errorMessage != null) entry = ""
     }
     // Auto-complete at [codeLength] digits (prototype: setTimeout(handlePinComplete, 180)).
     LaunchedEffect(entry.length) {
@@ -247,7 +249,7 @@ fun PinDialog(
 
             Spacer(modifier = Modifier.height(2.dp))
             GoldButton(
-                text = "Annuler",
+                text = stringResource(R.string.cancel),
                 onClick = onCancel,
                 outlined = true,
                 modifier = Modifier.fillMaxWidth()

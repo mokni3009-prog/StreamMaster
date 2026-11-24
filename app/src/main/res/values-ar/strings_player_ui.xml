@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_player_ui.xml -->
+<resources>
+    <string name="player_dnd">عدم الإزعاج</string>
+    <string name="player_ticker">النتائج</string>
+    <string name="ticker_live_label">مباشرة:</string>
+</resources>

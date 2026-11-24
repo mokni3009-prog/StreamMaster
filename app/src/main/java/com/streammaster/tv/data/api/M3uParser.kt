@@ -32,10 +32,31 @@ object M3uParser {
         val groups = linkedMapOf<String, Int>() // group name -> order
         var pendingGroup: String? = null
         var idx = 0
+        // LG-11: channel ids must be unique even when two entries share a
+        // tvg-id (REPLACE used to silently drop one of them).
+        val usedIds = mutableSetOf<String>()
 
         fun resolveUrl(raw: String): String {
             if (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("rtsp://")) return raw
             return runCatching { URL(URL(playlistUrl), raw).toString() }.getOrDefault(raw)
+        }
+
+        /** LG-11: stable bouquet id from the group NAME (URL-encoded, so
+         *  two different names can never collide the way hashCode() could).
+         *  The same helper builds channel bouquetIds below. */
+        fun bouquetIdFor(group: String): String =
+            "m3u-" + java.net.URLEncoder.encode(group, "UTF-8")
+
+        /** Unique channel id: base "m3u-<tvg-id>" (or "m3u-ch<idx>"), with
+         *  a numeric suffix on collision. */
+        fun uniqueChannelId(base: String): String {
+            var id = base
+            var n = 2
+            while (!usedIds.add(id)) {
+                id = "$base-$n"
+                n++
+            }
+            return id
         }
 
         for ((lineNo, line) in lines.withIndex()) {
@@ -71,7 +92,7 @@ object M3uParser {
                     if (url == null) continue
                     val chno = attrs["tvg-chno"] ?: (idx + 1).toString()
                     channels += Channel(
-                        id = "m3u-${attrs["tvg-id"]?.takeIf { it.isNotEmpty() } ?: "ch$idx"}",
+                        id = uniqueChannelId("m3u-${attrs["tvg-id"]?.takeIf { it.isNotEmpty() } ?: "ch$idx"}"),
                         num = chno.padStart(2, '0'),
                         name = name,
                         code = name.take(2).uppercase(),
@@ -92,7 +113,7 @@ object M3uParser {
                         customNum = null,
                         hidden = false,
                         customName = null,
-                        bouquetId = "m3u-" + group.hashCode().toString().replace("-", "n")
+                        bouquetId = bouquetIdFor(group)
                     )
                     idx++
                     pendingGroup = null
@@ -102,7 +123,7 @@ object M3uParser {
                     val group = pendingGroup ?: "Autre"
                     if (!groups.containsKey(group)) groups[group] = groups.size
                     channels += Channel(
-                        id = "m3u-bare$idx",
+                        id = uniqueChannelId("m3u-bare$idx"),
                         num = (idx + 1).toString().padStart(2, '0'),
                         name = line.substringAfterLast('/').substringBefore('?').ifEmpty { "Chaîne ${idx + 1}" },
                         code = "CH",
@@ -121,7 +142,7 @@ object M3uParser {
                         customNum = null,
                         hidden = false,
                         customName = null,
-                        bouquetId = "m3u-" + group.hashCode().toString().replace("-", "n")
+                        bouquetId = bouquetIdFor(group)
                     )
                     idx++
                     pendingGroup = null
@@ -131,7 +152,7 @@ object M3uParser {
 
         val bouquets = groups.entries.sortedBy { it.value }.map { (name, order) ->
             Bouquet(
-                id = "m3u-" + name.hashCode().toString().replace("-", "n"),
+                id = bouquetIdFor(name),
                 name = name,
                 kind = BouquetKind.LIVE,
                 order = order,

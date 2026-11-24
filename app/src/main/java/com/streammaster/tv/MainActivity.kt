@@ -170,6 +170,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         RemoteKeyDispatcher.activity = null
+        // R-08: closing the PiP window (X) destroys the activity while the
+        // singleton PlayerManager + PlaybackService keep playing with no UI
+        // left to stop them — stop playback when this is a real finish
+        // (not a config-change recreation) and PiP was active.
+        if (isFinishing && playerManager.state.value.isPip) {
+            runCatching { playerManager.stop() }
+        }
         super.onDestroy()
     }
 

@@ -40,7 +40,6 @@ import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.Danger
 import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldWhite
-import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.viewmodel.LoginTab
 import com.streammaster.tv.ui.viewmodel.OnboardingWizardViewModel
 
@@ -112,10 +111,9 @@ fun OnboardingWizardScreen(
                         SortPill("العربية", pickedLang == "ar") { pickedLang = "ar"; viewModel.setLang("ar") }
                         SortPill("English", pickedLang == "en") { pickedLang = "en"; viewModel.setLang("en") }
                     }
-                    Text(
-                        text = stringResource(R.string.ns_onboarding_lang),
-                        fontSize = 16.sp, color = TextMuted
-                    )
+                    // T-02 — the ns_onboarding_lang text was shown twice
+                    // (22sp title + 16sp subtitle, same string); the
+                    // duplicate line is removed.
                     GoldButton(text = stringResource(R.string.ns_onboarding_next), modifier = Modifier.fillMaxWidth()) {
                         viewModel.goToStep(1)
                     }
@@ -131,7 +129,9 @@ fun OnboardingWizardScreen(
                         LoginTab.XTREAM -> {
                             ReadOnlyField(stringResource(R.string.field_server), state.serverUrl, fieldModifier("server")) { openKeyboard("server") }
                             ReadOnlyField(stringResource(R.string.field_username), state.username, fieldModifier("user")) { openKeyboard("user") }
-                            ReadOnlyField(stringResource(R.string.field_password), state.password, fieldModifier("pass")) { openKeyboard("pass") }
+                            // S-01 — the password field was plain text (and
+                            // the keyboard echo below too): mask both.
+                            ReadOnlyField(stringResource(R.string.field_password), "•".repeat(state.password.length), fieldModifier("pass")) { openKeyboard("pass") }
                         }
                         LoginTab.STALKER -> {
                             ReadOnlyField(stringResource(R.string.field_portal_url), state.portalUrl, fieldModifier("portal")) { openKeyboard("portal") }
@@ -204,8 +204,10 @@ fun OnboardingWizardScreen(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // S-01 — mask the password echo like the field itself.
                     Text(
-                        text = wizardFieldValue(state, field),
+                        text = if (field == "pass") "•".repeat(wizardFieldValue(state, field).length)
+                        else wizardFieldValue(state, field),
                         color = GoldWhite, fontSize = 18.sp,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )

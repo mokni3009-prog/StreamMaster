@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 private val Context.driveDataStore: DataStore<Preferences> by preferencesDataStore(name = "drive")
@@ -45,10 +46,13 @@ class DrivePrefs(private val context: Context) {
         val refreshToken: String = "",
         val tokenExpiresAt: Long = 0L
     ) {
-        /** True when we have a token that has not expired yet. */
+        /** True when we have a token that has not expired yet.
+         *  LG-20: tokenExpiresAt == 0 means "unknown/expired" — it used to
+         *  count as valid, so an expired token was sent until the next
+         *  setAccessToken call. */
         val hasValidToken: Boolean
             get() = accessToken.isNotBlank() &&
-                (tokenExpiresAt == 0L || tokenExpiresAt > System.currentTimeMillis())
+                tokenExpiresAt > System.currentTimeMillis()
 
         /**
          * True when the app is fully configured for Drive: the coach entered
@@ -63,16 +67,19 @@ class DrivePrefs(private val context: Context) {
         val needsOAuthSetup: Boolean get() = clientId.isBlank()
     }
 
-    val state: Flow<DriveState> = context.driveDataStore.data.map { prefs ->
-        DriveState(
-            linked = prefs[KEY_LINKED] ?: false,
-            account = prefs[KEY_ACCOUNT] ?: "",
-            clientId = prefs[KEY_CLIENT_ID] ?: "",
-            accessToken = prefs[KEY_ACCESS_TOKEN] ?: "",
-            refreshToken = prefs[KEY_REFRESH_TOKEN] ?: "",
-            tokenExpiresAt = prefs[KEY_TOKEN_EXPIRES_AT] ?: 0L
-        )
-    }
+    val state: Flow<DriveState> = context.driveDataStore.data
+        // OP-16: a corrupt DataStore file must not crash collectors.
+        .catch { emit(DriveState()) }
+        .map { prefs ->
+            DriveState(
+                linked = prefs[KEY_LINKED] ?: false,
+                account = prefs[KEY_ACCOUNT] ?: "",
+                clientId = prefs[KEY_CLIENT_ID] ?: "",
+                accessToken = prefs[KEY_ACCESS_TOKEN] ?: "",
+                refreshToken = prefs[KEY_REFRESH_TOKEN] ?: "",
+                tokenExpiresAt = prefs[KEY_TOKEN_EXPIRES_AT] ?: 0L
+            )
+        }
 
     suspend fun setClientId(clientId: String) {
         context.driveDataStore.edit { it[KEY_CLIENT_ID] = clientId.trim() }

@@ -109,8 +109,27 @@ class MatchDayViewModel @Inject constructor(
      * channel in `match.channels` (script priority order) that exists in
      * the user's playlists, matched on the normalized name. Null when
      * none of the broadcast channels is in the subscriptions.
+     *
+     * L-22 — the result is cached per match id for the current feed +
+     * channel list: the screen calls this 2–3 times per card on every
+     * one-second countdown recomposition, and the scan itself is O(feed
+     * channels × subscription channels). The cache is dropped whenever
+     * the feed or the channel list changes.
      */
+    private var channelCacheFeed: MatchDayFeed? = null
+    private var channelCacheChannels: List<Channel> = emptyList()
+    private val channelCache = mutableMapOf<String, Channel?>()
+
     fun channelFor(match: DayMatch): Channel? {
+        if (channelCacheFeed !== _feed.value || channelCacheChannels !== channels) {
+            channelCache.clear()
+            channelCacheFeed = _feed.value
+            channelCacheChannels = channels
+        }
+        return channelCache.getOrPut(match.id) { computeChannelFor(match) }
+    }
+
+    private fun computeChannelFor(match: DayMatch): Channel? {
         if (channels.isEmpty()) return null
         for (broadcast in match.channels) {
             val wanted = normalize(broadcast)
@@ -142,6 +161,9 @@ class MatchDayViewModel @Inject constructor(
             return false
         }
         if (match.kickoffMillis <= 0L || match.kickoffMillis <= System.currentTimeMillis()) {
+            // L-15 — was a silent `false`: tell the user the match has
+            // already started instead of ignoring the tap.
+            _message.value = ALREADY_STARTED
             return false
         }
         val reminder = Reminder(
@@ -174,6 +196,7 @@ class MatchDayViewModel @Inject constructor(
         const val NEEDS_CHANNEL = "needs_channel"
         const val NO_CHANNEL_WATCH = "no_channel_watch"
         const val REMINDER_SET = "reminder_set"
+        const val ALREADY_STARTED = "already_started"
     }
 }
 

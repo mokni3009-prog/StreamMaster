@@ -78,26 +78,40 @@ class RecordingManager @Inject constructor(
         scope.launch { settingsStore.settings.collect { _folderUri.value = it.recordingFolderUri } }
     }
 
-    fun recordingsDir(): File =
-        File(context.getExternalFilesDir(null), "recordings").apply { mkdirs() }
+    fun recordingsDir(): File {
+        // R-11: getExternalFilesDir(null) can return null (external storage
+        // not mounted) and File(null, ...) throws NPE — fall back to filesDir.
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(base, "recordings").apply { mkdirs() }
+    }
 
     /** Starts an instant recording of [channel]. Returns false when one is
      *  already running. */
     fun start(channel: Channel): Boolean {
-        if (active.get()) return false
+        // L-07: atomic check-and-set — two concurrent start() calls can no
+        // longer both pass the "already running" check.
+        if (!active.compareAndSet(false, true)) return false
         val now = System.currentTimeMillis()
         val displayName = channel.customName ?: channel.name
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(now))
         val fileName = "${sanitize(displayName)}_$stamp.ts"
         // User-chosen SAF folder (2026-11-22) or the app-private folder.
-        val path: String = runCatching {
-            val folderUri = _folderUri.value
-            if (folderUri.isNotBlank()) {
-                val tree = DocumentFile.fromTreeUri(context, Uri.parse(folderUri))
-                val doc = tree?.createFile("video/mp2t", fileName)
-                doc?.uri?.toString()
-            } else null
-        }.getOrNull() ?: File(recordingsDir(), fileName).absolutePath
+        val folderUri = _folderUri.value
+        val safPath: String? = if (folderUri.isNotBlank()) {
+            runCatching {
+                DocumentFile.fromTreeUri(context, Uri.parse(folderUri))
+                    ?.createFile("video/mp2t", fileName)?.uri?.toString()
+            }.getOrNull()
+        } else null
+        if (folderUri.isNotBlank() && safPath == null) {
+            // L-10: the user chose a folder but the file could not be
+            // created there (revoked SAF permission, ...): fail instead of
+            // silently recording into the private folder.
+            Log.w(TAG, "Recording folder unavailable, not falling back to private folder")
+            active.set(false)
+            return false
+        }
+        val path: String = safPath ?: File(recordingsDir(), fileName).absolutePath
         val recording = Recording(
             id = UUID.randomUUID().toString(),
             channelId = channel.id,
@@ -110,7 +124,6 @@ class RecordingManager @Inject constructor(
             status = RecordingStatus.RECORDING
         )
         current = recording
-        active.set(true)
         _state.value = RecordingState.Active(recording, 0L, now)
         scope.launch {
             recordingRepository.saveRecording(recording)
@@ -132,13 +145,35 @@ class RecordingManager @Inject constructor(
     /** Called by [RecordingService] once it is foregrounded. [path] is a
      *  file path or a content:// URI (user-chosen folder). */
     fun runRecording(recordingId: String, url: String, path: String, onDone: () -> Unit) {
-        val recording = current?.takeIf { it.id == recordingId } ?: return
+        val recording = current?.takeIf { it.id == recordingId }
+        if (recording == null) {
+            // Nothing to record (stale intent): still release the service so
+            // its foreground notification does not stick.
+            onDone()
+            return
+        }
         scope.launch {
             val isSaf = path.startsWith("content://")
             val stream = runCatching {
                 if (isSaf) context.contentResolver.openOutputStream(Uri.parse(path))
                 else FileOutputStream(File(path))
-            }.getOrNull() ?: return@launch
+            }.getOrNull()
+            if (stream == null) {
+                // R-01: failing to open the output file must not leave the
+                // recording stuck in Active forever — reset the state, mark
+                // the row ERROR and release the service via onDone().
+                Log.w(TAG, "Recording failed to open output file: ${recording.title}")
+                active.set(false)
+                current = null
+                _state.value = RecordingState.Idle
+                runCatching {
+                    recordingRepository.saveRecording(
+                        recording.copy(status = RecordingStatus.ERROR)
+                    )
+                }
+                onDone()
+                return@launch
+            }
             var lastEmit = 0L
             val result = try {
                 recorder.record(

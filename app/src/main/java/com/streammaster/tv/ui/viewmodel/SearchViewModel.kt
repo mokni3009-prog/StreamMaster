@@ -46,13 +46,21 @@ class SearchViewModel @Inject constructor(
                 if (text.isNotBlank()) setQuery(_state.value.query + text)
             }
         }
+        // D-06: a single init block (was two: remote text + recents).
+        viewModelScope.launch {
+            _state.update { it.copy(previousSearches = contentRepository.getRecentSearches()) }
+        }
     }
 
     fun setQuery(query: String) {
         _state.update { it.copy(query = query) }
         searchJob?.cancel()
+        // M-02: debounce the Room search (~300ms) so fast typing does
+        // not start a query per keystroke; searching=true is set
+        // synchronously so the UI reacts before the first query runs.
+        _state.update { it.copy(searching = true) }
         searchJob = viewModelScope.launch {
-            _state.update { it.copy(searching = true) }
+            kotlinx.coroutines.delay(300)
             // §4.36.2 — rule-based intent layer first, keyword search last.
             val intent = NaturalSearchParser.parseIntent(query)
             val results = when (intent) {
@@ -79,12 +87,6 @@ class SearchViewModel @Inject constructor(
     fun setFilter(filter: ContentKind?) {
         _state.update { it.copy(filter = filter) }
         setQuery(_state.value.query)
-    }
-
-    init {
-        viewModelScope.launch {
-            _state.update { it.copy(previousSearches = contentRepository.getRecentSearches()) }
-        }
     }
 
     fun submitSearch() {

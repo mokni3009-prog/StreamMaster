@@ -106,8 +106,7 @@ class PlayerManagerImpl @Inject constructor(
     private val bitrateStore: BitrateStore,
     private val preloadHelper: PreloadHelper,
     // Point 2 — playback engine (2026-11-23). SettingsStore is injected
-    // directly for the §4.37 last-channel write: see the CONTRACT note on
-    // setLastChannelId in play() below.
+    // directly for the §4.37 last-channel write in play() below.
     private val settingsStore: SettingsStore,
     private val channelQualityStore: ChannelQualityStore,
     private val episodeResumeStore: EpisodeResumeStore,
@@ -204,6 +203,9 @@ class PlayerManagerImpl @Inject constructor(
     private var activeEngine: Engine = Engine.EXOPLAYER
     private var playSessionId: Int = 0
     private var outroHandled: Boolean = false
+    /** L-11: the very first STATE_BUFFERING of a session is the initial
+     *  pre-roll, not a rebuffer — only log rebuffers after first READY. */
+    private var seenFirstReady: Boolean = false
     private var timeshiftAnchorMs: Long = 0L
     private var lastBandwidthEstimateBps: Long = 0L
     private var lastBitrateSaveMillis: Long = 0L
@@ -228,9 +230,10 @@ class PlayerManagerImpl @Inject constructor(
             when (playbackState) {
                 Player.STATE_BUFFERING -> {
                     _state.update { it.copy(isBuffering = true) }
-                    qoeLogger.logRebufferStart(currentItem, activeEngine)
+                    if (seenFirstReady) qoeLogger.logRebufferStart(currentItem, activeEngine)
                 }
                 Player.STATE_READY -> {
+                    seenFirstReady = true
                     if (_state.value.isBuffering) {
                         qoeLogger.logRebufferEnd(currentItem, activeEngine)
                     }
@@ -257,7 +260,15 @@ class PlayerManagerImpl @Inject constructor(
 
         override fun onPlayerError(error: PlaybackException) {
             Log.w(TAG, "ExoPlayer error: ${error.errorCodeName} (${error.errorCode})", error)
-            if (error is StuckPlayerException) {
+            // L-05: StuckPlayerException is final and extends
+            // IllegalStateException, NOT PlaybackException — onPlayerError
+            // can never receive it directly, so the old `error is
+            // StuckPlayerException` check was always false. Media3 wraps
+            // it as the cause of the PlaybackException instead: walk the
+            // cause chain.
+            val stuckCause = generateSequence(error as Throwable) { it.cause }
+                .any { it is StuckPlayerException }
+            if (stuckCause) {
                 qoeLogger.logStall(currentItem, activeEngine)
                 handleFailure(playSessionId, "StuckPlayerException")
                 return
@@ -382,6 +393,7 @@ class PlayerManagerImpl @Inject constructor(
         mirrorIndex = 0
         engineSwitched = false
         outroHandled = false
+        seenFirstReady = false
         arabicSubsAppliedForSession = false
         userChoseSubtitle = false
         bandwidthSamples.clear()
@@ -415,10 +427,11 @@ class PlayerManagerImpl @Inject constructor(
             }
             currentUrls = urls
             // §4.37 — remember the last live channel permanently, on every
-            // channel change (CONTRACT: SettingsStore.setLastChannelId is
-            // added by the settings builder — see the report; the call
-            // below is written against that contract).
-            if (item is PlaybackItem.Live) {
+            // channel change. Catchup plays carry an encoded id
+            // ("catchup:<id>:...") — never persist that as the last channel
+            // (L-06), or resume-on-boot would look up a channel that does
+            // not exist and lose the real last channel.
+            if (item is PlaybackItem.Live && !isCatchupChannelId(item.channel.id)) {
                 scope.launch(Dispatchers.IO) {
                     runCatching { settingsStore.setLastChannelId(item.channel.id) }
                         .onFailure { Log.w(TAG, "setLastChannelId failed", it) }
@@ -1015,7 +1028,9 @@ class PlayerManagerImpl @Inject constructor(
                     // (same channel from another playlist). Tell the user.
                     _state.update { it.copy(usingBackup = true) }
                     scope.launch { _events.emit(PlayerEvent.Toast("Source de secours")) }
-                    Log.i(TAG, "Playback failure ($reason): switching to mirror $mirror")
+                    // S-01: never log a full mirror URL — Xtream URLs carry
+                    // the username/password in the path. Host only.
+                    Log.i(TAG, "Playback failure ($reason): switching to mirror ${hostOf(mirror)}")
                     delay(500)
                     if (session != playSessionId) return@launch
                     prepareCurrent(session, currentPositionMs())
@@ -1067,6 +1082,11 @@ class PlayerManagerImpl @Inject constructor(
         tickerJob = null
         releaseLoudnessEnhancer()
         stopEnginesOnly()
+        // R-02: play() started the foreground PlaybackService before the
+        // URLs were resolved — a terminal failure must stop it (and its
+        // WakeLock/WifiLock) instead of leaving it running behind the
+        // error screen until the user exits by hand.
+        PlaybackService.stop(context)
         _state.update { it.copy(showError = true, errorMessage = message, isPlaying = false, isBuffering = false) }
     }
 
@@ -1082,6 +1102,8 @@ class PlayerManagerImpl @Inject constructor(
      */
     private fun markCurrentChannelBroken() {
         val live = currentItem as? PlaybackItem.Live ?: return
+        // L-06: a catchup play carries an encoded id — never flag it.
+        if (isCatchupChannelId(live.channel.id)) return
         scope.launch(Dispatchers.IO) {
             try {
                 channelDao.setBroken(live.channel.id, true)
@@ -1098,6 +1120,8 @@ class PlayerManagerImpl @Inject constructor(
     private fun clearBrokenFlagOnce() {
         if (brokenFlagClearedForSession) return
         val live = currentItem as? PlaybackItem.Live ?: return
+        // L-06: a catchup play carries an encoded id — nothing to clear.
+        if (isCatchupChannelId(live.channel.id)) return
         brokenFlagClearedForSession = true
         scope.launch(Dispatchers.IO) {
             try {
@@ -1113,13 +1137,14 @@ class PlayerManagerImpl @Inject constructor(
     private fun handleVlcEvent(event: VlcEvent) {
         when (event) {
             is VlcEvent.Playing -> {
+                seenFirstReady = true // L-11: same first-buffering guard as Exo.
                 _state.update { it.copy(isPlaying = true, isBuffering = false) }
                 clearBrokenFlagOnce()
             }
             is VlcEvent.Buffering -> {
                 val buffering = event.percent < 100f
-                if (buffering) qoeLogger.logRebufferStart(currentItem, activeEngine)
-                else qoeLogger.logRebufferEnd(currentItem, activeEngine)
+                if (buffering && seenFirstReady) qoeLogger.logRebufferStart(currentItem, activeEngine)
+                else if (!buffering) qoeLogger.logRebufferEnd(currentItem, activeEngine)
                 _state.update { it.copy(isBuffering = buffering) }
             }
             is VlcEvent.Paused -> _state.update { it.copy(isPlaying = false) }
@@ -1209,7 +1234,12 @@ class PlayerManagerImpl @Inject constructor(
     }
 
     private suspend fun advanceToNextEpisode(item: PlaybackItem.EpisodeItem) {
-        // CONTRACT §5: next episode in the SAME season, else stop with a message.
+        // L-04: same behaviour as the manual "next" in PlayerViewModel —
+        // next episode in the same season, else the first episode of the
+        // next season, so auto and manual advance never disagree.
+        // L-01: the engine is the SOLE owner of auto-advance (it plays the
+        // next episode itself and emits NextEpisode for the screen); the
+        // ViewModel no longer advances on position changes.
         val episodes = try {
             contentRepository.getEpisodes(item.series.id, item.episode.season)
         } catch (e: Exception) {
@@ -1218,8 +1248,13 @@ class PlayerManagerImpl @Inject constructor(
         }
         val next = episodes.filter { it.number > item.episode.number }
             .minByOrNull { it.number }
+            ?: run {
+                runCatching {
+                    contentRepository.getEpisodes(item.series.id, item.episode.season + 1)
+                }.getOrNull().orEmpty().minByOrNull { it.number }
+            }
         if (next != null) {
-            _events.emit(PlayerEvent.NextEpisode(item.series.id, item.episode.season, next.number))
+            _events.emit(PlayerEvent.NextEpisode(item.series.id, next.season, next.number))
             play(PlaybackItem.EpisodeItem(item.series, next))
         } else {
             stop()
@@ -1393,6 +1428,13 @@ class PlayerManagerImpl @Inject constructor(
         is PlaybackItem.RecordingItem -> "rec-${item.recording.id}"
         is PlaybackItem.DownloadItem -> "dl-${item.download.id}"
     }
+
+    /** Catchup plays carry an encoded channel id ("catchup:<id>:..."). */
+    private fun isCatchupChannelId(id: String): Boolean = id.startsWith("catchup:")
+
+    /** Host part of a URL only — for logs (never log a full stream URL). */
+    private fun hostOf(url: String): String =
+        runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotBlank() } ?: "mirror"
 
     private fun stopEnginesOnly() {
         // The loudness effect belongs to the ExoPlayer audio session: drop
@@ -1570,9 +1612,8 @@ class PlayerManagerImpl @Inject constructor(
     /**
      * Enables the Arabic subtitle track automatically for films/series when
      * one exists (§4.61), unless the user turned the option off
-     * (`AppSettings.autoArabicSubs`, default true — CONTRACT: added by the
-     * settings builder) or picked a subtitle manually this session. One
-     * attempt per play session (tracks load async, so the Exo
+     * (`AppSettings.autoArabicSubs`, default true) or picked a subtitle manually
+     * this session. One attempt per play session (tracks load async, so the Exo
      * onTracksChanged path, the VLC TimeChanged path and the delayed VLC
      * attempt all funnel here and the flag stops repeats).
      */
@@ -1580,8 +1621,6 @@ class PlayerManagerImpl @Inject constructor(
         if (arabicSubsAppliedForSession || userChoseSubtitle) return
         val item = currentItem
         if (item !is PlaybackItem.Movie && item !is PlaybackItem.EpisodeItem) return
-        // CONTRACT: AppSettings.autoArabicSubs (default true) is added by
-        // the settings builder.
         if (!currentSettings.autoArabicSubs) {
             arabicSubsAppliedForSession = true
             return
@@ -1622,8 +1661,7 @@ class PlayerManagerImpl @Inject constructor(
      * Enables a [LoudnessEnhancer] on the ExoPlayer audio session so quiet
      * channels are lifted toward a fixed target gain (§4.36 — unify the
      * volume between channels). Read from
-     * `AppSettings.volumeNormalization` (default true — CONTRACT: added by
-     * the settings builder). Best effort: any failure (no audio session
+     * `AppSettings.volumeNormalization` (default true). Best effort: any failure (no audio session
      * yet, offloaded/passthrough audio where effects do not apply, device
      * without the effect) only logs and leaves playback untouched.
      *
@@ -1634,8 +1672,6 @@ class PlayerManagerImpl @Inject constructor(
      */
     private fun applyLoudnessEnhancer() {
         releaseLoudnessEnhancer()
-        // CONTRACT: AppSettings.volumeNormalization (default true) is added
-        // by the settings builder.
         if (!currentSettings.volumeNormalization) return
         if (activeEngine != Engine.EXOPLAYER) return
         val sessionId = exo?.audioSessionId ?: 0

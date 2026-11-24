@@ -182,7 +182,13 @@ fun DetailScreen(
                 }
 
                 // D02-D07 — poster + info.
+                // R-01: never compose the detail body before the data
+                // arrives — the first frame has film == null && series
+                // == null and the meta/facts rows below dereference them.
                 item {
+                    val film = state.film
+                    val series = state.series
+                    if (film == null && series == null) return@item
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(44.dp),
                         modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
@@ -267,20 +273,20 @@ fun DetailScreen(
                                     text = "★ ${formatRating(rating)}",
                                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldWhite
                                 )
-                                if (isFilm) {
+                                if (film != null) {
                                     Text(
-                                        text = "${state.film!!.year}",
+                                        text = "${film.year}",
                                         fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldBright
                                     )
                                     Text(
-                                        text = formatDuration(state.film!!.durationMin),
+                                        text = formatDuration(film.durationMin),
                                         fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldBright
                                     )
-                                } else {
+                                } else if (series != null) {
                                     Text(
                                         text = stringResource(
                                             R.string.seasons_label,
-                                            state.series!!.seasons
+                                            series.seasons
                                         ),
                                         fontSize = 20.sp, fontWeight = FontWeight.Bold, color = GoldBright
                                     )
@@ -422,25 +428,25 @@ fun DetailScreen(
                                     horizontalArrangement = Arrangement.spacedBy(36.dp),
                                     modifier = Modifier.padding(top = 18.dp)
                                 ) {
-                                    if (isFilm) {
+                                    if (film != null) {
                                         DetailFact(
                                             stringResource(R.string.year_label),
-                                            "${state.film!!.year}"
+                                            "${film.year}"
                                         )
                                         DetailFact(
                                             stringResource(R.string.duration_label),
-                                            formatDuration(state.film!!.durationMin)
+                                            formatDuration(film.durationMin)
                                         )
                                         DetailFact(
                                             stringResource(R.string.genre_label),
                                             genre
                                         )
-                                    } else {
+                                    } else if (series != null) {
                                         DetailFact(
                                             stringResource(R.string.fact_seasons),
                                             stringResource(
                                                 R.string.seasons_label,
-                                                state.series!!.seasons
+                                                series.seasons
                                             )
                                         )
                                         DetailFact(
@@ -683,7 +689,18 @@ fun DetailScreen(
                                                 modifier = Modifier.weight(1f),
                                                 onDownload = { viewModel.downloadEpisode(episode) }
                                             ) {
-                                                navController.navigate(Routes.player("series", id))
+                                                // R-03: pass the tapped episode itself, not
+                                                // just the series id — "seriesId:S01E07"
+                                                // (same ":" encoding as the catchup ids).
+                                                // PlayerViewModel.load("series", id) must
+                                                // split it and play that exact episode
+                                                // instead of the resume/S1E1 fallback.
+                                                navController.navigate(
+                                                    Routes.player(
+                                                        "series",
+                                                        "$id:${episode.code.ifBlank { "E${episode.number}" }}"
+                                                    )
+                                                )
                                             }
                                         }
                                         if (pair.size == 1) Spacer(modifier = Modifier.weight(1f))
@@ -817,7 +834,9 @@ private fun StarRatingInput(stars: Int, onRate: (Int) -> Unit) {
                         CircleShape
                     )
                     .tvFocus()
-                    .clickable { onRate(n) },
+                    // T-05: tapping the already-selected star clears the
+                    // rating (0) instead of re-setting the same value.
+                    .clickable { onRate(if (n == stars) 0 else n) },
                 contentAlignment = Alignment.Center
             ) {
                 Text(

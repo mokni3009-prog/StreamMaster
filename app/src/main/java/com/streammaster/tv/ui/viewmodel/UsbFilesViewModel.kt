@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,8 +111,16 @@ class UsbFilesViewModel @Inject constructor(
     /**
      * Saves the picked file as a Recording and returns its id for the
      * player route ("recording"). Returns null if the save failed.
+     * L-23 — reuses the Recording row already saved for this file
+     * instead of creating a new one on every play (each play used to
+     * add a phantom row to the Recordings screen).
      */
     suspend fun preparePlayback(item: UsbFileItem): String? {
+        val existing = runCatching {
+            recordingRepository.observeRecordings().first()
+                .firstOrNull { it.filePath == item.uri }
+        }.getOrNull()
+        if (existing != null) return existing.id
         val recording = Recording(
             id = UUID.randomUUID().toString(),
             channelId = "usb",

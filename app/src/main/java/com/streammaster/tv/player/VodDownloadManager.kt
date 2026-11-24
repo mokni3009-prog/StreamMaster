@@ -69,7 +69,10 @@ class VodDownloadManager @Inject constructor(
                 val safeTitle = title.replace(Regex("[^A-Za-z0-9À-ÿ _\\-]"), "").trim()
                     .replace(Regex("\\s+"), "_").take(60).ifBlank { "video" }
                 val fileName = "${safeTitle}_${refId.hashCode().toString(16)}.$ext"
-                val dir = File(context.getExternalFilesDir(null), "downloads").apply { mkdirs() }
+                // R-11: getExternalFilesDir(null) can return null — fall back
+                // to the internal files dir instead of throwing NPE.
+                val base = context.getExternalFilesDir(null) ?: context.filesDir
+                val dir = File(base, "downloads").apply { mkdirs() }
                 val row = Download(
                     id = "dl-${kind.name}-$refId", kind = kind, refId = refId, title = title,
                     coverUrl = coverUrl, fileName = fileName,
@@ -116,10 +119,29 @@ class VodDownloadManager @Inject constructor(
         }
     }
 
-    /** Cancels the download currently being written, if any. */
+    /** Cancels the download currently being written, if any. L-08: marks
+     *  the row PAUSED first (user-cancelled, not a failure) and remembers
+     *  the id so the download loop's catch — which may run before the DB
+     *  write lands — also treats the abort as a clean pause, not ERROR. */
     fun cancelActive() {
+        val id = currentId
+        if (id != null) {
+            userCancelledId = id
+            scope.launch {
+                runCatching { downloadRepository.getDownload(id) }.getOrNull()?.let { row ->
+                    if (row.status == DownloadStatus.DOWNLOADING || row.status == DownloadStatus.QUEUED) {
+                        downloadRepository.updateProgress(
+                            id, row.downloadedBytes, row.totalBytes, DownloadStatus.PAUSED
+                        )
+                    }
+                }
+            }
+        }
         currentCall?.cancel()
     }
+
+    @Volatile
+    private var userCancelledId: String? = null
 
     private fun ensureLoop() {
         if (loopJob?.isActive == true) return
@@ -195,7 +217,12 @@ class VodDownloadManager @Inject constructor(
             // (or is gone) — anything else is a real failure.
             val current = runCatching { downloadRepository.getDownload(row.id) }.getOrNull()
             if (current == null) return
-            if (current.status == DownloadStatus.PAUSED) return
+            if (current.status == DownloadStatus.PAUSED || userCancelledId == row.id) {
+                // L-08: user-cancelled from the notification — leave the row
+                // PAUSED (resumable) instead of ERROR.
+                downloadRepository.updateProgress(row.id, downloaded, row.totalBytes, DownloadStatus.PAUSED)
+                return
+            }
             Log.w(TAG, "download ${row.id} failed", e)
             downloadRepository.updateProgress(row.id, downloaded, row.totalBytes, DownloadStatus.ERROR)
         } finally {
@@ -203,6 +230,7 @@ class VodDownloadManager @Inject constructor(
                 currentId = null
                 currentCall = null
             }
+            if (userCancelledId == row.id) userCancelledId = null
         }
     }
 }

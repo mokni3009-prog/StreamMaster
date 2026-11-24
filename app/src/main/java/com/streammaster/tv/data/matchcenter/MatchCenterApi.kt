@@ -7,6 +7,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import javax.inject.Inject
@@ -64,11 +65,17 @@ class MatchCenterApi @Inject constructor(
     }
 
     suspend fun fetchToday(): List<LiveMatch> = withContext(Dispatchers.IO) {
+        // OP-20: "today" is Tunis time, not the ESPN server's — without
+        // ?dates=, matches around midnight Tunis time belong to the wrong
+        // day (missed or duplicated).
+        val tunisToday = SimpleDateFormat("yyyyMMdd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("Africa/Tunis")
+        }.format(Date())
         val out = mutableListOf<LiveMatch>()
         for (league in LEAGUES) {
             try {
                 val request = Request.Builder()
-                    .url("https://site.api.espn.com/apis/site/v2/sports/soccer/$league/scoreboard")
+                    .url("https://site.api.espn.com/apis/site/v2/sports/soccer/$league/scoreboard?dates=$tunisToday")
                     .header("Accept", "application/json")
                     .build()
                 val body = okHttpClient.newCall(request).execute().use { resp ->
@@ -187,7 +194,10 @@ class MatchCenterApi @Inject constructor(
                     awayTeamId -> awayName
                     else -> ""
                 }
-                val key = "$eventId|$minute|$scorer|$scoreValue"
+                // LG-17: the team id disambiguates two goals in the same
+                // minute with no named scorer (same score value) — without
+                // it only the first was ever announced.
+                val key = "$eventId|$minute|$scorer|$scoreValue|$teamId"
                 out += GoalEvent(key = key, minute = minute, scorer = scorer, scorerTeam = scorerTeam)
             } catch (_: Exception) {
                 // One bad detail never kills the match.

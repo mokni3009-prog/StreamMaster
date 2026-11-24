@@ -46,13 +46,12 @@ import kotlinx.coroutines.flow.map
  * Firing: [ChannelTimerReceiver] sends the existing player deep link
  * `streammaster://player/live/{channelId}` to MainActivity (singleTask):
  * cold start opens the app on the channel; warm start re-navigates to it.
- * KNOWN GAP (not fixable from this file — MainActivity is owned by
- * another builder): MainActivity's `maybeNavigateToDeepLink` returns early
- * when the current destination is already PLAYER, so if the user is
- * already watching another channel in the player, the pending deep link
- * stays queued instead of switching immediately. The fix is one branch
- * in MainActivity: when a timer deep link arrives while on PLAYER,
- * navigate to the new channel instead of returning.
+ * Player-open case (OP-13, fixed 2026-11-24 in MainActivity):
+ * when a timer deep link arrives while the current destination is
+ * already PLAYER, `maybeNavigateToDeepLink` navigates to the new
+ * channel (a no-op when it names the channel already playing) instead
+ * of leaving the link queued — so the timer switches channels even
+ * with the player open.
  */
 data class ChannelTimer(
     val id: String,

@@ -25,6 +25,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -32,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.streammaster.tv.R
 import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.Danger
 import com.streammaster.tv.ui.theme.Gold
@@ -61,9 +63,11 @@ import com.streammaster.tv.ui.theme.tvFocus
  */
 @Composable
 fun NumberPadDialog(
-    title: String = "Attribuer un numéro",
+    // I-04 — the French defaults lived here as hard-coded strings; they
+    // are string resources now (defaults resolve in the caller's scope).
+    title: String = stringResource(R.string.assign_number),
     currentNumber: Int? = null,
-    hint: String = "Numéro de 1 à 100. Laisser vide pour retirer le numéro.",
+    hint: String = stringResource(R.string.num_assign_hint),
     onConfirm: (Int?) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
@@ -71,12 +75,10 @@ fun NumberPadDialog(
     var value by remember { mutableStateOf(currentNumber?.toString() ?: "") }
     var error by remember { mutableStateOf<String?>(null) }
     val firstKeyFocus = remember { FocusRequester() }
+    val numInvalid = stringResource(R.string.num_invalid)
 
     LaunchedEffect(Unit) {
-        try {
-            firstKeyFocus.requestFocus()
-        } catch (_: Exception) {
-        }
+        firstKeyFocus.requestFocus()
     }
 
     fun confirm() {
@@ -86,7 +88,7 @@ fun NumberPadDialog(
         }
         val n = value.toIntOrNull()
         if (n == null || n < 1 || n > 100) {
-            error = "Numéro invalide : entre 1 et 100."
+            error = numInvalid
             return
         }
         onConfirm(n)
@@ -123,7 +125,7 @@ fun NumberPadDialog(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "Numéro actuel : ${currentNumber?.toString() ?: "Aucun"}",
+                text = stringResource(R.string.num_current, currentNumber?.toString() ?: stringResource(R.string.num_none)),
                 color = Gold,
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold
@@ -206,7 +208,7 @@ fun NumberPadDialog(
                                             val candidate = value + key
                                             // Reject > 100 immediately (prototype behaviour).
                                             if ((candidate.toIntOrNull() ?: 0) > 100) {
-                                                error = "Numéro invalide : entre 1 et 100."
+                                                error = numInvalid
                                                 return@clickable
                                             }
                                             value = candidate
@@ -236,12 +238,12 @@ fun NumberPadDialog(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 GoldButton(
-                    text = "Valider",
+                    text = stringResource(R.string.validate),
                     onClick = ::confirm,
                     modifier = Modifier.weight(1f)
                 )
                 GoldButton(
-                    text = "Annuler",
+                    text = stringResource(R.string.cancel),
                     onClick = onCancel,
                     outlined = true,
                     modifier = Modifier.weight(1f)

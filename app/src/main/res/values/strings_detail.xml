@@ -11,6 +11,4 @@
     <string name="detail_actor_works_loading">Recherche de ses autres œuvres…</string>
     <string name="detail_actor_works_empty">Aucune autre œuvre trouvée dans vos listes.</string>
     <string name="detail_cast_unavailable">Casting non disponible pour ce titre.</string>
-    <string name="detail_subtitle_download">Sous-titres</string>
-    <string name="detail_subtitle_soon">Téléchargement des sous-titres bientôt disponible.</string>
 </resources>

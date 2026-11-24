@@ -5,6 +5,7 @@ import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.Series
 import com.streammaster.tv.data.util.SmartListsProvider as UtilProvider
 import com.streammaster.tv.ui.viewmodel.SmartList
+import java.util.Locale
 
 /**
  * Smart lists (§4.51) — ViewModel-facing adapter.
@@ -53,7 +54,8 @@ object SmartListsProvider {
             .forEach { (category, items) ->
                 if (items.size >= 3) {
                     out += SmartList(
-                        id = "smart-channels-${category.lowercase().replace(" ", "-")}",
+                        // LG-20: locale-independent id slug (see util provider).
+                        id = "smart-channels-${category.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), "-")}",
                         title = "Chaînes $category",
                         subtitle = "${items.size} chaînes",
                         channels = items.sortedBy { it.name }.take(20)

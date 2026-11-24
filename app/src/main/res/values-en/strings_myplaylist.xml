@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_myplaylist.xml -->
+<resources>
+    <string name="my_playlist_name">My Playlist</string>
+    <string name="my_playlist_local">Local playlist</string>
+    <string name="my_playlist_no_server">No server</string>
+    <string name="my_playlist_no_expiry">No expiry</string>
+    <string name="my_playlist_empty">Empty — add content from Manage playlist</string>
+    <string name="my_playlist_bouquets">bouquets</string>
+    <string name="my_playlist_manage">Manage</string>
+    <string name="my_playlist_add">Add to My Playlist</string>
+    <string name="my_playlist_choose_bouquet">Choose a bouquet</string>
+    <string name="my_playlist_create_and_add">Create and add</string>
+    <string name="my_playlist_added">Added to My Playlist</string>
+    <string name="my_playlist_already_added">Already in this bouquet</string>
+    <string name="my_playlist_no_bouquet">No bouquet — create one below</string>
+    <string name="my_playlist_section_empty">No content yet</string>
+    <string name="my_playlist_always_available">Always available</string>
+</resources>

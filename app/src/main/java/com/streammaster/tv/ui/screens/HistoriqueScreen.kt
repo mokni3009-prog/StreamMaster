@@ -95,7 +95,13 @@ fun HistoriqueScreen(
         val shown = history.take(20)
         val index = shown.indexOfFirst { it.entry.refId == target }
         if (index < 0) {
+            // L-19 — the target is beyond the first 20: the old code set
+            // focusRestored and returned with NO focus at all (and the
+            // first-row effect above is blocked by hasRestoreTarget).
+            // Fall back to the first row instead.
+            firstFocus.requestFocus()
             focusRestored = true
+            initialFocusDone = true
             savedStateHandle?.remove<String>("focusedId")
             return@LaunchedEffect
         }

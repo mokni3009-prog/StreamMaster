@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Phone web remote (2026-11-22): owns the embedded HTTP server's lifecycle.
@@ -43,6 +45,11 @@ class RemoteServerManager @Inject constructor(
     private var server: RemoteHttpServer? = null
     private var bound = false
     private var currentCode: String = ""
+    // L-12: startServer/stopServer were called from two IO collectors with
+    // only a null-check as guard — a fast settings toggle could build two
+    // servers and lose the first one's reference (leaked listener). One
+    // mutex serialises both paths.
+    private val serverMutex = Mutex()
 
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
@@ -67,7 +74,7 @@ class RemoteServerManager @Inject constructor(
         }
     }
 
-    private fun startServer() {
+    private suspend fun startServer() = serverMutex.withLock {
         if (server != null) return
         val ip = localIpAddress()
         _localIp.value = ip
@@ -101,7 +108,7 @@ class RemoteServerManager @Inject constructor(
         Log.w(TAG, "Remote server not started: no free port in 8080..8090")
     }
 
-    private fun stopServer() {
+    private suspend fun stopServer() = serverMutex.withLock {
         try {
             server?.stop()
         } catch (e: Exception) {

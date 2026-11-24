@@ -25,6 +25,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,8 +51,8 @@ import com.streammaster.tv.ui.theme.GoldWhite
 fun ConfirmDialog(
     title: String,
     message: String,
-    confirmText: String = "Confirmer",
-    dismissText: String = "Annuler",
+    confirmText: String = stringResource(R.string.confirm),
+    dismissText: String = stringResource(R.string.cancel),
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {

@@ -85,10 +85,13 @@ class ChannelTimerViewModel @Inject constructor(
     fun setMinute(minute: Int) = _state.update { it.copy(minute = minute.coerceIn(0, 59)) }
 
     /**
-     * Schedules the timer; returns false when no channel is picked.
-     * The Room write + alarm scheduling run in viewModelScope (DAO calls
-     * are suspend); the "scheduled:..." notice is set only once both
-     * succeeded, so the screen never confirms a timer that was not saved.
+     * Schedules the timer. Returns false when no channel is picked, or
+     * when the same channel + time is already programmed (duplicate).
+     * The Room write + alarm scheduling run in viewModelScope; the
+     * outcome lands in [ChannelTimerUiState.notice] ("scheduled:…",
+     * "failed" or "duplicate") once both steps actually ran — the old
+     * version returned true immediately, before the write, and a failure
+     * was never shown (L-13/L-14).
      */
     fun schedule(): Boolean {
         val s = _state.value
@@ -98,11 +101,19 @@ class ChannelTimerViewModel @Inject constructor(
         }
         val hour = s.hour
         val minute = s.minute
+        val triggerMillis = nextTriggerMillis(hour, minute)
+        // L-13 — refuse the duplicate up front (same channel + same
+        // time): without this every press added a row, and the re-read
+        // below could pick an older duplicate row instead of the new one.
+        if (timers.value.any { it.channelId == channel.id && it.triggerMillis == triggerMillis }) {
+            _state.update { it.copy(notice = "duplicate") }
+            return false
+        }
         val timer = ChannelTimer(
             id = UUID.randomUUID().toString(),
             channelId = channel.id,
             channelName = channel.name,
-            triggerMillis = nextTriggerMillis(hour, minute)
+            triggerMillis = triggerMillis
         )
         viewModelScope.launch {
             val scheduled = runCatching {
@@ -114,9 +125,9 @@ class ChannelTimerViewModel @Inject constructor(
                 // otherwise cancel() (which receives "db:<rowId>" from the
                 // list above) and BootReceiver's re-arm would address a
                 // different PendingIntent than the one scheduled here.
-                // getAll() is ORDER BY triggerAtMillis ASC; lastOrNull
-                // prefers the just-inserted row if the same channel+time
-                // was already programmed once.
+                // getAll() is ORDER BY triggerAtMillis ASC; with the
+                // duplicate guard above, the just-inserted row is the only
+                // match for this channel+time.
                 val persisted = channelTimerDao.getAll()
                     .lastOrNull { it.channelId == timer.channelId && it.triggerAtMillis == timer.triggerMillis }
                     ?: return@runCatching false
@@ -124,10 +135,13 @@ class ChannelTimerViewModel @Inject constructor(
                 ChannelTimerScheduler.schedule(context, toModel(persisted))
                 true
             }.getOrDefault(false)
-            if (scheduled) {
-                _state.update {
-                    it.copy(notice = "scheduled:${channel.name}:${"%02d:%02d".format(hour, minute)}")
-                }
+            // L-14 — the failure is shown now instead of staying silent.
+            _state.update {
+                it.copy(
+                    notice = if (scheduled) {
+                        "scheduled:${channel.name}:${"%02d:%02d".format(hour, minute)}"
+                    } else "failed"
+                )
             }
         }
         return true

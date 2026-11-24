@@ -33,6 +33,13 @@ class SplashViewModel @Inject constructor(
         .map { it.appLock && it.pin.isNotEmpty() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    /** L-06 — true once the real settings have arrived (the StateFlow
+     *  above starts at the cold default `false`, so the screen cannot
+     *  tell "no lock" from "not loaded yet" from lockRequired alone). */
+    val settingsLoaded: StateFlow<Boolean> = settingsRepository.settings
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     private val _unlocked = MutableStateFlow(false)
     val unlocked: StateFlow<Boolean> = _unlocked.asStateFlow()
 

@@ -8,6 +8,7 @@ import coil.memory.MemoryCache
 import com.streammaster.tv.data.api.StalkerApi
 import com.streammaster.tv.data.api.XtreamApi
 import com.streammaster.tv.data.db.QoeDao
+import com.streammaster.tv.data.db.RoomQoeStore
 import com.streammaster.tv.data.db.StreamMasterDatabase
 import com.streammaster.tv.data.network.NetworkFactory
 import com.streammaster.tv.data.prefs.SettingsStore
@@ -32,7 +33,6 @@ import com.streammaster.tv.data.repository.SettingsRepositoryImpl
 import com.streammaster.tv.data.repository.WatchLaterRepository
 import com.streammaster.tv.data.repository.WatchLaterRepositoryImpl
 import com.streammaster.tv.data.update.AppUpdateChecker
-import com.streammaster.tv.player.LoggingQoeStore
 import com.streammaster.tv.player.PlayerManager
 import com.streammaster.tv.player.PlayerManagerImpl
 import com.streammaster.tv.player.QoeStore
@@ -48,7 +48,7 @@ import org.chromium.net.CronetEngine
 import javax.inject.Singleton
 
 /**
- * CONTRACT §9. Provides database, DAOs, the 4 repositories, OkHttpClient
+ * CONTRACT §9. Provides database, DAOs, the repositories, OkHttpClient
  * (DNS/User-Agent from settings, read synchronously at build time),
  * CronetEngine, Coil ImageLoader and the PlayerManager binding.
  *
@@ -170,13 +170,14 @@ object AppModule {
     ): DownloadRepository = DownloadRepositoryImpl(db)
 
     /**
-     * Assembly fix (coordinator): QoeLogger requires a QoeStore binding.
-     * Until a Room-backed RoomQoeStore is added, QoE events go to logcat
-     * via LoggingQoeStore (see QoeLogger.kt KDoc).
+     * DC-01 — QoE events are persisted in Room (qoe_events) via
+     * RoomQoeStore, so DiagnosticsViewModel reads real rows instead of
+     * permanent zeros. LoggingQoeStore (logcat only) remains the fallback
+     * in the player package.
      */
     @Provides
     @Singleton
-    fun provideQoeStore(impl: LoggingQoeStore): QoeStore = impl
+    fun provideQoeStore(impl: RoomQoeStore): QoeStore = impl
 
     @Provides
     @Singleton
@@ -195,8 +196,9 @@ object AppModule {
     fun provideContentRepository(
         db: StreamMasterDatabase,
         @ApplicationContext context: Context,
-        settingsStore: SettingsStore
-    ): ContentRepository = ContentRepositoryImpl(db, context, settingsStore)
+        settingsStore: SettingsStore,
+        stalkerApi: StalkerApi
+    ): ContentRepository = ContentRepositoryImpl(db, context, settingsStore, stalkerApi)
 
     @Provides
     @Singleton

@@ -11,6 +11,4 @@
     <string name="detail_actor_works_loading">جارٍ البحث عن أعماله الأخرى…</string>
     <string name="detail_actor_works_empty">لم نعثر على أعمال أخرى في قوائمك.</string>
     <string name="detail_cast_unavailable">طاقم التمثيل غير متوفر لهذا العنوان.</string>
-    <string name="detail_subtitle_download">الترجمة</string>
-    <string name="detail_subtitle_soon">تنزيل الترجمة سيتوفر قريبًا.</string>
 </resources>

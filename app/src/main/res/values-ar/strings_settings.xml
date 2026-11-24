@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_settings.xml -->
+<resources>
+    <string name="dnd_title">عدم الإزعاج</string>
+    <string name="st_dnd_desc">لا نوافذ أثناء المشاهدة (باستثناء تنبيهات الأهداف)</string>
+    <string name="st_dnd_detail">أثناء المشاهدة، لا تظهر أي نافذة أو إشعار، باستثناء تنبيهات الأهداف (§4.33) التي تبقى مفعّلة. الإعداد نفسه هنا؛ زر المشغّل وتصفية النوافذ من جهة المشغّل.</string>
+    <string name="subtitle_size_title">حجم الترجمة</string>
+    <string name="st_subtitle_size_desc">صغير أو متوسط أو كبير</string>
+    <string name="st_subtitle_size_detail">اختر حجم عرض الترجمة. يطبّق محرك التشغيل هذا الإعداد على ترجمات ExoPlayer وVLC.</string>
+    <string name="subtitle_color_title">لون الترجمة</string>
+    <string name="st_subtitle_color_desc">أبيض أو أصفر أو سماوي أو أخضر</string>
+    <string name="st_subtitle_color_detail">اختر لون الترجمة. يطبّق محرك التشغيل هذا الإعداد على ترجمات ExoPlayer وVLC.</string>
+    <string name="subtitle_position_title">موضع الترجمة</string>
+    <string name="st_subtitle_position_desc">أسفل الشاشة أو أعلاها</string>
+    <string name="st_subtitle_position_detail">اختر مكان ظهور الترجمة: أسفل الشاشة (افتراضيًا) أو أعلاها.</string>
+    <string name="sub_size_small">صغير (75٪)</string>
+    <string name="sub_size_medium">متوسط (100٪)</string>
+    <string name="sub_size_large">كبير (125٪)</string>
+    <string name="sub_size_xlarge">كبير جدًا (150٪)</string>
+    <string name="sub_color_white">أبيض</string>
+    <string name="sub_color_yellow">أصفر</string>
+    <string name="sub_color_cyan">سماوي</string>
+    <string name="sub_color_green">أخضر</string>
+    <string name="sub_pos_bottom">في الأسفل</string>
+    <string name="sub_pos_top">في الأعلى</string>
+    <string name="auto_arabic_subs_title">ترجمة عربية تلقائية</string>
+    <string name="st_auto_arabic_subs_desc">فعّل المسار العربي عند وجوده</string>
+    <string name="volume_normalization_title">صوت موحّد بين القنوات</string>
+    <string name="st_volume_norm_desc">نفس مستوى الصوت من قناة لأخرى</string>
+    <string name="smart_match_alerts_title">تنبيهات ذكية للمباريات</string>
+    <string name="st_smart_match_alerts_desc">تنبيه قبل كل مباراة من مباريات اليوم</string>
+    <string name="auto_backup_weekly_title">نسخة احتياطية أسبوعية تلقائية</string>
+    <string name="st_auto_backup_desc">نسخة كل أسبوع دون أي تدخل</string>
+    <string name="st_auto_backup_detail">يحفظ Stream Master تلقائيًا نسخة احتياطية (الإعدادات وقوائم التشغيل، بدون تشفير) كل أسبوع في مجلد خاص بالتطبيق. تُحفظ آخر 4 نسخ.</string>
+    <string name="backup_password_title">كلمة سر النسخة الاحتياطية</string>
+    <string name="st_backup_password_desc">تشفّر النسخ الاحتياطية المصدّرة (اختياري)</string>
+    <string name="st_backup_password_detail">إذا أُدخلت كلمة سر هنا، تُشفَّر النسخ الاحتياطية المصدّرة (AES/GCM) وستطلب الاستعادة كلمة السر نفسها. بدون كلمة سر، تبقى النسخة بصيغة JSON واضحة كما قبل. لا تُحفظ كلمة السر أبدًا.</string>
+    <string name="backup_password_empty">بدون (JSON واضح)</string>
+    <string name="backup_password_set">كلمة السر معيّنة ••••••••</string>
+    <string name="pin_recovery_title">رمز الاسترداد</string>
+    <string name="pin_recovery_msg">دوّن هذا الرمز المكوّن من 6 أرقام واحتفظ به في مكان آمن. سيسمح لك بتعيين رمز PIN جديد إذا نسيت الحالي. لن يُعرض مرة أخرى أبدًا.</string>
+    <string name="pin_recovery_saved">دوّنت الرمز</string>
+    <string name="pin_forgot">نسيت كلمة السر؟</string>
+    <string name="pin_recovery_entry_title">رمز الاسترداد</string>
+    <string name="pin_recovery_entry_subtitle">أدخل الرمز المكوّن من 6 أرقام الذي دوّنته عند إنشاء رمز PIN</string>
+    <string name="pin_recovery_wrong">رمز الاسترداد غير صحيح.</string>
+    <string name="speed_test_title">اختبار السرعة</string>
+    <string name="st_speed_test_desc">قياس سرعة التنزيل</string>
+    <string name="st_speed_test_detail">ينزّل ملف اختبار عام (Cloudflare، مجاني) ويعرض سرعة التنزيل. مفيد لمعرفة إن كانت الانقطاعات من الإنترنت أم من القناة.</string>
+    <string name="speed_test_not_run">لم يُختبر</string>
+    <string name="speed_test_running">الاختبار جارٍ…</string>
+    <string name="speed_test_failed">فشل الاختبار</string>
+    <string name="speed_test_result">%1$.1f ميغابت/ث</string>
+    <string name="speed_test_action">اختبر</string>
+</resources>

@@ -55,7 +55,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.navigation.Routes
-import com.streammaster.tv.ui.screens.WATCH_TONIGHT_ROUTE
 import com.streammaster.tv.ui.viewmodel.SmartListsViewModel
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.BorderStrong
@@ -197,10 +196,12 @@ fun HomeScreen(
 
         // Watch Tonight button (§4.36) — right under the expiry card.
         // It is the initial-focus target (first focusable of the content).
+        // D-04: the single source of truth is Routes.WATCH_TONIGHT —
+        // the duplicate WATCH_TONIGHT_ROUTE const was removed (2026-11-24).
         com.streammaster.tv.ui.components.GoldButton(
             text = stringResource(R.string.ns_tonight_button),
             modifier = Modifier.fillMaxWidth().focusRequester(firstFocus)
-        ) { navController.navigate(WATCH_TONIGHT_ROUTE) }
+        ) { navController.navigate(Routes.WATCH_TONIGHT) }
 
         // Subscription-expiry alert (2026-11-22): warn when <= 7 days remain.
         val daysLeft = state.expiryDaysLeft
@@ -642,9 +643,11 @@ internal fun HeroActionButton(
                 if (primary) Color(0xFFFFF8D6) else GoldBright,
                 RoundedCornerShape(31.dp)
             )
+            // T-02: padding BEFORE clickable — after it, the padding
+            // widened the button visually outside its click area.
+            .padding(horizontal = if (big) 40.dp else 30.dp)
             .tvFocus()
-            .clickable { onClick() }
-            .padding(horizontal = if (big) 40.dp else 30.dp),
+            .clickable { onClick() },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

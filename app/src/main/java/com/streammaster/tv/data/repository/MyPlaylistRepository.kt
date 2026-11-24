@@ -9,6 +9,7 @@ import com.streammaster.tv.data.model.Channel
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.Series
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -42,10 +43,9 @@ import javax.inject.Singleton
  *       getByBouquetAndItem(bouquetId: Long, itemType: String, itemId: String),
  *       upsert(item), deleteById(id: Long), deleteByBouquet(bouquetId: Long)
  *
- * The coordinator still has to wire the two DAOs into
- * StreamMasterDatabase (abstract funs myPlaylistBouquetDao() and
- * myPlaylistItemDao(), entities + migration) — this implementation
- * reaches them through the database, so no AppModule change is needed.
+ * The two DAOs are wired into StreamMasterDatabase (v8, MIGRATION_7_8) —
+ * this implementation reaches them through the database, so no AppModule
+ * change is needed.
  *
  * My Playlist is virtual: it is NOT a PlaylistEntity, it is NOT counted
  * in MAX_PLAYLISTS (10 real subscriptions) and it has no server, no
@@ -158,18 +158,22 @@ class MyPlaylistRepositoryImpl @Inject constructor(
         bouquetDao.getByType(kind.toMyType())
 
     override suspend fun createBouquet(name: String, kind: BouquetKind): MyPlaylistBouquet {
-        val type = kind.toMyType()
-        val nextOrder = (bouquetDao.getByType(type).maxOfOrNull { it.sortOrder } ?: -1) + 1
-        val bouquet = MyPlaylistBouquet(
-            name = name.trim(),
-            type = type,
-            sortOrder = nextOrder
-        )
-        bouquetDao.upsert(bouquet)
-        // upsert() returns Unit (no generated id), so read back the newest
-        // bouquet of this type — it is the one just created (highest order).
-        return bouquetDao.getByType(type).maxByOrNull { it.sortOrder }
-            ?: bouquet
+        // LG-08: read-max + insert must be atomic — two concurrent creates
+        // used to take the same sortOrder and read back each other's bouquet.
+        return db.withTransaction {
+            val type = kind.toMyType()
+            val nextOrder = (bouquetDao.getByType(type).maxOfOrNull { it.sortOrder } ?: -1) + 1
+            val bouquet = MyPlaylistBouquet(
+                name = name.trim(),
+                type = type,
+                sortOrder = nextOrder
+            )
+            bouquetDao.upsert(bouquet)
+            // upsert() returns Unit (no generated id), so read back the newest
+            // bouquet of this type — it is the one just created (highest order).
+            bouquetDao.getByType(type).maxByOrNull { it.sortOrder }
+                ?: bouquet
+        }
     }
 
     override suspend fun renameBouquet(id: Long, name: String) {
@@ -178,8 +182,11 @@ class MyPlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteBouquet(id: Long) {
-        itemDao.deleteByBouquet(id)
-        bouquetDao.deleteById(id)
+        // LG-07: items + bouquet delete atomically.
+        db.withTransaction {
+            itemDao.deleteByBouquet(id)
+            bouquetDao.deleteById(id)
+        }
     }
 
     override fun observeItems(bouquetId: Long): Flow<List<MyPlaylistItem>> =
@@ -199,17 +206,24 @@ class MyPlaylistRepositoryImpl @Inject constructor(
         itemType: ContentKind,
         itemId: String
     ): Boolean {
-        val type = itemType.toMyItemType()
-        if (itemDao.getByBouquetAndItem(bouquetId, type, itemId) != null) return false
-        itemDao.upsert(
-            MyPlaylistItem(
-                bouquetId = bouquetId,
-                sourcePlaylistId = sourcePlaylistId,
-                itemType = type,
-                itemId = itemId
-            )
-        )
-        return true
+        // LG-08: check-then-insert inside one transaction — two concurrent
+        // adds of the same item used to both pass the check and duplicate
+        // the row (no UNIQUE constraint on (bouquetId, itemType, itemId)).
+        return db.withTransaction {
+            val type = itemType.toMyItemType()
+            if (itemDao.getByBouquetAndItem(bouquetId, type, itemId) != null) false
+            else {
+                itemDao.upsert(
+                    MyPlaylistItem(
+                        bouquetId = bouquetId,
+                        sourcePlaylistId = sourcePlaylistId,
+                        itemType = type,
+                        itemId = itemId
+                    )
+                )
+                true
+            }
+        }
     }
 
     override suspend fun addItems(

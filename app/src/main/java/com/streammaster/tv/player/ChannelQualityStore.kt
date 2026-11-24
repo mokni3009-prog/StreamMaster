@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -37,20 +36,9 @@ class ChannelQualityStore @Inject constructor(
             prefs[key(channelId)]?.let { runCatching { QualityMode.valueOf(it) }.getOrNull() }
         }.first()
 
-    fun observeQuality(channelId: String): Flow<QualityMode?> =
-        context.channelQualityDataStore.data.map { prefs ->
-            prefs[key(channelId)]?.let { runCatching { QualityMode.valueOf(it) }.getOrNull() }
-        }
-
     suspend fun setQuality(channelId: String, mode: QualityMode) {
         context.channelQualityDataStore.edit { prefs ->
             prefs[key(channelId)] = mode.name
-        }
-    }
-
-    suspend fun clearQuality(channelId: String) {
-        context.channelQualityDataStore.edit { prefs ->
-            prefs.remove(key(channelId))
         }
     }
 }
@@ -69,10 +57,10 @@ data class EpisodeResume(val season: Int, val number: Int, val positionMs: Long)
  * owns that file and the Room migration it would need). The engine must
  * save the current episode's position on pause/stop/switch either way, so
  * it persists it here — no schema change, no migration, and
- * [com.streammaster.tv.ui.viewmodel.PlayerViewModel.resumeInfoFor] reads
- * exactly this store. If the data builder later adds
- * `EpisodeEntity.progressMs`, this class is the single seam to swap: keep
- * the same [get]/[save]/[clear] API and read the entity instead.
+ * [com.streammaster.tv.ui.viewmodel.PlayerViewModel] reads it via [get].
+ * If the data builder later adds `EpisodeEntity.progressMs`, this class is
+ * the single seam to swap: keep the same [get]/[save]/[clear] API and read
+ * the entity instead.
  * Series-level `SeriesEntity.recentProgress` (percent) cannot attribute a
  * position to an episode, so it is deliberately NOT used here.
  */
@@ -90,11 +78,6 @@ class EpisodeResumeStore @Inject constructor(
         context.episodeResumeDataStore.data.map { prefs ->
             prefs[key(seriesId)]?.let { parse(it) }
         }.first()
-
-    fun observe(seriesId: String): Flow<EpisodeResume?> =
-        context.episodeResumeDataStore.data.map { prefs ->
-            prefs[key(seriesId)]?.let { parse(it) }
-        }
 
     suspend fun save(seriesId: String, season: Int, number: Int, positionMs: Long) {
         if (positionMs <= 0) return

@@ -42,10 +42,12 @@ import org.videolan.libvlc.LibVLC
  * - B13/A5: Dolby passthrough / audio offload enabled via
  *   TrackSelectionParameters.AudioOffloadPreferences (DefaultAudioSink opens an
  *   AudioTrack in passthrough mode when AudioCapabilities report the codec).
- * - B18: wake mode is C.WAKE_MODE_LOCAL by default since Media3 1.9 — no code.
- * - B24: dynamic scheduling is the default in 1.11.0 — no code.
+ * - B18: no setWakeMode call — the foreground PlaybackService holds its
+ *   own WakeLock/WifiLock while something plays (PlaybackService).
+ * - B24: dynamic scheduling is the default in Media3 1.9.0 — no code.
  * - B33: stuck detection tightened for live — 12s buffering / 10s playing without
- *   progress raises StuckPlayerException, handled in onPlayerError.
+ *   progress raises StuckPlayerException, surfaced via the error cause chain
+ *   in onPlayerError (it is not a PlaybackException) and via StallDetector.
  */
 @OptIn(UnstableApi::class)
 fun createExoPlayer(context: Context, settings: AppSettings): ExoPlayer? =

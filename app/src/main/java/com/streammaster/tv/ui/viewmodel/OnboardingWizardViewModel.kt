@@ -22,8 +22,6 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 
-private val MAC_REGEX = Regex("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
-
 data class OnboardingUiState(
     /** 0 = language, 1 = playlist, 2 = connection test, 3 = background sync. */
     val step: Int = 0,
@@ -48,12 +46,10 @@ data class OnboardingUiState(
  * First-run wizard (§4.39): language → playlist → connection test with a
  * plain-language error explanation → background sync.
  *
- * CONTRACT — [SettingsStore.setFirstRunDone] does not exist yet: the
- * settings builder adds `suspend fun setFirstRunDone(done: Boolean)` to
- * SettingsStore (DataStore key `firstRunDone`, default false). The engine
- * builder routes Splash to the onboarding wizard route when it is false.
- * The playlist add + sync mirrors [LoginViewModel.submit] so the two paths
- * cannot drift apart.
+ * [SettingsStore.setFirstRunDone] exists (SettingsStore.kt) and the wizard
+ * calls it when it finishes; the engine routes Splash to the onboarding
+ * wizard route when it is false. The playlist add + sync mirrors
+ * [LoginViewModel.submit] so the two paths cannot drift apart.
  */
 @HiltViewModel
 class OnboardingWizardViewModel @Inject constructor(

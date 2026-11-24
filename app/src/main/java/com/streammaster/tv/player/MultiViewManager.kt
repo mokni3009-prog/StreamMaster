@@ -10,11 +10,13 @@ import com.streammaster.tv.data.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -42,7 +44,10 @@ data class MultiViewSlot(
 class MultiViewManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val contentRepository: ContentRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    // R-05: the shared singleton NetworkStack — the 2-arg createExoPlayer()
+    // built a brand-new CronetEngine + OkHttpClient per tile.
+    private val networkStack: NetworkStack
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -53,14 +58,29 @@ class MultiViewManager @Inject constructor(
 
     private var focusedIndex: Int = 0
 
+    // R-06: one job per tile — a new setChannel() for a tile cancels the
+    // previous build, and stopAll()/clearChannel() cancel pending builds so
+    // no player can be created (and leak, still playing) after the stop.
+    private val slotJobs = Array<Job?>(MULTIVIEW_SLOT_COUNT) { null }
+
     fun setChannel(index: Int, channel: Channel) {
-        scope.launch {
-            val current = _slots.value.toMutableList()
-            val old = current.getOrNull(index) ?: return@launch
-            if (old.channel?.id == channel.id) return@launch
-            runCatching { old.player?.release() }
+        if (index !in 0 until MULTIVIEW_SLOT_COUNT) return
+        slotJobs[index]?.cancel()
+        slotJobs[index] = null
+        val current = _slots.value.toMutableList()
+        val old = current.getOrNull(index) ?: return
+        if (old.channel?.id == channel.id) return
+        // Synchronous swap: release the old player NOW (before any
+        // suspension point) so two concurrent calls can never release the
+        // same player twice / leak the first of two new players.
+        runCatching { old.player?.release() }
+        current[index] = MultiViewSlot(index, channel, null)
+        _slots.value = current
+        slotJobs[index] = scope.launch {
             val settings = settingsRepository.settings.first()
-            val player = runCatching { createExoPlayer(context, settings) }.getOrNull()
+            val player = runCatching {
+                createExoPlayer(context, settings, networkStack, null)
+            }.getOrNull()
             if (player == null) {
                 Log.w(TAG, "MultiView: could not create player (API < 23?)")
                 return@launch
@@ -72,12 +92,31 @@ class MultiViewManager @Inject constructor(
             player.setMediaItem(MediaItem.fromUri(url))
             player.prepare()
             player.playWhenReady = true
-            current[index] = MultiViewSlot(index, channel, player)
-            _slots.value = current
+            // Publish only if this build is still the live one for the
+            // tile (not superseded by a newer setChannel/clear/stopAll).
+            if (!isActive) {
+                runCatching { player.release() }
+                return@launch
+            }
+            val latest = _slots.value.toMutableList()
+            val slot = latest.getOrNull(index) ?: run {
+                runCatching { player.release() }
+                return@launch
+            }
+            if (slot.channel?.id != channel.id) {
+                runCatching { player.release() }
+                return@launch
+            }
+            runCatching { slot.player?.release() }
+            latest[index] = MultiViewSlot(index, channel, player)
+            _slots.value = latest
         }
     }
 
     fun clearChannel(index: Int) {
+        if (index !in 0 until MULTIVIEW_SLOT_COUNT) return
+        slotJobs[index]?.cancel()
+        slotJobs[index] = null
         val current = _slots.value.toMutableList()
         val old = current.getOrNull(index) ?: return
         runCatching { old.player?.release() }
@@ -93,6 +132,8 @@ class MultiViewManager @Inject constructor(
     }
 
     fun stopAll() {
+        slotJobs.forEach { it?.cancel() }
+        slotJobs.fill(null)
         _slots.value.forEach { runCatching { it.player?.release() } }
         _slots.value = List(MULTIVIEW_SLOT_COUNT) { MultiViewSlot(it, null, null) }
         focusedIndex = 0

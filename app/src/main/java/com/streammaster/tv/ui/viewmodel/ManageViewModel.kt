@@ -31,7 +31,6 @@ data class ManageDraftState(
     val kind: ManageKind = ManageKind.LIVE,
     val selectedBouquetId: String? = null,
     val selectedItemIds: Set<String> = emptySet(),
-    val multiSelect: Boolean = false,
     val saved: Boolean = false
 )
 
@@ -68,7 +67,7 @@ class ManageViewModel @Inject constructor(
             _draft.value = p.copy(
                 kind = _draft.value.kind,
                 selectedBouquetId = p.selectedBouquetId,
-                selectedItemIds = emptySet(), multiSelect = false, saved = false
+                selectedItemIds = emptySet(), saved = false
             )
         }
     }
@@ -106,17 +105,23 @@ class ManageViewModel @Inject constructor(
         }
     }
 
-    fun setKind(kind: ManageKind) = _draft.update { it.copy(kind = kind, selectedItemIds = emptySet()) }
+    /** L-30 — switching tabs selects the first bouquet of the new kind
+     *  (the old selection belonged to the previous kind, so the list
+     *  could start with no bouquet selected at all). */
+    fun setKind(kind: ManageKind) = _draft.update { d ->
+        val first = d.bouquets.firstOrNull { it.kind == BouquetKind.valueOf(kind.name) }
+        d.copy(kind = kind, selectedItemIds = emptySet(), selectedBouquetId = first?.id)
+    }
     fun selectBouquet(id: String) = _draft.update { it.copy(selectedBouquetId = id, selectedItemIds = emptySet()) }
 
     fun toggleSelect(id: String) = _draft.update {
         val set = it.selectedItemIds.toMutableSet()
         if (!set.add(id)) set.remove(id)
-        it.copy(selectedItemIds = set, multiSelect = set.isNotEmpty())
+        it.copy(selectedItemIds = set)
     }
 
-    fun selectAll(ids: List<String>) = _draft.update { it.copy(selectedItemIds = ids.toSet(), multiSelect = true) }
-    fun deselectAll() = _draft.update { it.copy(selectedItemIds = emptySet(), multiSelect = false) }
+    fun selectAll(ids: List<String>) = _draft.update { it.copy(selectedItemIds = ids.toSet()) }
+    fun deselectAll() = _draft.update { it.copy(selectedItemIds = emptySet()) }
 
     /** Hide/show one item, or the whole multi-selection when ids is empty (uses selection). */
     fun setHidden(ids: Set<String>, hidden: Boolean) {
@@ -139,7 +144,7 @@ class ManageViewModel @Inject constructor(
         _draft.update { d ->
             d.copy(
                 channels = d.channels.map { if (it.id in ids) it.copy(bouquetId = bouquetId) else it },
-                selectedItemIds = emptySet(), multiSelect = false // cleared after a bulk move
+                selectedItemIds = emptySet() // cleared after a bulk move
             )
         }
     }
@@ -166,12 +171,34 @@ class ManageViewModel @Inject constructor(
             val target = (idx + delta).coerceIn(0, bouquetChannels.size - 1)
             if (idx < 0 || target == idx) return@update d
             val reordered = bouquetChannels.toMutableList().apply { add(target, removeAt(idx)) }
-            val order = reordered.map { it.id }
             // Channels carry no order field in CONTRACT §3; the draft order is
             // preserved by the list order passed to saveManageDraft.
             val rest = d.channels.filter { it.bouquetId != d.selectedBouquetId }
             val reorderedChannels = reordered + rest
             d.copy(channels = reorderedChannels)
+        }
+    }
+
+    /** L-01 — reorder a film inside the draft list (persisted as
+     *  orderIndex by saveManageDraft, like channels). */
+    fun reorderFilm(filmId: String, delta: Int) {
+        _draft.update { d ->
+            val idx = d.films.indexOfFirst { it.id == filmId }
+            val target = (idx + delta).coerceIn(0, d.films.size - 1)
+            if (idx < 0 || target == idx) return@update d
+            val reordered = d.films.toMutableList().apply { add(target, removeAt(idx)) }
+            d.copy(films = reordered)
+        }
+    }
+
+    /** L-01 — reorder a series inside the draft list. */
+    fun reorderSeries(seriesId: String, delta: Int) {
+        _draft.update { d ->
+            val idx = d.series.indexOfFirst { it.id == seriesId }
+            val target = (idx + delta).coerceIn(0, d.series.size - 1)
+            if (idx < 0 || target == idx) return@update d
+            val reordered = d.series.toMutableList().apply { add(target, removeAt(idx)) }
+            d.copy(series = reordered)
         }
     }
 
@@ -181,6 +208,16 @@ class ManageViewModel @Inject constructor(
 
     fun renameChannel(channelId: String, newName: String) {
         _draft.update { d -> d.copy(channels = d.channels.map { if (it.id == channelId) it.copy(customName = newName) else it }) }
+    }
+
+    /** L-01 — rename a film (draft customName, persisted by saveManageDraft). */
+    fun renameFilm(filmId: String, newName: String) {
+        _draft.update { d -> d.copy(films = d.films.map { if (it.id == filmId) it.copy(customName = newName) else it }) }
+    }
+
+    /** L-01 — rename a series (draft customName, persisted by saveManageDraft). */
+    fun renameSeries(seriesId: String, newName: String) {
+        _draft.update { d -> d.copy(series = d.series.map { if (it.id == seriesId) it.copy(customName = newName) else it }) }
     }
 
     fun addBouquet(name: String) {
@@ -194,7 +231,10 @@ class ManageViewModel @Inject constructor(
         }
     }
 
-    /** Number assignment 1–100, unique across channels; null clears it. Returns the conflicting channel name, if any. */
+    /** Number assignment 1–100, unique across channels; null clears it. Returns the conflicting channel name, if any.
+     *  L-16 — draft-only: the number used to be written straight to the
+     *  repository here, so "discard changes" could never undo it. It is
+     *  persisted only by save() now, like every other draft edit. */
     fun assignNumber(channelId: String, number: Int?): String? {
         if (number != null && number !in 1..100) return null
         val conflict = if (number != null) {
@@ -204,7 +244,6 @@ class ManageViewModel @Inject constructor(
         _draft.update { d ->
             d.copy(channels = d.channels.map { if (it.id == channelId) it.copy(customNum = number) else it })
         }
-        viewModelScope.launch { contentRepository.setCustomNumber(channelId, number) }
         return null
     }
 

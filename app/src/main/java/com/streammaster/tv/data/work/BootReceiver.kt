@@ -11,9 +11,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 /**
@@ -38,31 +38,43 @@ class BootReceiver : BroadcastReceiver() {
     @Inject
     lateinit var db: StreamMasterDatabase
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // R-10: the Hilt singleton SettingsStore — building a second
+    // SettingsStore(context) here created a second DataStore instance for
+    // the same "settings" file (documented IllegalStateException risk).
+    @Inject
+    lateinit var settingsStore: SettingsStore
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        val settings = runBlocking {
-            SettingsStore(context).settings.first()
-        }
-        // Goal alerts (2026-11-22): restart the alert service after a
-        // reboot when the user left it enabled — independent of the
-        // auto-start-on-boot app launch below. Same OR gate as
-        // GoalAlertManager (§4.36.8): goalAlerts OR smartMatchAlerts.
-        if (settings.goalAlerts || settings.smartMatchAlerts) {
-            runCatching { GoalAlertService.start(context) }
-        }
-        // §4.42 — re-arm saved alarms (async: DB reads must not block the
-        // receiver's main thread; goAsync keeps the process alive).
+        // R-10: the settings read used to be a blocking runBlocking on the
+        // receiver's main thread (ANR risk). Everything now runs inside the
+        // goAsync() coroutine; no decision is taken before the read lands.
         val pending = goAsync()
+        // OP-07 (rest): the receiver used to own one scope that was never
+        // cancelled (leaked with every boot). A fresh scope per receive,
+        // cancelled when the work finishes.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope.launch {
             try {
+                val settings = settingsStore.settings.first()
+                // Goal alerts (2026-11-22): restart the alert service after a
+                // reboot when the user left it enabled — independent of the
+                // auto-start-on-boot app launch below. Same OR gate as
+                // GoalAlertManager (§4.36.8): goalAlerts OR smartMatchAlerts.
+                if (settings.goalAlerts || settings.smartMatchAlerts) {
+                    runCatching { GoalAlertService.start(context) }
+                }
+                // §4.42 — re-arm saved alarms (async: DB reads must not block the
+                // receiver's main thread; goAsync keeps the process alive).
                 val now = System.currentTimeMillis()
                 runCatching {
                     db.reminderDao().getUpcoming(now).forEach { entity ->
                         ReminderScheduler.scheduleReminder(context, entity.toModel())
                     }
                 }
+                // DC-07: expired reminders used to pile up in the DB forever
+                // (deleteOlderThan had no caller) — prune them on boot.
+                runCatching { db.reminderDao().deleteOlderThan(now) }
                 runCatching {
                     db.scheduledRecordingDao().observeScheduled().first()
                         .filter { it.endMillis > now }
@@ -84,14 +96,16 @@ class BootReceiver : BroadcastReceiver() {
                 if (settings.autoBackupWeekly) {
                     runCatching { BackupWorker.enqueue(context) }
                 }
+                if (settings.autoStartOnBoot) {
+                    val launch = context.packageManager
+                        .getLaunchIntentForPackage(context.packageName) ?: return@launch
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { context.startActivity(launch) }
+                }
             } finally {
                 pending.finish()
+                scope.cancel()
             }
         }
-        if (!settings.autoStartOnBoot) return
-        val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?: return
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(launch) }
     }
 }

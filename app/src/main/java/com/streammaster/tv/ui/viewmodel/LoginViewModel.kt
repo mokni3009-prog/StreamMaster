@@ -30,7 +30,9 @@ data class LoginUiState(
     val success: Boolean = false
 )
 
-private val MAC_REGEX = Regex("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+/** T-07 — shared with OnboardingWizardViewModel (same package): one
+ *  MAC-address regex instead of a copy in each file. */
+internal val MAC_REGEX = Regex("^([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 
 @HiltViewModel
 class LoginViewModel @Inject constructor(

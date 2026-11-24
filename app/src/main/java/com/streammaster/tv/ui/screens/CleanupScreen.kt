@@ -36,9 +36,6 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.viewmodel.CleanupViewModel
 
-/** Route for the playlist cleanup screen (§4.36.6). Registered by the nav builder. */
-const val CLEANUP_ROUTE = "cleanup"
-
 /**
  * Playlist cleanup UI (§4.36.6): the scanner's report — duplicate groups
  * with a merge button, dead items with a delete button. Reached from
@@ -61,7 +58,16 @@ fun CleanupScreen(
     fun actionFocusFor(key: String) = actionFocusRequesters.getOrPut(key) { FocusRequester() }
     val report = state.report
     LaunchedEffect(state.scanning, report) {
-        if (!state.scanning && !initialFocusDone &&
+        // L-07 — every merge/delete re-scans, which swaps the list for a
+        // loading indicator and disposes the focused node; initialFocusDone
+        // stayed true, so focus was never requested again. Reset the flag
+        // while scanning so the first action button is re-focused once the
+        // new report arrives.
+        if (state.scanning) {
+            initialFocusDone = false
+            return@LaunchedEffect
+        }
+        if (!initialFocusDone &&
             (report.duplicates.isNotEmpty() || report.dead.isNotEmpty())
         ) {
             firstFocus.requestFocus()

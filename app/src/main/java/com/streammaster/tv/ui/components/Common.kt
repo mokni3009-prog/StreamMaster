@@ -1,6 +1,7 @@
 package com.streammaster.tv.ui.components
 
 import android.content.Context
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +34,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,6 +43,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.util.concurrent.atomic.AtomicLong
+import androidx.compose.ui.focus.focusProperties
 import com.streammaster.tv.ui.theme.BodyFontFamily
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.CardRadius
@@ -68,6 +73,9 @@ fun GoldButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     outlined: Boolean = false,
+    /** T-05 — optional leading vector icon (e.g. play/pause) instead of
+     *  a text glyph; null keeps the text-only button as before. */
+    @DrawableRes iconRes: Int? = null,
     onClick: () -> Unit
 ) {
     val bg = when {
@@ -98,20 +106,49 @@ fun GoldButton(
                 if (enabled && !outlined) Modifier.border(2.dp, Color(0xFFFFF6CC), RoundedCornerShape(20.dp))
                 else Modifier
             )
+            // L-11 — a disabled button leaves the focus path (was
+            // focusable with a dead OK press: Login while loading,
+            // Diagnostics while checking, Drive, Onboarding...).
+            // GoldSaveButton's own focusProperties stays harmless.
+            .focusProperties { canFocus = enabled }
             .tvFocus()
             .clickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = fg,
-            fontSize = 23.sp,
-            fontWeight = FontWeight.Black,
-            fontFamily = BodyFontFamily,
-            letterSpacing = 1.sp,
-            style = TextStyle(shadow = TextShadowCrisp),
-            textAlign = TextAlign.Center
-        )
+        if (iconRes != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = fg,
+                    modifier = Modifier.size(24.dp)
+                )
+                Text(
+                    text = text,
+                    color = fg,
+                    fontSize = 23.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = BodyFontFamily,
+                    letterSpacing = 1.sp,
+                    style = TextStyle(shadow = TextShadowCrisp),
+                    textAlign = TextAlign.Center
+                )
+            }
+        } else {
+            Text(
+                text = text,
+                color = fg,
+                fontSize = 23.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = BodyFontFamily,
+                letterSpacing = 1.sp,
+                style = TextStyle(shadow = TextShadowCrisp),
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -246,9 +283,10 @@ data class ToastEvent(val text: String, val id: Long)
 object ToastBus {
     private val _toast = MutableStateFlow<ToastEvent?>(null)
     val toast: StateFlow<ToastEvent?> = _toast
-    private var nextId = 0L
+    // T-06 — atomic counter: show() is called from any thread.
+    private val nextId = AtomicLong(0L)
     fun show(msg: String) {
-        _toast.value = ToastEvent(msg, ++nextId)
+        _toast.value = ToastEvent(msg, nextId.incrementAndGet())
     }
 
     fun clear() {

@@ -11,6 +11,4 @@
     <string name="detail_actor_works_loading">Looking for their other works…</string>
     <string name="detail_actor_works_empty">No other works found in your lists.</string>
     <string name="detail_cast_unavailable">Cast not available for this title.</string>
-    <string name="detail_subtitle_download">Subtitles</string>
-    <string name="detail_subtitle_soon">Subtitle download coming soon.</string>
 </resources>

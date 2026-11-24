@@ -2,6 +2,7 @@ package com.streammaster.tv.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,12 +40,10 @@ import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
+import com.streammaster.tv.ui.viewmodel.UsbFileItem
 import com.streammaster.tv.ui.viewmodel.UsbFilesViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-/** Route for the USB files screen (§4.52). Registered by the nav builder. */
-const val USB_FILES_ROUTE = "usb_files"
 
 /** USB local files (§4.52): pick a folder or a video file, play it with the same player. */
 @Composable
@@ -89,6 +88,17 @@ fun UsbFilesScreen(
     val fileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) viewModel.pickSingleFile(uri) }
+    // L-31 — the row itself plays the file (was focusable with a dead OK
+    // press; only the Play button acted).
+    fun playFile(file: UsbFileItem) {
+        scope.launch {
+            val id = viewModel.preparePlayback(file)
+            if (id != null) {
+                savedStateHandle?.set("lastPlayedUsbName", file.name)
+                navController.navigate(Routes.player("recording", id))
+            }
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         SectionHeader(stringResource(R.string.ns_usb_title), stringResource(R.string.ns_usb_subtitle))
@@ -127,6 +137,7 @@ fun UsbFilesScreen(
                         modifier = Modifier.fillMaxWidth()
                             .focusRequester(focusFor(file.uri))
                             .tvFocus()
+                            .clickable { playFile(file) }
                             .padding(20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -137,13 +148,7 @@ fun UsbFilesScreen(
                             modifier = Modifier.weight(1f).padding(end = 16.dp)
                         )
                         GhostButton(text = stringResource(R.string.ns_usb_play)) {
-                            scope.launch {
-                                val id = viewModel.preparePlayback(file)
-                                if (id != null) {
-                                    savedStateHandle?.set("lastPlayedUsbName", file.name)
-                                    navController.navigate(Routes.player("recording", id))
-                                }
-                            }
+                            playFile(file)
                         }
                     }
                 }

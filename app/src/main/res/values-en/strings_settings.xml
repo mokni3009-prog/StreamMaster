@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_settings.xml -->
+<resources>
+    <string name="dnd_title">Do not disturb</string>
+    <string name="st_dnd_desc">No popups while watching (goal alerts excepted)</string>
+    <string name="st_dnd_detail">While watching, no popup or notification shows, except goal alerts (§4.33) which stay on. The setting itself is here; the player button and popup filtering are on the player side.</string>
+    <string name="subtitle_size_title">Subtitle size</string>
+    <string name="st_subtitle_size_desc">Small, medium or large</string>
+    <string name="st_subtitle_size_detail">Choose the subtitle display size. The playback engine applies this setting to ExoPlayer and VLC subtitles.</string>
+    <string name="subtitle_color_title">Subtitle colour</string>
+    <string name="st_subtitle_color_desc">White, yellow, cyan or green</string>
+    <string name="st_subtitle_color_detail">Choose the subtitle colour. The playback engine applies this setting to ExoPlayer and VLC subtitles.</string>
+    <string name="subtitle_position_title">Subtitle position</string>
+    <string name="st_subtitle_position_desc">At the bottom or top of the screen</string>
+    <string name="st_subtitle_position_detail">Choose where subtitles show: at the bottom (default) or at the top of the screen.</string>
+    <string name="sub_size_small">Small (75%)</string>
+    <string name="sub_size_medium">Medium (100%)</string>
+    <string name="sub_size_large">Large (125%)</string>
+    <string name="sub_size_xlarge">Very large (150%)</string>
+    <string name="sub_color_white">White</string>
+    <string name="sub_color_yellow">Yellow</string>
+    <string name="sub_color_cyan">Cyan</string>
+    <string name="sub_color_green">Green</string>
+    <string name="sub_pos_bottom">At the bottom</string>
+    <string name="sub_pos_top">At the top</string>
+    <string name="auto_arabic_subs_title">Automatic Arabic subtitles</string>
+    <string name="st_auto_arabic_subs_desc">Enable the Arabic track when available</string>
+    <string name="volume_normalization_title">Uniform volume across channels</string>
+    <string name="st_volume_norm_desc">Same loudness from one channel to another</string>
+    <string name="smart_match_alerts_title">Smart match alerts</string>
+    <string name="st_smart_match_alerts_desc">Get alerted before every match of the day</string>
+    <string name="auto_backup_weekly_title">Automatic weekly backup</string>
+    <string name="st_auto_backup_desc">A copy every week, with nothing to do</string>
+    <string name="st_auto_backup_detail">Stream Master automatically saves a backup copy (settings and playlists, unencrypted) every week in a private app folder. The last 4 copies are kept.</string>
+    <string name="backup_password_title">Backup password</string>
+    <string name="st_backup_password_desc">Encrypts exported backups (optional)</string>
+    <string name="st_backup_password_detail">If a password is entered here, exported backups are encrypted (AES/GCM) and restoring will ask for the same password. Without a password, the backup stays in plain JSON as before. The password is never stored.</string>
+    <string name="backup_password_empty">None (plain JSON)</string>
+    <string name="backup_password_set">Password set ••••••••</string>
+    <string name="pin_recovery_title">Recovery code</string>
+    <string name="pin_recovery_msg">Write down this 6-digit code and keep it somewhere safe. It will let you set a new PIN if you forget the current one. It will never be shown again.</string>
+    <string name="pin_recovery_saved">I wrote down the code</string>
+    <string name="pin_forgot">Forgot your password?</string>
+    <string name="pin_recovery_entry_title">Recovery code</string>
+    <string name="pin_recovery_entry_subtitle">Enter the 6-digit code you wrote down when creating the PIN</string>
+    <string name="pin_recovery_wrong">Incorrect recovery code.</string>
+    <string name="speed_test_title">Speed test</string>
+    <string name="st_speed_test_desc">Measure download speed</string>
+    <string name="st_speed_test_detail">Downloads a public test file (Cloudflare, free) and shows your download speed. Useful to tell whether stalls come from the internet or the channel.</string>
+    <string name="speed_test_not_run">Not tested</string>
+    <string name="speed_test_running">Test running…</string>
+    <string name="speed_test_failed">Test failed</string>
+    <string name="speed_test_result">%1$.1f Mb/s</string>
+    <string name="speed_test_action">Test</string>
+</resources>

@@ -83,8 +83,7 @@ internal class StreamMasterLoadErrorPolicy : DefaultLoadErrorHandlingPolicy(
 class NetworkStack @Inject constructor(
     @ApplicationContext private val context: Context,
     private val okHttpClient: OkHttpClient,
-    private val cronetEngine: CronetEngine?,
-    private val bitrateStore: BitrateStore
+    private val cronetEngine: CronetEngine?
 ) {
     companion object {
         const val CONNECT_TIMEOUT_MS = 8000
@@ -110,8 +109,7 @@ class NetworkStack @Inject constructor(
             val stack = NetworkStack(
                 context,
                 defaultOkHttpClient(settings),
-                defaultCronetEngine(context),
-                BitrateStore(context)
+                defaultCronetEngine(context)
             )
             return stack
         }
@@ -150,8 +148,6 @@ class NetworkStack @Inject constructor(
 
     fun resolveUserAgent(settings: AppSettings): String = resolveUserAgentStatic(settings)
 
-    fun bitrateStore(): BitrateStore = bitrateStore
-
     // ---- Mirror switching (B17 / D2) ----------------------------------------
 
     @Volatile private var mirrorOriginalUrl: String? = null
@@ -170,21 +166,35 @@ class NetworkStack @Inject constructor(
 
     // ---- HTTP stack (B14/B15) ------------------------------------------------
 
+    // R-04: one shared HttpEngine + one shared executor for the life of this
+    // (singleton) stack — building a new pair per httpDataSourceFactory()
+    // call leaked a thread + native resources on every play()/retry/engine
+    // switch. The singleton lives as long as the process, so no close is
+    // needed here; NetworkStack.create() callers (one-shot, e.g. the
+    // PlayerModule provider) still build their own stack once per process.
+    private val httpExecutor by lazy { Executors.newSingleThreadExecutor() }
+    private val sharedHttpEngine: HttpEngine? by lazy {
+        if (Build.VERSION.SDK_INT >= 34) {
+            runCatching { HttpEngine.Builder(context).build() }.getOrNull()
+        } else null
+    }
+
     /** Modern HTTP stack with 8s/8s timeouts and the settings User-Agent. */
     fun httpDataSourceFactory(settings: AppSettings): HttpDataSource.Factory {
         val ua = resolveUserAgent(settings)
         if (Build.VERSION.SDK_INT >= 34) {
-            try {
-                val httpEngine = HttpEngine.Builder(context).build()
-                return HttpEngineDataSource.Factory(
-                    httpEngine,
-                    Executors.newSingleThreadExecutor()
-                )
-                    .setConnectionTimeoutMs(CONNECT_TIMEOUT_MS)
-                    .setReadTimeoutMs(READ_TIMEOUT_MS)
-                    .setUserAgent(ua)
-            } catch (e: Exception) {
-                Log.w(TAG, "HttpEngine unavailable, falling back to Cronet", e)
+            val httpEngine = sharedHttpEngine
+            if (httpEngine != null) {
+                try {
+                    return HttpEngineDataSource.Factory(httpEngine, httpExecutor)
+                        .setConnectionTimeoutMs(CONNECT_TIMEOUT_MS)
+                        .setReadTimeoutMs(READ_TIMEOUT_MS)
+                        .setUserAgent(ua)
+                } catch (e: Exception) {
+                    Log.w(TAG, "HttpEngine unavailable, falling back to Cronet", e)
+                }
+            } else {
+                Log.w(TAG, "HttpEngine unavailable, falling back to Cronet")
             }
         }
         // Cronet is optional (the DI provider returns null when it is
@@ -192,10 +202,7 @@ class NetworkStack @Inject constructor(
         val engine = cronetEngine
         if (engine != null) {
             try {
-                return CronetDataSource.Factory(
-                    engine,
-                    Executors.newSingleThreadExecutor()
-                )
+                return CronetDataSource.Factory(engine, httpExecutor)
                     .setConnectionTimeoutMs(CONNECT_TIMEOUT_MS)
                     .setReadTimeoutMs(READ_TIMEOUT_MS)
                     .setUserAgent(ua)

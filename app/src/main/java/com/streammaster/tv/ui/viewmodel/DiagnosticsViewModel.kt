@@ -33,27 +33,6 @@ data class DiagnosticsUiState(
 )
 
 /**
- * Local-only error log (§4.38). Kept in memory, on the device, never sent
- * anywhere — telemetry is suspended by the user's order, so the diagnostics
- * screen reads only this log and the local QoE table.
- */
-object LocalErrorLog {
-    data class Entry(val message: String, val timestampMillis: Long = System.currentTimeMillis())
-
-    private const val MAX_ENTRIES = 50
-    private val entries = ArrayDeque<Entry>()
-
-    @Synchronized
-    fun record(message: String) {
-        entries.addLast(Entry(message))
-        while (entries.size > MAX_ENTRIES) entries.removeFirst()
-    }
-
-    @Synchronized
-    fun snapshot(): List<Entry> = entries.toList()
-}
-
-/**
  * Diagnostics (§4.38) — local only, no Firebase, no telemetry.
  * Server status reuses [ServerStatusChecker]; stall/error counts come from
  * the local `qoe_events` table ([QoeDao]); network from ConnectivityManager;

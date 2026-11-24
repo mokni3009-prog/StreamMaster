@@ -1,7 +1,6 @@
 package com.streammaster.tv.data.db
 
 import androidx.room.Entity
-import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -311,8 +310,7 @@ data class DownloadEntity(
 /**
  * A series the user follows (§4.50): when a playlist refresh finds more
  * episodes than [lastEpisodeCount], a "new episode" notification is sent.
- * NEW TABLE — the coordinator adds it to StreamMasterDatabase + migration;
- * this file only declares the entity (do NOT bump the DB version here).
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(tableName = "series_follows")
 data class SeriesFollow(
@@ -328,7 +326,7 @@ data class SeriesFollow(
  * "new films" notification is sent. The hash is
  * `sortedFilmIds.joinToString("|").hashCode().toString()`; "" means "no
  * baseline yet — take the current set silently".
- * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(tableName = "genre_follows")
 data class GenreFollow(
@@ -341,7 +339,7 @@ data class GenreFollow(
  * A channel timer (§4.58): switch to [channelId] automatically at
  * [triggerAtMillis]. The §4.58 builder owns the UI + scheduler; this file
  * only declares the storage.
- * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(
     tableName = "channel_timers",
@@ -358,7 +356,7 @@ data class ChannelTimer(
 /**
  * A "My Playlist" bouquet (§4.62): a user-created bouquet of the
  * app-owned virtual playlist #11. [type] is LIVE | FILM | SERIES.
- * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(
     tableName = "myplaylist_bouquets",
@@ -376,7 +374,7 @@ data class MyPlaylistBouquet(
  * One item inside a "My Playlist" bouquet (§4.62): a COPY (reference) of
  * content from one of the user's subscriptions — the original stays in
  * its source playlist. [itemType] is CHANNEL | FILM | SERIES.
- * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(
     tableName = "myplaylist_items",
@@ -395,7 +393,7 @@ data class MyPlaylistItem(
  * A user star rating (§4.53): 1..5 stars on a film or series, fed into
  * the "Recommandé pour vous" recommendations (§4.36.1). Composite PK
  * (itemType, itemId); [itemType] is FILM | SERIES.
- * NEW TABLE — coordinator adds it to StreamMasterDatabase + migration.
+ * Table added in DB v8 (MIGRATION_7_8).
  */
 @Entity(
     tableName = "user_ratings",

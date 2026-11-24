@@ -76,8 +76,19 @@ class EpgHealthViewModel @Inject constructor(
             val now = System.currentTimeMillis()
             val from = now - 2 * 3600_000L
             val to = now + 24 * 3600_000L
+            // L-21 — one batched query for all channels instead of one
+            // getPrograms() call per channel (N+1). An empty list would
+            // make Room reject `IN ()`, so it is guarded here.
+            val allPrograms = if (channels.isEmpty()) {
+                emptyList()
+            } else {
+                runCatching {
+                    epgDao.getProgramsForChannels(channels.map { it.id }, from, to)
+                }.getOrDefault(emptyList())
+            }
+            val programsByChannel = allPrograms.groupBy { it.channelId }
             val rows = channels.map { channel ->
-                val programs = runCatching { epgDao.getPrograms(channel.id, from, to) }.getOrDefault(emptyList())
+                val programs = programsByChannel[channel.id].orEmpty()
                 if (programs.isNotEmpty()) {
                     EpgChannelHealth(channel.id, channel.name, true, EpgHealthReason.HAS_GUIDE)
                 } else {

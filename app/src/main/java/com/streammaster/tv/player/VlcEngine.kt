@@ -162,9 +162,13 @@ class VlcEngine(
         }
     }
 
+    // L-09: libVLC identifies tracks by TrackDescription.id — the ids are
+    // unique but NOT guaranteed to count from 0 or contiguously, so the
+    // list index is the wrong key. The id is also what setAudioTrack /
+    // setSpuTrack expect (libvlc_*_set_track takes the track id).
     fun audioTracks(): List<TrackOption> = try {
         mediaPlayer?.audioTracks
-            ?.mapIndexed { index, track -> TrackOption("vlc-a$index", track.name ?: "Audio ${index + 1}") }
+            ?.map { track -> TrackOption("vlc-a${track.id}", track.name ?: "Audio ${track.id}") }
             .orEmpty()
     } catch (e: Exception) {
         Log.w(TAG, "VLC audio tracks unavailable", e)
@@ -173,7 +177,7 @@ class VlcEngine(
 
     fun subtitleTracks(): List<TrackOption> = try {
         mediaPlayer?.spuTracks
-            ?.mapIndexed { index, track -> TrackOption("vlc-s$index", track.name ?: "Sous-titre ${index + 1}") }
+            ?.map { track -> TrackOption("vlc-s${track.id}", track.name ?: "Sous-titre ${track.id}") }
             .orEmpty()
     } catch (e: Exception) {
         Log.w(TAG, "VLC subtitle tracks unavailable", e)
@@ -182,10 +186,19 @@ class VlcEngine(
 
     fun setAudioTrack(id: String?): Boolean {
         val player = mediaPlayer ?: return false
-        if (id == null) return false
-        val index = id.removePrefix("vlc-a").toIntOrNull() ?: return false
+        // L-09: null disables the audio track in libVLC (-1), it used to
+        // return false and leave the track playing.
+        if (id == null) {
+            return try {
+                player.setAudioTrack(-1)
+            } catch (e: Exception) {
+                Log.w(TAG, "VLC disable audio failed", e)
+                false
+            }
+        }
+        val trackId = id.removePrefix("vlc-a").toIntOrNull() ?: return false
         return try {
-            player.setAudioTrack(index)
+            player.setAudioTrack(trackId)
         } catch (e: Exception) {
             Log.w(TAG, "VLC setAudioTrack failed", e)
             false
@@ -203,9 +216,9 @@ class VlcEngine(
                 false
             }
         }
-        val index = id.removePrefix("vlc-s").toIntOrNull() ?: return false
+        val trackId = id.removePrefix("vlc-s").toIntOrNull() ?: return false
         return try {
-            player.setSpuTrack(index)
+            player.setSpuTrack(trackId)
         } catch (e: Exception) {
             Log.w(TAG, "VLC setSpuTrack failed", e)
             false

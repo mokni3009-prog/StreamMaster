@@ -54,7 +54,9 @@ class SubtitleDownloader(
             val apiKey = prefs.apiKey.first()
             if (apiKey.isBlank()) return@withContext DownloadResult.NoApiKey
             runCatching {
-                val response = service.search(apiKey, query = title, year = year)
+                // OP-09: most Xtream films carry year = 0 (unknown) — sending
+                // year=0 makes OpenSubtitles return nothing, so send null.
+                val response = service.search(apiKey, query = title, year = year?.takeIf { it > 0 })
                 val best = response.data
                     .flatMap { entry -> (entry.attributes?.files ?: emptyList()) }
                     .firstOrNull()

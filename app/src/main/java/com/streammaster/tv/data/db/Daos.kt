@@ -33,10 +33,9 @@ interface ChannelDao {
     @Query("SELECT * FROM channels WHERE id = :id LIMIT 1")
     fun observeById(id: String): Flow<ChannelEntity?>
 
-    @Query("SELECT * FROM channels WHERE customNum = :number LIMIT 1")
-    suspend fun getByCustomNum(number: Int): ChannelEntity?
-
-    @Query("SELECT * FROM channels WHERE name LIKE '%' || :query || '%' OR nowTitle LIKE '%' || :query || '%' ORDER BY name ASC LIMIT 50")
+    /** LIKE search — the caller escapes %, _ and \ (see
+     *  ContentRepositoryImpl.search); ESCAPE '\' makes them literal. */
+    @Query("SELECT * FROM channels WHERE name LIKE '%' || :query || '%' ESCAPE '\\' OR nowTitle LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY name ASC LIMIT 50")
     suspend fun search(query: String): List<ChannelEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -66,6 +65,13 @@ interface ChannelDao {
     @Query("DELETE FROM channels WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
 
+    /** LG-01 — prune rows the provider no longer returns (refresh is
+     *  upsert-only otherwise, so removed content accumulated forever).
+     *  Only called with a non-empty [ids] (an empty provider answer must
+     *  never wipe the stored catalog). */
+    @Query("DELETE FROM channels WHERE playlistId = :playlistId AND id NOT IN (:ids)")
+    suspend fun deleteNotIn(playlistId: String, ids: List<String>)
+
     @Query("DELETE FROM channels WHERE id = :id")
     suspend fun deleteById(id: String)
 
@@ -92,13 +98,13 @@ interface FilmDao {
     /** §4.36.2 — films of one genre (null = all), newest first: by year
      *  (0 = unknown from the provider), ties broken by insertion order
      *  (rowid — the most recently synced rows first). */
-    @Query("SELECT * FROM films WHERE (:genre IS NULL OR genre LIKE '%' || :genre || '%') ORDER BY year DESC, rowid DESC LIMIT 100")
+    @Query("SELECT * FROM films WHERE (:genre IS NULL OR genre = :genre) ORDER BY year DESC, rowid DESC LIMIT 100")
     suspend fun getByGenreNewest(genre: String?): List<FilmEntity>
 
     @Query("SELECT * FROM films WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): FilmEntity?
 
-    @Query("SELECT * FROM films WHERE title LIKE '%' || :query || '%' OR genre LIKE '%' || :query || '%' ORDER BY title ASC LIMIT 50")
+    @Query("SELECT * FROM films WHERE title LIKE '%' || :query || '%' ESCAPE '\\' OR genre LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY title ASC LIMIT 50")
     suspend fun search(query: String): List<FilmEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -118,6 +124,10 @@ interface FilmDao {
 
     @Query("DELETE FROM films WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
+
+    /** LG-01 — see ChannelDao.deleteNotIn. */
+    @Query("DELETE FROM films WHERE playlistId = :playlistId AND id NOT IN (:ids)")
+    suspend fun deleteNotIn(playlistId: String, ids: List<String>)
 
     /** §4.36.6 — cleanup merge/delete executes per film (was deleteByPlaylist only). */
     @Query("DELETE FROM films WHERE id = :id")
@@ -147,13 +157,13 @@ interface SeriesDao {
      *  SeriesEntity carries no year/added date, so newest = most recently
      *  synced (rowid desc) — a true recency order needs an added-date
      *  column on the series table. */
-    @Query("SELECT * FROM series WHERE (:genre IS NULL OR genre LIKE '%' || :genre || '%') ORDER BY rowid DESC LIMIT 100")
+    @Query("SELECT * FROM series WHERE (:genre IS NULL OR genre = :genre) ORDER BY rowid DESC LIMIT 100")
     suspend fun getByGenreNewest(genre: String?): List<SeriesEntity>
 
     @Query("SELECT * FROM series WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): SeriesEntity?
 
-    @Query("SELECT * FROM series WHERE title LIKE '%' || :query || '%' OR genre LIKE '%' || :query || '%' ORDER BY title ASC LIMIT 50")
+    @Query("SELECT * FROM series WHERE title LIKE '%' || :query || '%' ESCAPE '\\' OR genre LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY title ASC LIMIT 50")
     suspend fun search(query: String): List<SeriesEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -174,6 +184,10 @@ interface SeriesDao {
     @Query("DELETE FROM series WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
 
+    /** LG-01 — see ChannelDao.deleteNotIn. */
+    @Query("DELETE FROM series WHERE playlistId = :playlistId AND id NOT IN (:ids)")
+    suspend fun deleteNotIn(playlistId: String, ids: List<String>)
+
     /** §4.36.6 — cleanup merge/delete executes per series (was deleteByPlaylist only). */
     @Query("DELETE FROM series WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -189,11 +203,6 @@ interface EpisodeDao {
 
     @Query("SELECT * FROM episodes WHERE seriesId = :seriesId ORDER BY season ASC, number ASC")
     suspend fun getAllForSeries(seriesId: String): List<EpisodeEntity>
-
-    /** All episodes sharing one code (e.g. "S01E01") across series — used to
-     *  resolve an episode code to its stored stream URL in getStreamUrls. */
-    @Query("SELECT * FROM episodes WHERE code = :code")
-    suspend fun getByCode(code: String): List<EpisodeEntity>
 
     /** The exact episode for one series+code — S01E01 exists in every series,
      *  so code alone cannot identify an episode. */
@@ -238,6 +247,10 @@ interface BouquetDao {
     @Query("DELETE FROM bouquets WHERE playlistId = :playlistId")
     suspend fun deleteByPlaylist(playlistId: String)
 
+    /** LG-01 — see ChannelDao.deleteNotIn. */
+    @Query("DELETE FROM bouquets WHERE playlistId = :playlistId AND id NOT IN (:ids)")
+    suspend fun deleteNotIn(playlistId: String, ids: List<String>)
+
     @Query("DELETE FROM bouquets WHERE id = :id")
     suspend fun deleteById(id: String)
 }
@@ -280,14 +293,26 @@ interface EpgDao {
     @Query("SELECT * FROM epg WHERE channelId = :channelId AND startMillis >= :fromMillis AND startMillis < :toMillis ORDER BY startMillis ASC")
     suspend fun getPrograms(channelId: String, fromMillis: Long, toMillis: Long): List<EpgEntity>
 
+    /**
+     * L-21 — batched lookup for EPG health: one query for all channels
+     * instead of one [getPrograms] call per channel (N+1). Returns all
+     * programs in the window; callers group by [EpgEntity.channelId].
+     * Callers must not pass an empty [channelIds] (Room rejects `IN ()`).
+     */
+    @Query("SELECT * FROM epg WHERE channelId IN (:channelIds) AND startMillis >= :fromMillis AND startMillis < :toMillis ORDER BY channelId ASC, startMillis ASC")
+    suspend fun getProgramsForChannels(channelIds: List<String>, fromMillis: Long, toMillis: Long): List<EpgEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(items: List<EpgEntity>)
 
     @Query("DELETE FROM epg WHERE channelId = :channelId AND startMillis >= :fromMillis AND startMillis < :toMillis")
     suspend fun deleteRange(channelId: String, fromMillis: Long, toMillis: Long)
 
-    @Query("DELETE FROM epg WHERE startMillis < :beforeMillis")
-    suspend fun deleteOlderThan(beforeMillis: Long)
+    /** OP-06 — prune by END time, not start time: a program that started
+     *  more than 2h ago but is still airing (long film, match) must stay
+     *  in the grid. Replaces the old startMillis-based prune. */
+    @Query("DELETE FROM epg WHERE endMillis < :beforeMillis")
+    suspend fun deleteEndedBefore(beforeMillis: Long)
 }
 
 @Dao
@@ -387,6 +412,10 @@ interface WatchLaterDao {
 
     @Query("DELETE FROM watch_later WHERE kind = :kind AND refId = :refId AND profileId = :profileId")
     suspend fun delete(kind: String, refId: String, profileId: String)
+
+    /** LG-15 — deleting a profile must not leave its watch-later rows behind. */
+    @Query("DELETE FROM watch_later WHERE profileId = :profileId")
+    suspend fun deleteByProfile(profileId: String)
 }
 
 @Dao
@@ -462,8 +491,7 @@ interface DownloadDao {
     suspend fun deleteById(id: String)
 }
 
-/** Followed series (§4.50). NEW DAO — the coordinator wires it into
- *  StreamMasterDatabase (abstract fun + entity + migration). */
+/** Followed series (§4.50). Wired into StreamMasterDatabase (v8). */
 @Dao
 interface SeriesFollowDao {
     @Query("SELECT * FROM series_follows ORDER BY title ASC")
@@ -482,8 +510,7 @@ interface SeriesFollowDao {
     suspend fun deleteById(seriesId: String)
 }
 
-/** Followed film genres (§4.57). NEW DAO — coordinator wires it into
- *  StreamMasterDatabase (abstract fun + entity + migration). */
+/** Followed film genres (§4.57). Wired into StreamMasterDatabase (v8). */
 @Dao
 interface GenreFollowDao {
     @Query("SELECT * FROM genre_follows ORDER BY genre ASC")
@@ -502,8 +529,7 @@ interface GenreFollowDao {
     suspend fun deleteById(genre: String)
 }
 
-/** Channel timers (§4.58). NEW DAO — coordinator wires it into
- *  StreamMasterDatabase (abstract fun + entity + migration). The §4.58
+/** Channel timers (§4.58). Wired into StreamMasterDatabase (v8). The §4.58
  *  builder owns the UI + AlarmManager scheduling. */
 @Dao
 interface ChannelTimerDao {
@@ -526,8 +552,7 @@ interface ChannelTimerDao {
     suspend fun deleteById(id: Long)
 }
 
-/** "My Playlist" bouquets (§4.62). NEW DAO — coordinator wires it into
- *  StreamMasterDatabase (abstract fun + entity + migration). */
+/** "My Playlist" bouquets (§4.62). Wired into StreamMasterDatabase (v8). */
 @Dao
 interface MyPlaylistBouquetDao {
     @Query("SELECT * FROM myplaylist_bouquets ORDER BY sortOrder ASC")
@@ -552,8 +577,7 @@ interface MyPlaylistBouquetDao {
     suspend fun deleteById(id: Long)
 }
 
-/** Items inside "My Playlist" bouquets (§4.62). NEW DAO — coordinator
- *  wires it into StreamMasterDatabase (abstract fun + entity + migration). */
+/** Items inside "My Playlist" bouquets (§4.62). Wired into StreamMasterDatabase (v8). */
 @Dao
 interface MyPlaylistItemDao {
     @Query("SELECT * FROM myplaylist_items WHERE bouquetId = :bouquetId")
@@ -575,8 +599,7 @@ interface MyPlaylistItemDao {
     suspend fun deleteByBouquet(bouquetId: Long)
 }
 
-/** User star ratings (§4.53). NEW DAO — coordinator wires it into
- *  StreamMasterDatabase (abstract fun + entity + migration). */
+/** User star ratings (§4.53). Wired into StreamMasterDatabase (v8). */
 @Dao
 interface UserRatingDao {
     @Query("SELECT * FROM user_ratings ORDER BY updatedAt DESC")

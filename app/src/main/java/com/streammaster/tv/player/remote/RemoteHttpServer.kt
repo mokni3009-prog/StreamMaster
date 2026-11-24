@@ -10,8 +10,9 @@ import fi.iki.elonen.NanoHTTPD
  * no internet needed. The phone opens http://<tv-ip>:<port>/?code=<6 digits>
  * (QR code on the Télécommande screen) and gets the remote page.
  *
- * Endpoints (all /api/... calls require the pairing code, as a `code` query
- * parameter or an `X-Remote-Code` header):
+ * Endpoints (all calls, including the page itself, require the pairing
+ * code, as a `code` query parameter or an `X-Remote-Code` header — S-02:
+ * the page used to be served to anyone on the LAN with no code at all):
  * - GET  /            → the remote page (assets/remote.html)
  * - GET  /api/status  → {"playing":bool,"kind":"live|film|...","title":"..."}
  * - POST /api/key     → {"key":"up|down|left|right|ok|back|playpause|..."}
@@ -36,8 +37,10 @@ class RemoteHttpServer(
     override fun serve(session: IHTTPSession): Response {
         return try {
             when {
-                session.uri == "/" ->
+                session.uri == "/" -> {
+                    if (!authorized(session)) return unauthorized()
                     newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", pageHtml)
+                }
                 session.uri == "/api/status" -> {
                     if (!authorized(session)) return unauthorized()
                     newFixedLengthResponse(Response.Status.OK, "application/json", statusProvider())

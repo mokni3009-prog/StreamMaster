@@ -8,6 +8,7 @@ import com.streammaster.tv.data.model.ScheduledRecording
 import com.streammaster.tv.data.model.SeriesRecordingRule
 import com.streammaster.tv.data.model.UserProfile
 import com.streammaster.tv.data.model.WatchLaterItem
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -26,13 +27,17 @@ class WatchLaterRepositoryImpl @Inject constructor(
         db.watchLaterDao().get(kind.name, refId, profileId) != null
 
     override suspend fun toggle(kind: ContentKind, refId: String, title: String, profileId: String) {
-        val dao = db.watchLaterDao()
-        if (dao.get(kind.name, refId, profileId) != null) {
-            dao.delete(kind.name, refId, profileId)
-        } else {
-            dao.upsert(
-                WatchLaterItem(kind, refId, title, System.currentTimeMillis(), profileId).toEntity()
-            )
+        // LG-15: read-then-write inside one transaction — two concurrent
+        // toggles used to both read "absent" and insert twice.
+        db.withTransaction {
+            val dao = db.watchLaterDao()
+            if (dao.get(kind.name, refId, profileId) != null) {
+                dao.delete(kind.name, refId, profileId)
+            } else {
+                dao.upsert(
+                    WatchLaterItem(kind, refId, title, System.currentTimeMillis(), profileId).toEntity()
+                )
+            }
         }
     }
 
@@ -58,7 +63,13 @@ class ProfileRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteProfile(id: String) {
-        db.profileDao().deleteById(id)
+        // LG-15: deleting a profile used to leave its history and
+        // watch-later rows orphaned — remove them in the same transaction.
+        db.withTransaction {
+            db.profileDao().deleteById(id)
+            db.historyDao().clearByProfile(id)
+            db.watchLaterDao().deleteByProfile(id)
+        }
     }
 }
 

@@ -89,7 +89,13 @@ object BackupCrypto {
     private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec {
         val spec = PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, KEY_BITS)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+        try {
+            return SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+        } finally {
+            // SEC-10: the password chars must not linger in memory after
+            // the key is derived.
+            spec.clearPassword()
+        }
     }
 
     /** Minimal `"key":"value"` extraction for our own fixed envelope. */
@@ -120,16 +126,54 @@ object PinRecovery {
     fun generateRecoveryCode(): String =
         String.format("%06d", random.nextInt(1_000_000))
 
-    /** Hash stored in AppSettings.pinRecoveryHash — the code is never stored. */
-    fun hash(code: String): String = BackupCrypto.sha256Hex(code.trim())
+    /**
+     * Hash stored in AppSettings.pinRecoveryHash — the code itself is never
+     * stored. SEC-05: a bare SHA-256 of a 6-digit code is brute-forceable
+     * in ~1M tries, so the stored form is now PBKDF2-HMAC-SHA256 (65 536
+     * iterations) with a random 128-bit salt:
+     * `v1:<base64 salt>:<hex>`. Old plain-SHA-256 hashes still verify
+     * (legacy branch in [verify]) and are upgraded on the next PIN set.
+     */
+    fun hash(code: String): String {
+        val salt = ByteArray(16).also { random.nextBytes(it) }
+        val spec = PBEKeySpec(code.trim().toCharArray(), salt, 65_536, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        try {
+            val derived = factory.generateSecret(spec).encoded
+            val hex = derived.joinToString("") { "%02x".format(it) }
+            val b64 = Base64.encodeToString(salt, Base64.NO_WRAP)
+            return "v1:$b64:$hex"
+        } finally {
+            spec.clearPassword()
+        }
+    }
 
     /** Constant-time comparison of a candidate code against a stored hash. */
     fun verify(code: String, storedHash: String?): Boolean {
         if (storedHash.isNullOrBlank()) return false
-        val candidate = hash(code)
+        val candidate = if (storedHash.startsWith("v1:")) {
+            // v1:<base64 salt>:<hex> — recompute with the stored salt.
+            val parts = storedHash.split(":")
+            if (parts.size != 3) return false
+            val salt = runCatching { Base64.decode(parts[1], Base64.NO_WRAP) }.getOrNull()
+                ?: return false
+            val spec = PBEKeySpec(code.trim().toCharArray(), salt, 65_536, 256)
+            val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+            try {
+                val derived = factory.generateSecret(spec).encoded
+                "v1:${parts[1]}:" + derived.joinToString("") { "%02x".format(it) }
+            } finally {
+                spec.clearPassword()
+            }
+        } else {
+            // Legacy: plain SHA-256 hex (pre-v1 installs).
+            hashLegacy(code)
+        }
         if (candidate.length != storedHash.length) return false
         var diff = 0
         for (i in candidate.indices) diff = diff or (candidate[i].code xor storedHash[i].code)
         return diff == 0
     }
+
+    private fun hashLegacy(code: String): String = BackupCrypto.sha256Hex(code.trim())
 }

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Translations of values/strings_myplaylist.xml -->
+<resources>
+    <string name="my_playlist_name">My Playlist</string>
+    <string name="my_playlist_local">قائمة تشغيل محلية</string>
+    <string name="my_playlist_no_server">بدون سيرفر</string>
+    <string name="my_playlist_no_expiry">بدون انتهاء</string>
+    <string name="my_playlist_empty">فارغة — أضف محتوى من «إدارة قائمة التشغيل»</string>
+    <string name="my_playlist_bouquets">باقة</string>
+    <string name="my_playlist_manage">إدارة</string>
+    <string name="my_playlist_add">أضف إلى My Playlist</string>
+    <string name="my_playlist_choose_bouquet">اختر باقة</string>
+    <string name="my_playlist_create_and_add">أنشئ وأضف</string>
+    <string name="my_playlist_added">أُضيف إلى My Playlist</string>
+    <string name="my_playlist_already_added">موجود في هذه الباقة بالفعل</string>
+    <string name="my_playlist_no_bouquet">لا توجد باقة — أنشئ واحدة بالأسفل</string>
+    <string name="my_playlist_section_empty">لا يوجد محتوى بعد</string>
+    <string name="my_playlist_always_available">متاحة دائمًا</string>
+</resources>

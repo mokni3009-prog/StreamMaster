@@ -20,8 +20,9 @@ import androidx.compose.ui.unit.dp
  * focused element scales to 1.03 and gets the prototype halo
  * (`[data-f]:focus`: 4px #fff7d1 ring + 38px rgba(255,232,158,.85) gold
  * glow + 18/40px rgba(0,0,0,.95) drop shadow).
- * Unfocused elements get a TRANSPARENT 2.dp border (same width, so the
- * layout size stays stable) — no permanent gold border (G02).
+ * Unfocused elements get a TRANSPARENT 4.dp border (same width as the
+ * focused ring, so the layout size stays stable) — no permanent gold
+ * border (G02).
  * Uses androidx.tv.foundation focus handling via the standard focusable +
  * onFocusChanged chain (tv-foundation builds on the same focus system).
  * Card radius is 20.dp everywhere; poster cards carry a 2.dp gold border.
@@ -46,8 +47,9 @@ fun Modifier.tvFocus(): Modifier {
                     )
                     .border(4.dp, Color(0xFFFFF7D1), RoundedCornerShape(20.dp))
             } else {
-                // G02: transparent border — keeps the size identical, no gold ring.
-                Modifier.border(2.dp, Color.Transparent, RoundedCornerShape(20.dp))
+                // G02 / T-03: transparent border, SAME 4.dp width as the
+                // focused ring — the thickness no longer jumps on focus.
+                Modifier.border(4.dp, Color.Transparent, RoundedCornerShape(20.dp))
             }
         )
 }

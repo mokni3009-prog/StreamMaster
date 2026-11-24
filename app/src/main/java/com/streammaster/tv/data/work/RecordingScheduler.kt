@@ -29,7 +29,7 @@ object RecordingScheduler {
             putExtra(EXTRA_SCHEDULED_ID, rec.id)
         }
         val startPending = PendingIntent.getBroadcast(
-            context, rec.id.hashCode(), startIntent,
+            context, requestCode(rec.id, "start"), startIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         setExact(am, rec.startMillis, startPending)
@@ -38,7 +38,7 @@ object RecordingScheduler {
             putExtra(EXTRA_SCHEDULED_ID, rec.id)
         }
         val stopPending = PendingIntent.getBroadcast(
-            context, rec.id.hashCode() + 1, stopIntent,
+            context, requestCode(rec.id, "stop"), stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         setExact(am, rec.endMillis, stopPending)
@@ -50,7 +50,7 @@ object RecordingScheduler {
             action = ACTION_START
         }
         val startPending = PendingIntent.getBroadcast(
-            context, rec.id.hashCode(), startIntent,
+            context, requestCode(rec.id, "start"), startIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         am.cancel(startPending)
@@ -59,12 +59,18 @@ object RecordingScheduler {
             action = ACTION_STOP
         }
         val stopPending = PendingIntent.getBroadcast(
-            context, rec.id.hashCode() + 1, stopIntent,
+            context, requestCode(rec.id, "stop"), stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         am.cancel(stopPending)
         stopPending.cancel()
     }
+
+    /** LG-16: start/stop used to be id.hashCode() and id.hashCode()+1 — the
+     *  stop code of one recording could equal the start code of another
+     *  (cancelling / firing the wrong alarm). Namespaced hashes keep the
+     *  two alarms in separate spaces. */
+    private fun requestCode(id: String, which: String): Int = ("rec-$which|$id").hashCode()
 
     private fun setExact(am: AlarmManager, atMillis: Long, pending: PendingIntent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

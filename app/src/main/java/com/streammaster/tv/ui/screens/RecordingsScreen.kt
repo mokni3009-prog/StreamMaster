@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.streammaster.tv.R
-import com.streammaster.tv.data.model.Recording
 import com.streammaster.tv.data.model.RecordingStatus
 import com.streammaster.tv.player.RecordingState
 import com.streammaster.tv.ui.components.GoldButton
@@ -372,13 +371,4 @@ private fun formatDuration(ms: Long): String {
     val s = (ms / 1000).toInt()
     return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, (s % 3600) / 60, s % 60)
     else "%02d:%02d".format(s / 60, s % 60)
-}
-
-private fun formatSize(bytes: Long): String {
-    return when {
-        bytes >= 1_073_741_824L -> "%.1f Go".format(bytes / 1_073_741_824.0)
-        bytes >= 1_048_576L -> "%.0f Mo".format(bytes / 1_048_576.0)
-        bytes >= 1024L -> "%.0f Ko".format(bytes / 1024.0)
-        else -> "$bytes o"
-    }
 }

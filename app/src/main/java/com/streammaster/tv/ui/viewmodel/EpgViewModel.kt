@@ -98,13 +98,46 @@ class EpgViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), EpgUiState(windowStartMillis = windowForDay(0).first))
 
     fun selectDay(offset: Int) {
-        _selectedDay.value = offset.coerceIn(0, (daysFlow.value - 1).coerceAtLeast(0))
+        val max = (daysFlow.value - 1).coerceAtLeast(0)
+        if (offset > max) {
+            // M-04: the settings window may not have arrived yet
+            // (daysFlow still holds its initial 2) — keep the request
+            // pending instead of silently clamping it away; the
+            // collector in init applies it once the window grows.
+            pendingDayOffset = offset
+            _selectedDay.value = max
+        } else {
+            pendingDayOffset = null
+            _selectedDay.value = offset
+        }
     }
 
+    /** L-01: one cached StateFlow per channel, created once — the screen
+     *  calls programsFor() for every visible row on every recomposition,
+     *  and a fresh flow each time re-subscribes to Room and flickers. */
+    private val programsFlows = mutableMapOf<String, StateFlow<List<EpgProgram>>>()
     fun programsFor(channelId: String): StateFlow<List<EpgProgram>> =
-        windowFlow.flatMapLatest { (start, end) ->
-            contentRepository.observeEpg(channelId, start, end)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        programsFlows.getOrPut(channelId) {
+            windowFlow.flatMapLatest { (start, end) ->
+                contentRepository.observeEpg(channelId, start, end)
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        }
+
+    /** Day tab tapped before the EPG window setting arrived (see M-04). */
+    private var pendingDayOffset: Int? = null
+
+    init {
+        viewModelScope.launch {
+            daysFlow.collect { days ->
+                val pending = pendingDayOffset ?: return@collect
+                val max = (days - 1).coerceAtLeast(0)
+                if (pending <= max) {
+                    pendingDayOffset = null
+                    _selectedDay.value = pending
+                }
+            }
+        }
+    }
 
     /** Current program opens the channel; a future program toggles a reminder 🔔. */
     fun toggleReminder(channelId: String, program: EpgProgram, isReminder: Boolean) = viewModelScope.launch {

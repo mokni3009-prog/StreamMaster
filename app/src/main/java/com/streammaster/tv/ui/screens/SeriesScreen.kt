@@ -84,7 +84,8 @@ fun SeriesScreen(
     var activeSectionOpen by remember { mutableStateOf(false) }
     var mySource by remember { mutableStateOf(false) }
     var myBouquetId by remember { mutableStateOf<Long?>(null) }
-    var activeBouquetId by remember { mutableStateOf<String?>(null) }
+    // D-01: the old `activeBouquetId` was only ever assigned null — the
+    // active-subscription "Tout" pill is simply `!mySource`.
     // Same sort as the active catalogue, applied to My Playlist series.
     val sortedMySeries = remember(mySeriesAll, sort) {
         when (sort) {
@@ -133,6 +134,19 @@ fun SeriesScreen(
             // new user.) The ViewModels are retained in the back stack,
             // so on this return path both lists already hold their true
             // values.
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+            firstFocus.requestFocus()
+        }
+    }
+    // M-01: a truly empty catalogue never satisfies the restore effect
+    // above (its `series.isNotEmpty()` conclusion never fires) — after a
+    // short wait, drop the stale id and focus the first sort pill so the
+    // remote is never left with no focused element.
+    LaunchedEffect(focusedId) {
+        if (focusedId == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(1500)
+        if (!focusRestored) {
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
             firstFocus.requestFocus()
@@ -202,8 +216,8 @@ fun SeriesScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    SortPill(stringResource(R.string.live_all), !mySource && activeBouquetId == null) {
-                        mySource = false; activeBouquetId = null
+                    SortPill(stringResource(R.string.live_all), !mySource) {
+                        mySource = false
                     }
                 }
                 items(activeSeriesBouquets) { bouquet ->
@@ -213,7 +227,9 @@ fun SeriesScreen(
                 }
             }
         }
-        if (displayedSeries.isEmpty() && mySource) {
+        // M-01: the empty message used to show only for My Playlist —
+        // an empty active catalogue showed a bare grid with no text.
+        if (displayedSeries.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center

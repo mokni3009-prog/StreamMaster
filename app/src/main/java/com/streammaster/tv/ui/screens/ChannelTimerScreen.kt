@@ -37,9 +37,7 @@ import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.viewmodel.ChannelTimerViewModel
-
-/** Route for the channel timer screen (§4.58). Registered by the nav builder. */
-const val CHANNEL_TIMER_ROUTE = "channel_timer"
+import kotlinx.coroutines.delay
 
 /**
  * Channel timer UI (§4.58): pick a channel + a time, list the programmed
@@ -57,6 +55,14 @@ fun ChannelTimerScreen(
     // Focus (2026-11-23, ص-04): initial focus on the channel field.
     val firstFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // D-05 — notices auto-dismiss after 5s (clearNotice was dead and a
+    // notice stayed on screen forever once shown).
+    LaunchedEffect(state.notice) {
+        if (state.notice != null) {
+            delay(5000)
+            viewModel.clearNotice()
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         SectionHeader(stringResource(R.string.ns_timer_title), stringResource(R.string.ns_timer_subtitle))
@@ -94,6 +100,9 @@ fun ChannelTimerScreen(
                     val text = when {
                         notice == "pick_channel" -> stringResource(R.string.ns_timer_pick_channel_first)
                         notice == "cancelled" -> stringResource(R.string.ns_timer_cancelled)
+                        // L-13/L-14 — the new failure/duplicate notices.
+                        notice == "failed" -> stringResource(R.string.ns_timer_failed)
+                        notice == "duplicate" -> stringResource(R.string.ns_timer_duplicate)
                         notice.startsWith("scheduled:") -> {
                             val parts = notice.removePrefix("scheduled:").split(":")
                             // parts: [channelName, "HH", "MM"] — name may itself
@@ -106,7 +115,7 @@ fun ChannelTimerScreen(
                     }
                     Text(
                         text = text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
-                        color = if (notice == "pick_channel") Danger else GoldBright
+                        color = if (notice == "pick_channel" || notice == "failed" || notice == "duplicate") Danger else GoldBright
                     )
                 }
             }

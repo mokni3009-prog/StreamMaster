@@ -151,6 +151,12 @@ abstract class StreamMasterDatabase : RoomDatabase() {
         fun create(context: Context): StreamMasterDatabase =
             Room.databaseBuilder(context, StreamMasterDatabase::class.java, NAME)
                 .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+                // OP-21 — INTENTIONAL, documented: there is no released build
+                // below v6 (the first public APK ships v8), so a database
+                // older than v6 can only come from a pre-release dev install
+                // whose data is expendable. If a public build ever ships
+                // below v6, add the missing migrations here instead of
+                // relying on this fallback.
                 .fallbackToDestructiveMigration()
                 .build()
     }
