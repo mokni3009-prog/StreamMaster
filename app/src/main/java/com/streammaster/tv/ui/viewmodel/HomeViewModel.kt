@@ -89,14 +89,22 @@ class HomeViewModel @Inject constructor(
         userRatings.value = ratings
     }
 
+    // 6-flow combine fails type inference here (same as ManageViewModel):
+    // nest it as 3+3 Triples with inferred lambda params.
     val state: StateFlow<HomeUiState> = combine(
-        contentRepository.observeChannels(),
-        contentRepository.observeFilms(),
-        contentRepository.observeSeries(),
-        playlistRepository.observePlaylists(),
-        contentRepository.observeHistory(),
-        userRatings
-    ) { channels: List<Channel>, films: List<Film>, series: List<Series>, playlists: List<Playlist>, history: List<HistoryEntry>, ratings: List<TasteRating> ->
+        combine(
+            contentRepository.observeChannels(),
+            contentRepository.observeFilms(),
+            contentRepository.observeSeries()
+        ) { channels, films, series -> Triple(channels, films, series) },
+        combine(
+            playlistRepository.observePlaylists(),
+            contentRepository.observeHistory(),
+            userRatings
+        ) { playlists, history, ratings -> Triple(playlists, history, ratings) }
+    ) { content, rest ->
+        val (channels, films, series) = content
+        val (playlists, history, ratings) = rest
         val active = playlists.firstOrNull { it.isActive } ?: playlists.firstOrNull()
         // §4.21 + §4.36.1: one ranked list of at most 8, split back by kind.
         val (recommendedFilms, recommendedSeries) = recommend(films, series, history, ratings)
