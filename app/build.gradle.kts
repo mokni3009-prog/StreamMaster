@@ -1,5 +1,8 @@
 // Stream Master — app module (Android TV, CONTRACT §2).
 // Versions come from gradle/libs.versions.toml; do not hard-code them here.
+import java.net.HttpURLConnection
+import java.net.URL
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -155,7 +158,7 @@ fun jsonEscapeBuildReport(value: String): String {
 }
 
 fun postBuildReport(url: String, body: String) {
-    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    val connection = URL(url).openConnection() as HttpURLConnection
     try {
         connection.requestMethod = "POST"
         connection.connectTimeout = 5000
