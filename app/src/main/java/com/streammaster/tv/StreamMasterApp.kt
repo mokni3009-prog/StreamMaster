@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.imageLoader
 import coil.memory.MemoryCache
 import com.streammaster.tv.data.work.ReminderScheduler
+import com.streammaster.tv.util.CrashReporter
 import com.streammaster.tv.util.DeviceCaps
 import dagger.hilt.android.HiltAndroidApp
 
@@ -24,6 +25,9 @@ class StreamMasterApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // SPEC §4.66: install first, so crashes during early init are
+        // captured too. Silent and automatic; never crashes the app.
+        CrashReporter.install(this)
         ReminderScheduler.initialize(this)
     }
 
