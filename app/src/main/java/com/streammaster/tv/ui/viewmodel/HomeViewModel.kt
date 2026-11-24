@@ -7,6 +7,7 @@ import com.streammaster.tv.data.model.Channel
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.Film
 import com.streammaster.tv.data.model.HistoryEntry
+import com.streammaster.tv.data.model.Playlist
 import com.streammaster.tv.data.model.Series
 import com.streammaster.tv.data.repository.ContentRepository
 import com.streammaster.tv.data.repository.PlaylistRepository
@@ -95,7 +96,7 @@ class HomeViewModel @Inject constructor(
         playlistRepository.observePlaylists(),
         contentRepository.observeHistory(),
         userRatings
-    ) { channels: List<Channel>, films: List<Film>, series: List<Series>, playlists, history, ratings ->
+    ) { channels: List<Channel>, films: List<Film>, series: List<Series>, playlists: List<Playlist>, history: List<HistoryEntry>, ratings: List<TasteRating> ->
         val active = playlists.firstOrNull { it.isActive } ?: playlists.firstOrNull()
         // §4.21 + §4.36.1: one ranked list of at most 8, split back by kind.
         val (recommendedFilms, recommendedSeries) = recommend(films, series, history, ratings)

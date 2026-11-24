@@ -62,7 +62,7 @@ class SubtitleDownloader(
                     .firstOrNull()
                     ?: return@withContext DownloadResult.NotFound
                 val link = try {
-                    service.downloadLink(apiKey, DownloadRequest(best.fileId)).link
+                    service.downloadLink(apiKey, request = DownloadRequest(best.fileId)).link
                 } catch (e: retrofit2.HttpException) {
                     if (e.code() == 401 || e.code() == 403) {
                         return@withContext DownloadResult.NeedsLogin

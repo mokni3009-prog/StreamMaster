@@ -74,38 +74,40 @@ class RemoteServerManager @Inject constructor(
         }
     }
 
-    private suspend fun startServer() = serverMutex.withLock {
-        if (server != null) return
-        val ip = localIpAddress()
-        _localIp.value = ip
-        if (ip.isEmpty()) {
-            Log.w(TAG, "Remote server not started: no LAN address (Wi-Fi off?)")
-            return
-        }
-        if (currentCode.isBlank()) {
-            Log.w(TAG, "Remote server not started: no pairing code yet")
-            return
-        }
-        for (port in 8080..8090) {
-            try {
-                val http = RemoteHttpServer(
-                    port = port,
-                    context = context,
-                    handler = handler,
-                    codeProvider = { currentCode },
-                    statusProvider = { buildStatusJson() }
-                )
-                http.start()
-                server = http
-                _port.value = port
-                _running.value = true
-                Log.i(TAG, "Remote server started on $ip:$port")
+    private suspend fun startServer() {
+        serverMutex.withLock {
+            if (server != null) return
+            val ip = localIpAddress()
+            _localIp.value = ip
+            if (ip.isEmpty()) {
+                Log.w(TAG, "Remote server not started: no LAN address (Wi-Fi off?)")
                 return
-            } catch (e: Exception) {
-                Log.w(TAG, "Remote server: port $port busy (${e.message})")
             }
+            if (currentCode.isBlank()) {
+                Log.w(TAG, "Remote server not started: no pairing code yet")
+                return
+            }
+            for (port in 8080..8090) {
+                try {
+                    val http = RemoteHttpServer(
+                        port = port,
+                        context = context,
+                        handler = handler,
+                        codeProvider = { currentCode },
+                        statusProvider = { buildStatusJson() }
+                    )
+                    http.start()
+                    server = http
+                    _port.value = port
+                    _running.value = true
+                    Log.i(TAG, "Remote server started on $ip:$port")
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "Remote server: port $port busy (${e.message})")
+                }
+            }
+            Log.w(TAG, "Remote server not started: no free port in 8080..8090")
         }
-        Log.w(TAG, "Remote server not started: no free port in 8080..8090")
     }
 
     private suspend fun stopServer() = serverMutex.withLock {

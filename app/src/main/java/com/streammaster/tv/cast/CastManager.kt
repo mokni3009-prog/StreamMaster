@@ -73,6 +73,7 @@ class CastManager(context: Context) {
             _state.update { it.copy(lastError = "Cast session failed ($error)") }
         }
         override fun onSessionStarting(session: CastSession) = Unit
+        override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
         override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
 
         private fun onSession(session: CastSession) {
@@ -208,7 +209,7 @@ class CastManager(context: Context) {
 
     /** 0.0 – 1.0 receiver volume. */
     fun setVolume(level: Float) {
-        currentSession?.remoteMediaClient?.setVolume(level.toDouble())
+        currentSession?.setVolume(level.toDouble())
     }
 
     /** Stop discovery and unregister listeners (call from onDispose / onCleared). */

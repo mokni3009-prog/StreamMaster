@@ -43,7 +43,6 @@ object XmlTvParser {
             factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
         }
         factory.isXIncludeAware = false
-        factory.isExpandEntityReferences = false
         val parser = factory.newSAXParser()
         parser.parse(input, handler)
         return XmlTvResult(handler.channels, handler.programs)
