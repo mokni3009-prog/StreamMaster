@@ -125,8 +125,8 @@ object NetworkFactory {
         "chrome-tv" -> "Mozilla/5.0 (Linux; Android 11; Android TV) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         "vlc" -> "VLC/3.0.20 LibVLC/3.0.20"
-        "custom" -> settings.uaCustom.trim().ifEmpty { "StreamMaster/1.2.0" }
-        else -> "StreamMaster/1.2.0"
+        "custom" -> settings.uaCustom.trim().ifEmpty { "StreamMaster/1.2.2" }
+        else -> "StreamMaster/1.2.2"
     }
 
     fun buildOkHttpClient(settings: AppSettings): OkHttpClient {

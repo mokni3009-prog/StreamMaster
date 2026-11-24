@@ -93,7 +93,7 @@ class NetworkStack @Inject constructor(
         /** VOD disk cache cap (B20). */
         const val VOD_CACHE_MAX_BYTES = 300L * 1024 * 1024
 
-        const val DEFAULT_UA = "StreamMaster/1.2.0 (Android TV)"
+        const val DEFAULT_UA = "StreamMaster/1.2.2 (Android TV)"
         const val CHROME_TV_UA =
             "Mozilla/5.0 (Linux; Android 11; Android TV) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

@@ -2,7 +2,7 @@
 <!-- English locale. French is the default (values/strings.xml). -->
 <resources>
     <string name="app_name">Stream Master</string>
-    <string name="app_version">Version 1.2.0</string>
+    <string name="app_version">Version 1.2.2</string>
     <string name="login_xtream">Xtream Codes</string>
     <string name="login_stalker">Stalker</string>
     <string name="login_m3u">M3U</string>
@@ -316,7 +316,7 @@
     <string name="nav_section_navigation">Navigation</string>
     <string name="nav_section_library">Library</string>
     <string name="login_subtitle">Xtream Codes API connection — Android Smart TV</string>
-    <string name="login_version_line">Version 1.2.0 • IPTV • Android TV</string>
+    <string name="login_version_line">Version 1.2.2 • IPTV • Android TV</string>
     <string name="splash_status">Initialising the 4K Android TV player…</string>
     <string name="splash_skip">Skip to Sign in ➔</string>
     <string name="sync_title">Syncing: %1$s</string>

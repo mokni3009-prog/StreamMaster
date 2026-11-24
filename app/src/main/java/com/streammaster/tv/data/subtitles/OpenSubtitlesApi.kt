@@ -44,7 +44,7 @@ interface OpenSubtitlesService {
     ): DownloadResponse
 
     companion object {
-        const val USER_AGENT = "StreamMaster/1.2.0"
+        const val USER_AGENT = "StreamMaster/1.2.2"
     }
 }
 

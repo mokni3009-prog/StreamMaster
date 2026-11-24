@@ -2,7 +2,7 @@
 <!-- Arabic locale. French is the default (values/strings.xml). -->
 <resources>
     <string name="app_name">Stream Master</string>
-    <string name="app_version">الإصدار 1.2.0</string>
+    <string name="app_version">الإصدار 1.2.2</string>
     <string name="login_xtream">Xtream Codes</string>
     <string name="login_stalker">Stalker</string>
     <string name="login_m3u">M3U</string>
@@ -316,7 +316,7 @@
     <string name="nav_section_navigation">التنقل</string>
     <string name="nav_section_library">المكتبة</string>
     <string name="login_subtitle">اتصال Xtream Codes API — تلفاز أندرويد الذكي</string>
-    <string name="login_version_line">الإصدار 1.2.0 • IPTV • تلفاز أندرويد</string>
+    <string name="login_version_line">الإصدار 1.2.2 • IPTV • تلفاز أندرويد</string>
     <string name="splash_status">جارٍ تهيئة مشغّل تلفاز أندرويد 4K…</string>
     <string name="splash_skip">تخطَّ إلى تسجيل الدخول ➔</string>
     <string name="sync_title">مزامنة: %1$s</string>

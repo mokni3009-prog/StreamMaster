@@ -2,7 +2,7 @@
 <!-- French = default locale (CONTRACT §6/§10). All user-visible text via stringResource. -->
 <resources>
     <string name="app_name">Stream Master</string>
-    <string name="app_version">Version 1.2.0</string>
+    <string name="app_version">Version 1.2.2</string>
     <string name="login_xtream">Xtream Codes</string>
     <string name="login_stalker">Stalker</string>
     <string name="login_m3u">M3U</string>
@@ -316,7 +316,7 @@
     <string name="nav_section_navigation">Navigation</string>
     <string name="nav_section_library">Bibliothèque</string>
     <string name="login_subtitle">Connexion Xtream Codes API — Android Smart TV</string>
-    <string name="login_version_line">Version 1.2.0 • IPTV • Android TV</string>
+    <string name="login_version_line">Version 1.2.2 • IPTV • Android TV</string>
     <string name="splash_status">Initialisation du lecteur 4K Android TV…</string>
     <string name="splash_skip">Passer vers Connexion ➔</string>
     <string name="sync_title">Synchronisation : %1$s</string>
