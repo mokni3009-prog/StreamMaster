@@ -86,9 +86,21 @@ fun SelectorDialog(
     val focusRequesters = remember(options) {
         List(options.size) { FocusRequester() }
     }
-    LaunchedEffect(Unit) {
+    // Focus (2026-11-23, ص-18): re-request when the option set changes
+    // (e.g. channels reload while the dialog is open) — the old
+    // LaunchedEffect(Unit) never re-ran, so focus was lost. Keyed on size
+    // + selection, not on the list identity: callers rebuild the list on
+    // every recomposition, and re-requesting then would yank focus back
+    // to the selected option while the user browses. With no options at
+    // all, focus falls back to the Annuler button.
+    val cancelFocus = remember { FocusRequester() }
+    LaunchedEffect(options.size, selectedId) {
         try {
-            focusRequesters.getOrNull(selectedIndex)?.requestFocus()
+            if (options.isNotEmpty()) {
+                focusRequesters.getOrNull(selectedIndex)?.requestFocus()
+            } else {
+                cancelFocus.requestFocus()
+            }
         } catch (_: Exception) {
         }
     }
@@ -254,7 +266,7 @@ fun SelectorDialog(
             GoldButton(
                 text = stringResource(R.string.cancel),
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().focusRequester(cancelFocus)
             )
         }
     }

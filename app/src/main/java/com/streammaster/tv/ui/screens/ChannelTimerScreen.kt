@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,6 +54,9 @@ fun ChannelTimerScreen(
     val state by viewModel.state.collectAsState()
     val timers by viewModel.timers.collectAsState()
     var showChannelPicker by remember { mutableStateOf(false) }
+    // Focus (2026-11-23, ص-04): initial focus on the channel field.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         SectionHeader(stringResource(R.string.ns_timer_title), stringResource(R.string.ns_timer_subtitle))
@@ -59,7 +65,8 @@ fun ChannelTimerScreen(
             Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 ReadOnlyField(
                     stringResource(R.string.ns_timer_choose_channel),
-                    state.selectedChannel?.name ?: ""
+                    state.selectedChannel?.name ?: "",
+                    Modifier.focusRequester(firstFocus)
                 ) { showChannelPicker = true }
 
                 Row(

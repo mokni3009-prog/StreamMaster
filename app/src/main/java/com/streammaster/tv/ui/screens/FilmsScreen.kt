@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,10 +44,12 @@ import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.BorderGold
 import com.streammaster.tv.ui.theme.GoldBright
 import com.streammaster.tv.ui.theme.GoldSoft
+import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.viewmodel.FilmSort
 import com.streammaster.tv.ui.viewmodel.FilmsViewModel
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Films — grid + sort pills (default / recent / rated / A–Z).
  *
@@ -57,7 +60,9 @@ import kotlinx.coroutines.delay
  * real (item references); for the active subscription it shows the
  * subscription's films — the Film model carries no bouquetId, so a
  * per-bouquet split of the active catalogue is impossible until the
- * data model gains one.
+ * data model gains one. Until then the active-subscription bouquet
+ * pills are display-only ([DisabledBouquetPill]: same look, no focus,
+ * no click) so the remote never lands on a button that does nothing.
  *
  * §4.1 — returning from the player focuses the film that was playing
  * (PlayerScreen writes "focusedId" into this entry's savedStateHandle).
@@ -100,6 +105,10 @@ fun FilmsScreen(
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     val focusedId = savedStateHandle?.get<String>("focusedId")
     var focusRestored by remember { mutableStateOf(false) }
+    // Initial focus: the first sort pill — but only when there is no
+    // restore target, so it never steals the focus back from a restore.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (focusedId == null) firstFocus.requestFocus() }
     LaunchedEffect(focusedId, displayedFilms, myFilmsAll) {
         if (focusedId == null || focusRestored) return@LaunchedEffect
         if (!mySource && myFilmsAll.any { it.id == focusedId }) {
@@ -110,18 +119,26 @@ fun FilmsScreen(
         val idx = displayedFilms.indexOfFirst { it.id == focusedId }
         if (idx >= 0) {
             gridState.scrollToItem(idx)
-            delay(120)
+            // Wait for the tile to actually be laid out instead of
+            // guessing with a fixed delay.
+            withTimeoutOrNull(1000) {
+                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+            }
             tileFocusRequesters[focusedId]?.requestFocus()
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
-        } else if (films.isNotEmpty() && myFilmsAll.isNotEmpty()) {
+        } else if (films.isNotEmpty()) {
+            // The active catalogue has loaded and the id is in neither
+            // list: nothing to restore. (An empty My Playlist must not
+            // block this conclusion — its list is empty by design for a
+            // new user.) The ViewModels are retained in the back stack,
+            // so on this return path both lists already hold their true
+            // values.
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
+            firstFocus.requestFocus()
         }
     }
-    // Initial focus: the first sort pill.
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     Column(modifier = Modifier.fillMaxSize()) {
         // Section head with the "Qualité 4K & FHD" count badge (prototype `.sec-head`).
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -191,9 +208,9 @@ fun FilmsScreen(
                     }
                 }
                 items(activeFilmBouquets) { bouquet ->
-                    SortPill(bouquet.name, !mySource && activeBouquetId == bouquet.id) {
-                        mySource = false; activeBouquetId = bouquet.id
-                    }
+                    // Display-only: no bouquetId on Film, so this pill
+                    // cannot filter the grid (see DisabledBouquetPill).
+                    DisabledBouquetPill(bouquet.name)
                 }
             }
         }
@@ -228,5 +245,33 @@ fun FilmsScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Display-only bouquet pill for the active subscription (2026-11-23
+ * focus fix, shared by Films / Series): Film / Series carry no
+ * `bouquetId` and the DB stores no film↔bouquet or series↔bouquet link
+ * (FilmEntity / SeriesEntity have no bouquet column; the bouquet table
+ * is standalone), so per-bouquet filtering of the active catalogue is
+ * impossible without a model + sync migration — a decision for كوتش,
+ * not a screen-local fix. Matching by name (bouquet name vs genre) was
+ * rejected: genre is free text and would silently filter the wrong
+ * titles. The pill stays visible with exactly the unselected SortPill
+ * look, but takes no focus and no click, so the remote never lands on
+ * a button that does nothing. The "Tout" pill next to it stays a real
+ * SortPill: it works (it shows the whole catalogue).
+ */
+@Composable
+internal fun DisabledBouquetPill(text: String) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0x73000000))
+            .border(2.dp, BorderGold, RoundedCornerShape(20.dp))
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = text, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = GoldWhite)
     }
 }

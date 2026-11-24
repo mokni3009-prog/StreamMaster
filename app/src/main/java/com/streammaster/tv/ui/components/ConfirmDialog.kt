@@ -55,10 +55,12 @@ fun ConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    // Initial focus: the confirm button — without it a Dialog opens with
-    // no focused element and the first D-pad press is lost.
-    val confirmFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { confirmFocus.requestFocus() }
+    // Initial focus: the dismiss (safe) button — without it a Dialog opens
+    // with no focused element and the first D-pad press is lost. Focus
+    // used to start on the confirm button, so a quick OK deleted by
+    // mistake (ص-17); the destructive action now needs a deliberate move.
+    val dismissFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { dismissFocus.requestFocus() }
     // .dlg-card shell (prototype): 720dp, padding 40×46, radius 30,
     // gold gradient, 2.5px border.
     val cardShape = RoundedCornerShape(30.dp)
@@ -122,13 +124,13 @@ fun ConfirmDialog(
                 GoldButton(
                     text = confirmText,
                     onClick = onConfirm,
-                    modifier = Modifier.weight(1f).focusRequester(confirmFocus)
+                    modifier = Modifier.weight(1f)
                 )
                 GoldButton(
                     text = dismissText,
                     onClick = onDismiss,
                     outlined = true,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).focusRequester(dismissFocus)
                 )
             }
         }

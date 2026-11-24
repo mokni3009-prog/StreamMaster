@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -69,6 +70,32 @@ fun DownloadsScreen(
     val restoreFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun focusFor(id: String) = restoreFocusRequesters.getOrPut(id) { FocusRequester() }
     val listState = rememberLazyListState()
+    // Focus (2026-11-23, m-09): the status button swaps GhostButton ⏸ /
+    // GoldButton ▶ / GoldButton retry — different nodes, so pressing it
+    // disposed the focused node. Each row's status button owns a stable
+    // requester; the click schedules a re-focus on the new button after
+    // the status change recomposes. Same treatment for the confirm-delete
+    // button, and focus moves to a live neighbour BEFORE a row is deleted.
+    val confirmFocus = remember { FocusRequester() }
+    LaunchedEffect(confirmDeleteId) {
+        if (confirmDeleteId != null) {
+            delay(50)
+            confirmFocus.requestFocus()
+        }
+    }
+    val statusFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun statusFocusFor(id: String) = statusFocusRequesters.getOrPut(id) { FocusRequester() }
+    var statusRefocusKey by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var statusRefocusCount by remember { mutableStateOf(0) }
+    LaunchedEffect(statusRefocusKey) {
+        val key = statusRefocusKey ?: return@LaunchedEffect
+        delay(50)
+        statusFocusRequesters[key.first]?.requestFocus()
+    }
+    fun refocusStatus(id: String) {
+        statusRefocusCount += 1
+        statusRefocusKey = id to statusRefocusCount
+    }
     LaunchedEffect(downloads.isNotEmpty()) {
         if (downloads.isNotEmpty() && !initialFocusDone && !hasRestoreTarget) {
             firstFocus.requestFocus()
@@ -96,7 +123,7 @@ fun DownloadsScreen(
         if (downloads.isEmpty()) {
             Text(text = stringResource(R.string.downloads_empty), fontSize = 18.sp, color = TextMuted)
         } else {
-            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(state = listState, modifier = Modifier.focusRestorer(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(downloads) { index, download ->
                     val pct = if (download.totalBytes > 0) {
                         (download.downloadedBytes * 100 / download.totalBytes).toInt().coerceIn(0, 100)
@@ -112,6 +139,7 @@ fun DownloadsScreen(
                                     else -> Modifier
                                 }
                             )
+                            .focusRequester(focusFor(download.id))
                             .tvFocus()
                             .clickable {
                                 if (download.status == DownloadStatus.DONE) {
@@ -144,18 +172,34 @@ fun DownloadsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             when (download.status) {
                                 DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED -> {
-                                    GhostButton(text = "⏸") { viewModel.pause(download) }
+                                    GhostButton(
+                                        text = "⏸",
+                                        modifier = Modifier.focusRequester(statusFocusFor(download.id))
+                                    ) { refocusStatus(download.id); viewModel.pause(download) }
                                 }
                                 DownloadStatus.PAUSED -> {
-                                    GoldButton(text = "▶") { viewModel.resume(download) }
+                                    GoldButton(
+                                        text = "▶",
+                                        modifier = Modifier.focusRequester(statusFocusFor(download.id))
+                                    ) { refocusStatus(download.id); viewModel.resume(download) }
                                 }
                                 DownloadStatus.ERROR -> {
-                                    GoldButton(text = stringResource(R.string.download_retry)) { viewModel.retry(download) }
+                                    GoldButton(
+                                        text = stringResource(R.string.download_retry),
+                                        modifier = Modifier.focusRequester(statusFocusFor(download.id))
+                                    ) { refocusStatus(download.id); viewModel.retry(download) }
                                 }
                                 DownloadStatus.DONE -> { /* play via the row click */ }
                             }
                             if (confirmDeleteId == download.id) {
-                                GoldButton(text = stringResource(R.string.confirm_delete)) {
+                                GoldButton(
+                                    text = stringResource(R.string.confirm_delete),
+                                    modifier = Modifier.focusRequester(confirmFocus)
+                                ) {
+                                    val ids = downloads.map { it.id }
+                                    val idx = ids.indexOf(download.id)
+                                    val next = ids.getOrNull(idx + 1) ?: ids.getOrNull(idx - 1)
+                                    if (next != null) focusFor(next).requestFocus()
                                     viewModel.delete(download)
                                     confirmDeleteId = null
                                 }

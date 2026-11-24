@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,6 +63,29 @@ fun OnboardingWizardScreen(
     var keyboard123 by remember { mutableStateOf(false) }
     var pickedLang by remember { mutableStateOf("fr") }
 
+    // Focus (2026-11-23, point 3): the wizard lives outside the Shell, so
+    // no sidebar focus exists here — without these the remote is dead
+    // from the first step (m-01). Every step replaces its content
+    // entirely, so the step focus is re-requested on every step change
+    // (m-02); the test step re-requests when the result arrives.
+    val stepFocus = remember { FocusRequester() }
+    LaunchedEffect(state.step, state.testDone) { stepFocus.requestFocus() }
+    // Return focus after the keyboard closes, same pattern as LoginScreen
+    // (m-03): the focused key is disposed with the keyboard.
+    var lastEditedField by remember { mutableStateOf<String?>(null) }
+    val fieldReturnFocus = remember { FocusRequester() }
+    LaunchedEffect(keyboardField) {
+        if (keyboardField == null && lastEditedField != null) fieldReturnFocus.requestFocus()
+    }
+    fun openKeyboard(field: String) {
+        keyboardField = field
+        lastEditedField = field
+    }
+    fun fieldModifier(field: String): Modifier =
+        if (field == lastEditedField) Modifier.focusRequester(fieldReturnFocus) else Modifier
+    // Back closes the keyboard first, instead of leaving the wizard (m-04).
+    BackHandler(enabled = keyboardField != null) { keyboardField = null }
+
     LaunchedEffect(state.finished) {
         if (state.finished) {
             navController.navigate(Routes.LOADING) {
@@ -82,7 +108,7 @@ fun OnboardingWizardScreen(
                 0 -> {
                     Text(text = stringResource(R.string.ns_onboarding_lang), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SortPill("Français", pickedLang == "fr") { pickedLang = "fr"; viewModel.setLang("fr") }
+                        SortPill("Français", pickedLang == "fr", modifier = Modifier.focusRequester(stepFocus)) { pickedLang = "fr"; viewModel.setLang("fr") }
                         SortPill("العربية", pickedLang == "ar") { pickedLang = "ar"; viewModel.setLang("ar") }
                         SortPill("English", pickedLang == "en") { pickedLang = "en"; viewModel.setLang("en") }
                     }
@@ -97,25 +123,25 @@ fun OnboardingWizardScreen(
                 1 -> {
                     Text(text = stringResource(R.string.ns_onboarding_playlist), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SortPill("Xtream", state.tab == LoginTab.XTREAM) { viewModel.setTab(LoginTab.XTREAM) }
+                        SortPill("Xtream", state.tab == LoginTab.XTREAM, modifier = Modifier.focusRequester(stepFocus)) { viewModel.setTab(LoginTab.XTREAM) }
                         SortPill("Stalker", state.tab == LoginTab.STALKER) { viewModel.setTab(LoginTab.STALKER) }
                         SortPill("M3U", state.tab == LoginTab.M3U) { viewModel.setTab(LoginTab.M3U) }
                     }
                     when (state.tab) {
                         LoginTab.XTREAM -> {
-                            ReadOnlyField(stringResource(R.string.field_server), state.serverUrl) { keyboardField = "server" }
-                            ReadOnlyField(stringResource(R.string.field_username), state.username) { keyboardField = "user" }
-                            ReadOnlyField(stringResource(R.string.field_password), state.password) { keyboardField = "pass" }
+                            ReadOnlyField(stringResource(R.string.field_server), state.serverUrl, fieldModifier("server")) { openKeyboard("server") }
+                            ReadOnlyField(stringResource(R.string.field_username), state.username, fieldModifier("user")) { openKeyboard("user") }
+                            ReadOnlyField(stringResource(R.string.field_password), state.password, fieldModifier("pass")) { openKeyboard("pass") }
                         }
                         LoginTab.STALKER -> {
-                            ReadOnlyField(stringResource(R.string.field_portal_url), state.portalUrl) { keyboardField = "portal" }
-                            ReadOnlyField(stringResource(R.string.field_mac), state.mac) { keyboardField = "mac" }
+                            ReadOnlyField(stringResource(R.string.field_portal_url), state.portalUrl, fieldModifier("portal")) { openKeyboard("portal") }
+                            ReadOnlyField(stringResource(R.string.field_mac), state.mac, fieldModifier("mac")) { openKeyboard("mac") }
                         }
                         LoginTab.M3U -> {
-                            ReadOnlyField(stringResource(R.string.field_m3u_url), state.m3uUrl) { keyboardField = "m3u" }
+                            ReadOnlyField(stringResource(R.string.field_m3u_url), state.m3uUrl, fieldModifier("m3u")) { openKeyboard("m3u") }
                         }
                     }
-                    ReadOnlyField(stringResource(R.string.field_playlist_name), state.playlistName) { keyboardField = "name" }
+                    ReadOnlyField(stringResource(R.string.field_playlist_name), state.playlistName, fieldModifier("name")) { openKeyboard("name") }
                     if (state.errorRes != null) {
                         Text(text = stringResource(state.errorRes!!), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Danger)
                     }
@@ -140,7 +166,7 @@ fun OnboardingWizardScreen(
                                 text = stringResource(R.string.ns_onboarding_test_ok, result.detail),
                                 fontSize = 19.sp, fontWeight = FontWeight.Bold, color = GoldBright
                             )
-                            GoldButton(text = stringResource(R.string.ns_onboarding_next), modifier = Modifier.fillMaxWidth()) {
+                            GoldButton(text = stringResource(R.string.ns_onboarding_next), modifier = Modifier.fillMaxWidth().focusRequester(stepFocus)) {
                                 viewModel.finishSync()
                             }
                         } else {
@@ -153,7 +179,7 @@ fun OnboardingWizardScreen(
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 GhostButton(text = stringResource(R.string.ns_onboarding_back)) { viewModel.goToStep(1) }
-                                GoldButton(text = stringResource(R.string.ns_onboarding_retry), modifier = Modifier.weight(1f)) {
+                                GoldButton(text = stringResource(R.string.ns_onboarding_retry), modifier = Modifier.weight(1f).focusRequester(stepFocus)) {
                                     viewModel.testConnection()
                                 }
                             }

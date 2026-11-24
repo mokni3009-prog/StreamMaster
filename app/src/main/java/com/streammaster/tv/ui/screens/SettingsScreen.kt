@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -47,6 +48,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -81,6 +84,7 @@ import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
 import com.streammaster.tv.ui.viewmodel.ProfilesViewModel
 import com.streammaster.tv.ui.viewmodel.SettingsDraft
 import com.streammaster.tv.ui.viewmodel.SettingsViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -148,6 +152,30 @@ fun SettingsScreen(
     var dnsError by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var selectedKey by remember { mutableStateOf("lang") }
+    // B-S1 / B-S2 — dialog focus: the safe Cancel button of the reset
+    // confirmation (never the destructive confirm), the "J'ai noté"
+    // button of the recovery-code box, and the Reset row button both
+    // return focus to. Both boxes are real Dialogs below, so focus is
+    // trapped inside their window until they close.
+    val resetCancelFocus = remember { FocusRequester() }
+    val recoveryFocus = remember { FocusRequester() }
+    val resetRowFocus = remember { FocusRequester() }
+    var confirmResetOpened by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmReset) {
+        if (confirmReset) {
+            confirmResetOpened = true
+            resetCancelFocus.requestFocus()
+        } else if (confirmResetOpened) {
+            confirmResetOpened = false
+            // The dialog window is gone; give the underlying window a beat
+            // before returning focus to the Reset button.
+            delay(100)
+            resetRowFocus.requestFocus()
+        }
+    }
+    LaunchedEffect(recoveryCode) {
+        if (recoveryCode != null) recoveryFocus.requestFocus()
+    }
 
     // SAF launchers (2026-11-22): recording folder, backup export/import.
     val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -504,8 +532,21 @@ fun SettingsScreen(
                     Text(text = stringResource(R.string.st_dirty), fontSize = 16.sp, fontWeight = FontWeight.Black, color = Color(0xFFFFD9CF))
                 }
             }
-            IconGhostButton(text = stringResource(R.string.st_reset), iconRes = R.drawable.ic_x) { confirmReset = true }
-            GhostButton(text = stringResource(R.string.discard)) { if (isDirty) viewModel.discardChanges() }
+            IconGhostButton(text = stringResource(R.string.st_reset), iconRes = R.drawable.ic_x, modifier = Modifier.focusRequester(resetRowFocus)) { confirmReset = true }
+            // B-X1 — discarding with nothing to discard is a no-op, so
+            // when clean the button leaves the focus path (it stays
+            // visible); after a real discard focus moves to the Reset
+            // button in the same bar first, so the recomposition never
+            // strands the remote with no focus.
+            GhostButton(
+                text = stringResource(R.string.discard),
+                modifier = Modifier.focusProperties { canFocus = isDirty }
+            ) {
+                if (isDirty) {
+                    viewModel.discardChanges()
+                    resetRowFocus.requestFocus()
+                }
+            }
             GoldSaveButton(
                 text = stringResource(if (narrow) R.string.save else R.string.save_changes),
                 enabled = isDirty
@@ -637,7 +678,13 @@ fun SettingsScreen(
 
     // §4.42 — one-time recovery-code display after a new PIN is set.
     // The code is shown once only: dismissing it hides it forever.
+    // B-S2 — a real Dialog: focus starts on "J'ai noté" and is trapped
+    // inside until the box is dismissed.
     recoveryCode?.let { code ->
+        Dialog(
+            onDismissRequest = { viewModel.dismissRecoveryCode() },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
         Box(modifier = Modifier.fillMaxSize().padding(120.dp), contentAlignment = Alignment.Center) {
             CardSurface {
                 Column(
@@ -648,11 +695,12 @@ fun SettingsScreen(
                     Text(text = stringResource(R.string.pin_recovery_title), fontSize = 24.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = GoldWhite)
                     Text(text = stringResource(R.string.pin_recovery_msg), fontSize = 17.sp, color = GoldSoft)
                     Text(text = code, fontSize = 44.sp, fontWeight = FontWeight.Black, color = GoldBright)
-                    GoldButton(text = stringResource(R.string.pin_recovery_saved)) {
+                    GoldButton(text = stringResource(R.string.pin_recovery_saved), modifier = Modifier.focusRequester(recoveryFocus)) {
                         viewModel.dismissRecoveryCode()
                     }
                 }
             }
+        }
         }
     }
 
@@ -665,7 +713,14 @@ fun SettingsScreen(
     }
 
     // ST05 — reset confirmation (the prototype asks with confirmDialog).
+    // B-S1 — a real Dialog: focus starts on the safe "Annuler" button,
+    // never on the destructive "Réinitialiser", and is trapped inside
+    // until the dialog closes.
     if (confirmReset) {
+        Dialog(
+            onDismissRequest = { confirmReset = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
         Box(modifier = Modifier.fillMaxSize().padding(120.dp), contentAlignment = Alignment.Center) {
             // R-B2: plain CardSurface (20dp, theme colour) with the shadow.
             CardSurface {
@@ -680,10 +735,11 @@ fun SettingsScreen(
                         viewModel.resetToDefaults()
                         confirmReset = false
                     }
-                    GhostButton(text = stringResource(R.string.cancel)) { confirmReset = false }
+                    GhostButton(text = stringResource(R.string.cancel), modifier = Modifier.focusRequester(resetCancelFocus)) { confirmReset = false }
                 }
                 }
             }
+        }
         }
     }
 
@@ -969,6 +1025,14 @@ internal fun GoldSaveButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    // B-X1 — a disabled save button stays visible (greyed) but leaves the
+    // focus path, so OK on it can never be a dead press. The `|| focused`
+    // guard matters at the exact moment of saving: the button is focused
+    // when OK is pressed and only becomes disabled after the save, so
+    // dropping it from the focus path right then would clear focus and
+    // strand the remote with nothing focused; it stays focusable while
+    // focused and leaves the path as soon as the user arrows away.
+    var focused by remember { mutableStateOf(false) }
     Box(
         modifier = modifier
             .height(60.dp)
@@ -978,7 +1042,9 @@ internal fun GoldSaveButton(
                 else Modifier.background(Color(0xFF3A2F16))
             )
             .border(2.dp, if (enabled) BorderStrong else BorderGold, RoundedCornerShape(30.dp))
+            .focusProperties { canFocus = enabled || focused }
             .tvFocus()
+            .onFocusChanged { focused = it.isFocused }
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 32.dp),
         contentAlignment = Alignment.Center

@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,7 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -85,10 +88,33 @@ fun DetailScreen(
     val state by viewModel.state.collectAsState()
     val isWatchLater by viewModel.isWatchLater.collectAsState()
     val context = LocalContext.current
-    // Initial focus: the Play button (first action).
+    // Focus restore (§4.1, 2026-11-23): PlayerScreen writes "focusedId"
+    // into this entry's savedStateHandle when leaving the player; coming
+    // back, the focus returns to the Lecture button (firstFocus) — the
+    // action the user came from. The initial focus waits for the data:
+    // requesting it before load risks losing it if the composition
+    // changes (e.g. the Reprendre button appearing later).
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val focusedId = savedStateHandle?.get<String>("focusedId")
+    var initialFocusDone by remember { mutableStateOf(false) }
+    LaunchedEffect(state.film, state.series) {
+        if (initialFocusDone) return@LaunchedEffect
+        if (state.film == null && state.series == null) return@LaunchedEffect
+        firstFocus.requestFocus()
+        initialFocusDone = true
+        if (focusedId != null) savedStateHandle?.remove<String>("focusedId")
+    }
     LaunchedEffect(kind, id) { viewModel.load(kind, id) }
+    // Leaving Detail writes this item's id for the parent screen
+    // (Home / Films / Series / Search) to restore onto — same pattern
+    // as PlayerScreen.exitPlayer(). Both the Retour pill and the
+    // system/remote Back key go through here.
+    fun exitDetail() {
+        navController.previousBackStackEntry?.savedStateHandle?.set("focusedId", id)
+        navController.popBackStack()
+    }
+    BackHandler { exitDetail() }
     // One-shot download notice as a toast.
     LaunchedEffect(state.downloadNoticeRes) {
         val res = state.downloadNoticeRes ?: return@LaunchedEffect
@@ -126,7 +152,7 @@ fun DetailScreen(
                                 .background(Color(0xE60F0B04))
                                 .border(2.dp, BorderStrong, RoundedCornerShape(27.dp))
                                 .tvFocus()
-                                .clickable { navController.popBackStack() }
+                                .clickable { exitDetail() }
                                 .padding(horizontal = 24.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -835,6 +861,12 @@ private fun SeasonPill(text: String, selected: Boolean, onClick: () -> Unit) {
  * Prototype `.ep-card`: 64dp gold number box + title 19sp + meta 15sp +
  * 24dp play icon; the small per-episode download button is kept
  * (offline download is approved).
+ *
+ * Focus (2026-11-23): the card shell is NOT focusable — the play area
+ * and the download button are two sibling focus stops inside it.
+ * Before, the button was nested inside the focusable card (two
+ * overlapping focus targets, OK could play or download unpredictably).
+ * The layout is unchanged: same shell, same padding, same order.
  */
 @Composable
 private fun EpisodeCard(
@@ -844,48 +876,57 @@ private fun EpisodeCard(
     onDownload: () -> Unit,
     onClick: () -> Unit
 ) {
-    Row(
+    Box(
         modifier = modifier
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xE6161005))
             .border(1.5.dp, BorderGold, RoundedCornerShape(18.dp))
-            .tvFocus()
-            .clickable { onClick() }
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(64.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(GoldGradient),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = episode.code.ifBlank { "E${episode.number}" },
-                fontSize = 16.sp, fontWeight = FontWeight.Black,
-                letterSpacing = 0.5.sp, color = GoldDeep,
-                maxLines = 1
-            )
+            Row(
+                modifier = Modifier.weight(1f)
+                    .tvFocus()
+                    .clickable { onClick() },
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.size(64.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(GoldGradient),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = episode.code.ifBlank { "E${episode.number}" },
+                        fontSize = 16.sp, fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp, color = GoldDeep,
+                        maxLines = 1
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = episode.title,
+                        fontSize = 19.sp, fontWeight = FontWeight.Black, color = GoldWhite,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${episode.durationMin} min • $quality",
+                        fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldBright,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                Icon(
+                    painterResource(R.drawable.ic_play), contentDescription = null,
+                    tint = GoldBright, modifier = Modifier.size(24.dp)
+                )
+            }
+            // Per-episode offline download (2026-11-22).
+            // R-S4: ic_download icon instead of the "↓" text glyph.
+            GhostButton(iconRes = R.drawable.ic_download) { onDownload() }
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = episode.title,
-                fontSize = 19.sp, fontWeight = FontWeight.Black, color = GoldWhite,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "${episode.durationMin} min • $quality",
-                fontSize = 15.sp, fontWeight = FontWeight.Bold, color = GoldBright,
-                modifier = Modifier.padding(top = 3.dp)
-            )
-        }
-        Icon(
-            painterResource(R.drawable.ic_play), contentDescription = null,
-            tint = GoldBright, modifier = Modifier.size(24.dp)
-        )
-        // Per-episode offline download (2026-11-22).
-        // R-S4: ic_download icon instead of the "↓" text glyph.
-        GhostButton(iconRes = R.drawable.ic_download) { onDownload() }
     }
 }

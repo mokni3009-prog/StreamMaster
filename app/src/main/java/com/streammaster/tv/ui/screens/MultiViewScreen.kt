@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavHostController
@@ -191,9 +193,17 @@ private fun MultiViewPicker(
     val channels = liveState.channels.filter {
         selectedBouquetId == null || it.bouquetId == selectedBouquetId
     }
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xE6000000)).padding(24.dp)
+    // Focus (2026-11-23, m-13): a real Dialog — its own window traps
+    // focus inside the picker while open, so the D-pad can no longer
+    // escape to the tiles behind it. Previously this was a plain Box
+    // over the tiles and focus leaked through to them.
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color(0xE6000000)).padding(24.dp)
+        ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
@@ -241,5 +251,6 @@ private fun MultiViewPicker(
                 }
             }
         }
+    }
     }
 }

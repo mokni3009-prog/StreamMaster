@@ -12,18 +12,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -46,6 +50,7 @@ import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.MatchDayTab
 import com.streammaster.tv.ui.viewmodel.MatchDayViewModel
 import kotlinx.coroutines.delay
@@ -80,7 +85,14 @@ fun MatchDayScreen(
     val remindedIds by viewModel.remindedIds.collectAsState()
 
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // Focus (2026-11-23, m-07): the two tabs swap GoldButton <-> GhostButton,
+    // i.e. two different nodes — pressing OK on a tab disposed the focused
+    // node. Each tab owns a requester and the selected tab is re-focused
+    // on every tab change.
+    val tabFocus = remember { FocusRequester() }
+    LaunchedEffect(tab) {
+        (if (tab == MatchDayTab.TODAY) firstFocus else tabFocus).requestFocus()
+    }
     // One-shot messages disappear after 4s.
     LaunchedEffect(message) {
         if (message != null) {
@@ -91,6 +103,50 @@ fun MatchDayScreen(
 
     val dayFeed = viewModel.dayFeed(tab, feed)
     val updatedText = feed?.updatedAtMillis?.takeIf { it > 0L }?.let { formatTunisHHMM(it) }
+
+    // §4.1 — return to the same match: PlayerScreen writes the played
+    // channel id into this entry's savedStateHandle ("focusedId"). The
+    // match is found through its broadcast channel, scrolled into view
+    // and focused (the restore effect runs after the tab effect, so it
+    // wins on a return; on a fresh entry it never fires).
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val restoreId = savedStateHandle?.get<String>("focusedId")
+    val listState = rememberLazyListState()
+    val cardFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(id: String) = cardFocusRequesters.getOrPut(id) { FocusRequester() }
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(restoreId, dayFeed) {
+        if (restoreId == null || focusRestored) return@LaunchedEffect
+        val leagues = dayFeed?.leagues.orEmpty()
+        if (feed == null) return@LaunchedEffect // feed still loading
+        var flatIndex = -1
+        var found: DayMatch? = null
+        var idx = 0
+        outer@ for (league in leagues) {
+            idx++ // league header item
+            for (m in league.matches) {
+                if (viewModel.channelFor(m)?.id == restoreId) {
+                    found = m
+                    flatIndex = idx
+                    break@outer
+                }
+                idx++
+            }
+        }
+        if (found != null) {
+            if (flatIndex > 0) {
+                listState.scrollToItem(flatIndex)
+                delay(100) // let the card compose after the scroll
+            }
+            focusFor(found.id).requestFocus()
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        } else {
+            // Feed loaded and the channel is gone: nothing to restore.
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
@@ -131,11 +187,11 @@ fun MatchDayScreen(
                 ) { viewModel.selectTab(MatchDayTab.TODAY) }
             }
             if (tab == MatchDayTab.TOMORROW) {
-                GoldButton(text = stringResource(R.string.match_day_tomorrow)) {
+                GoldButton(text = stringResource(R.string.match_day_tomorrow), modifier = Modifier.focusRequester(tabFocus)) {
                     viewModel.selectTab(MatchDayTab.TOMORROW)
                 }
             } else {
-                GhostButton(text = stringResource(R.string.match_day_tomorrow)) {
+                GhostButton(text = stringResource(R.string.match_day_tomorrow), modifier = Modifier.focusRequester(tabFocus)) {
                     viewModel.selectTab(MatchDayTab.TOMORROW)
                 }
             }
@@ -179,7 +235,7 @@ fun MatchDayScreen(
             )
             return@Column
         }
-        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(state = listState, modifier = Modifier.weight(1f).focusRestorer(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             leagues.forEach { league ->
                 item {
                     Row(
@@ -205,6 +261,9 @@ fun MatchDayScreen(
                         nowMillis = nowMillis,
                         channel = viewModel.channelFor(match),
                         reminded = match.id in remindedIds,
+                        modifier = if (viewModel.channelFor(match)?.id == restoreId) {
+                            Modifier.focusRequester(focusFor(match.id))
+                        } else Modifier,
                         onWatch = { channel ->
                             if (channel != null) {
                                 navController.navigate(Routes.player("live", channel.id))
@@ -227,17 +286,21 @@ private fun MatchDayCard(
     channel: Channel?,
     reminded: Boolean,
     onWatch: (Channel?) -> Unit,
-    onRemind: () -> Unit
+    onRemind: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val cancelled = match.status == "cancelled"
     val live = match.status == "live"
     val finished = match.status == "finished"
     val started = match.kickoffMillis > 0L && nowMillis >= match.kickoffMillis
 
+    // Focus (2026-11-23, ص-14): the card itself is focusable, so even a
+    // cancelled card with no watch button can be reached by the remote.
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(CardSurface)
+            .tvFocus()
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

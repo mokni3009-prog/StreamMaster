@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -39,6 +40,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -71,6 +74,7 @@ import com.streammaster.tv.ui.viewmodel.ManageViewModel
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.SettingsViewModel
 import com.streammaster.tv.ui.components.GoldButton
+import kotlinx.coroutines.delay
 
 /**
  * Manage (Gérer la playlist) — M01 mode tabs (56dp, radius 28, 24dp icon
@@ -126,12 +130,48 @@ fun ManageScreen(
     // overlays, so focus must move into them on open and back to the first
     // tab on close; the keyboard closes back into the dialog's field.
     val dialogFocus = remember { FocusRequester() }
+    // B-M3 — one FocusRequester per action row that opens a dialog, plus
+    // the key of the row that opened the current dialog, so closing a
+    // dialog returns focus to its opener instead of the first tab.
+    // (The rows are in a plain Column, so they are always composed.)
+    val actionFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun actionFocus(key: String) = actionFocusRequesters.getOrPut(key) { FocusRequester() }
+    var dialogOpenerKey by remember { mutableStateOf<String?>(null) }
+    // B-M1 — focus for the first option of the move-to dialog.
+    val moveFocus = remember { FocusRequester() }
     LaunchedEffect(newBouquetDialog, renameTarget, addToMyDialog) {
         if (newBouquetDialog || renameTarget != null || addToMyDialog) dialogFocus.requestFocus()
-        else firstFocus.requestFocus()
+        else {
+            dialogOpenerKey?.let { actionFocusRequesters[it]?.requestFocus() } ?: firstFocus.requestFocus()
+            dialogOpenerKey = null
+        }
     }
     LaunchedEffect(keyboardTarget) {
-        if (keyboardTarget == null && (newBouquetDialog || renameTarget != null)) dialogFocus.requestFocus()
+        if (keyboardTarget == null && (newBouquetDialog || renameTarget != null || addToMyDialog)) dialogFocus.requestFocus()
+    }
+    // B-M1 — the move-to dialog is a real Dialog (focus is trapped in its
+    // window); on open its first option takes focus, on close focus goes
+    // back to the "Déplacer" row that opened it.
+    LaunchedEffect(moveTargetBouquet) {
+        if (moveTargetBouquet != null) {
+            moveFocus.requestFocus()
+        } else {
+            // The dialog window is gone; give the underlying window a beat
+            // before returning focus to the opener.
+            delay(100)
+            dialogOpenerKey?.let { actionFocusRequesters[it]?.requestFocus() } ?: firstFocus.requestFocus()
+            dialogOpenerKey = null
+        }
+    }
+    // NumberPadDialog is a real Dialog too: its own dismiss restores
+    // focus, but return explicitly to the "Attribuer un numéro" row all
+    // the same, so the outcome never depends on window restoration.
+    LaunchedEffect(numberTarget) {
+        if (numberTarget == null && dialogOpenerKey == "assignNumber") {
+            delay(100)
+            actionFocusRequesters["assignNumber"]?.requestFocus()
+            dialogOpenerKey = null
+        }
     }
     // Back closes the keyboard, then the dialog, instead of leaving the screen.
     BackHandler(enabled = keyboardTarget != null || newBouquetDialog || renameTarget != null || addToMyDialog) {
@@ -373,26 +413,33 @@ fun ManageScreen(
                     MgActRow(
                         label = stringResource(R.string.mg_new_bouquet),
                         iconRes = R.drawable.ic_plus,
-                        gold = true
-                    ) { newBouquetDialog = true }
+                        gold = true,
+                        modifier = Modifier.focusRequester(actionFocus("newBouquet"))
+                    ) { dialogOpenerKey = "newBouquet"; newBouquetDialog = true }
                 }
                 // §4.62 — add the selected item(s) to a My Playlist bouquet
                 // (reference: the original stays in its subscription).
+                // B-X1 — disabled (nothing to add / no active playlist):
+                // visible but out of the focus path.
                 MgActRow(
                     label = stringResource(R.string.my_playlist_add),
                     iconRes = R.drawable.ic_plus,
                     gold = true,
-                    enabled = addTargetIds.isNotEmpty() && activePlaylist != null
-                ) { addToMyDialog = true }
+                    enabled = addTargetIds.isNotEmpty() && activePlaylist != null,
+                    modifier = Modifier.focusRequester(actionFocus("addToMy"))
+                        .focusProperties { canFocus = addTargetIds.isNotEmpty() && activePlaylist != null }
+                ) { dialogOpenerKey = "addToMy"; addToMyDialog = true }
                 MgActRow(
                     label = stringResource(if (focusItem?.third == true) R.string.show else R.string.hide),
                     iconRes = if (focusItem?.third == true) R.drawable.ic_eye else R.drawable.ic_eye_off,
-                    enabled = focusId != null
+                    enabled = focusId != null,
+                    modifier = Modifier.focusProperties { canFocus = focusId != null }
                 ) { focusId?.let { viewModel.setHiddenSingle(it, focusItem?.third != true) } }
                 MgActRow(
                     label = stringResource(R.string.reorder_up),
                     iconRes = R.drawable.ic_chevron_up,
-                    enabled = focusId != null
+                    enabled = focusId != null,
+                    modifier = Modifier.focusProperties { canFocus = focusId != null }
                 ) {
                     focusId?.let {
                         if (draft.kind == ManageKind.LIVE) viewModel.reorderChannel(it, -1)
@@ -402,7 +449,8 @@ fun ManageScreen(
                 MgActRow(
                     label = stringResource(R.string.reorder_down),
                     iconRes = R.drawable.ic_chevron_down,
-                    enabled = focusId != null
+                    enabled = focusId != null,
+                    modifier = Modifier.focusProperties { canFocus = focusId != null }
                 ) {
                     focusId?.let {
                         if (draft.kind == ManageKind.LIVE) viewModel.reorderChannel(it, 1)
@@ -413,20 +461,27 @@ fun ManageScreen(
                     MgActRow(
                         label = stringResource(R.string.move_to),
                         iconRes = R.drawable.ic_move,
-                        enabled = focusId != null && kindBouquets.size >= 2
-                    ) { moveTargetBouquet = focusId }
+                        enabled = focusId != null && kindBouquets.size >= 2,
+                        modifier = Modifier.focusRequester(actionFocus("moveTo"))
+                            .focusProperties { canFocus = focusId != null && kindBouquets.size >= 2 }
+                    ) { dialogOpenerKey = "moveTo"; moveTargetBouquet = focusId }
                     MgActRow(
                         label = stringResource(R.string.assign_number),
                         iconRes = R.drawable.ic_hash,
-                        enabled = focusId != null
-                    ) { focusId?.let { numberTarget = it } }
+                        enabled = focusId != null,
+                        modifier = Modifier.focusRequester(actionFocus("assignNumber"))
+                            .focusProperties { canFocus = focusId != null }
+                    ) { focusId?.let { dialogOpenerKey = "assignNumber"; numberTarget = it } }
                 }
                 MgActRow(
                     label = stringResource(R.string.rename),
                     iconRes = R.drawable.ic_edit,
-                    enabled = focusId != null
+                    enabled = focusId != null,
+                    modifier = Modifier.focusRequester(actionFocus("rename"))
+                        .focusProperties { canFocus = focusId != null }
                 ) {
                     focusId?.let {
+                        dialogOpenerKey = "rename"
                         renameTarget = it to if (draft.kind == ManageKind.LIVE) "channel" else "bouquet"
                         renameValue = items.firstOrNull { item -> item.first == it }?.second ?: ""
                     }
@@ -476,10 +531,18 @@ fun ManageScreen(
                     )
                 }
             }
-            GhostButton(text = stringResource(R.string.mg_discard_changes)) {
+            // B-X1 — discarding with nothing to discard is a no-op, so
+            // when clean the button leaves the focus path (it stays
+            // visible); after a real discard focus moves home first, so
+            // the recomposition never strands the remote with no focus.
+            GhostButton(
+                text = stringResource(R.string.mg_discard_changes),
+                modifier = Modifier.focusProperties { canFocus = isDirty }
+            ) {
                 if (isDirty) {
                     viewModel.discardChanges()
                     showToast(context, context.getString(R.string.mg_discarded))
+                    firstFocus.requestFocus()
                 }
             }
             GoldSaveButton(
@@ -550,8 +613,14 @@ fun ManageScreen(
         }
     }
 
-    // Move-to-bouquet picker
+    // Move-to-bouquet picker (B-M1): a real Dialog, so focus is stolen
+    // on open (first bouquet option), trapped inside its window until it
+    // closes, and the Back key dismisses it instead of leaving the screen.
     moveTargetBouquet?.let { focusIdValue ->
+        Dialog(
+            onDismissRequest = { moveTargetBouquet = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
         Box(modifier = Modifier.fillMaxSize().padding(120.dp), contentAlignment = Alignment.Center) {
             // R-B2: plain CardSurface (20dp, theme colour) with the shadow.
             CardSurface {
@@ -571,8 +640,12 @@ fun ManageScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    itemsIndexed(kindBouquets) { _, bouquet ->
-                        GhostButton(text = bouquet.name, modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(kindBouquets) { index, bouquet ->
+                        GhostButton(
+                            text = bouquet.name,
+                            modifier = Modifier.fillMaxWidth()
+                                .then(if (index == 0) Modifier.focusRequester(moveFocus) else Modifier)
+                        ) {
                             if (selectedIds.size > 1) viewModel.moveSelectedToBouquet(bouquet.id)
                             else viewModel.moveSingleToBouquet(focusIdValue, bouquet.id)
                             moveTargetBouquet = null
@@ -582,6 +655,7 @@ fun ManageScreen(
                 GhostButton(text = stringResource(R.string.cancel)) { moveTargetBouquet = null }
             }
             }
+        }
         }
     }
 

@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +87,29 @@ fun RecordingsScreen(
     val restoreFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
     fun focusFor(id: String) = restoreFocusRequesters.getOrPut(id) { FocusRequester() }
     val listState = rememberLazyListState()
+    // Focus (2026-11-23, m-08): the confirm button replaces the focused
+    // "Annuler"/"Supprimer" button, and a delete removes the focused row
+    // — both dispose the focused node. The confirm button is re-focused
+    // when it appears, and focus is moved to a live neighbour BEFORE the
+    // row is removed; focusRestorer() on the list is the safety net.
+    val confirmFocus = remember { FocusRequester() }
+    LaunchedEffect(confirmDeleteId) {
+        if (confirmDeleteId != null) {
+            delay(50)
+            confirmFocus.requestFocus()
+        }
+    }
+    val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun rowFocusFor(id: String) = rowFocusRequesters.getOrPut(id) { FocusRequester() }
+    fun focusNeighbour(ids: List<String>, removedId: String): Boolean {
+        val idx = ids.indexOf(removedId)
+        val next = ids.getOrNull(idx + 1) ?: ids.getOrNull(idx - 1)
+        if (next != null) {
+            rowFocusFor(next).requestFocus()
+            return true
+        }
+        return false
+    }
     val focusTarget = when {
         hasActiveRecording -> "active"
         focusOnScheduled -> "scheduled"
@@ -127,7 +151,7 @@ fun RecordingsScreen(
     // height and were unreachable — on 1080p as well as on 720p.
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().focusRestorer(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item {
@@ -157,7 +181,17 @@ fun RecordingsScreen(
                         Text(text = "● REC ${formatDuration(elapsedS * 1000L)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite)
                         Text(text = active.recording.channelName, fontSize = 15.sp, color = TextMuted)
                     }
-                    GoldButton(text = stringResource(R.string.record_stop), modifier = if (hasActiveRecording) Modifier.focusRequester(firstFocus) else Modifier) { viewModel.stopRecording() }
+                    GoldButton(
+                        text = stringResource(R.string.record_stop),
+                        modifier = if (hasActiveRecording) Modifier.focusRequester(firstFocus) else Modifier
+                    ) {
+                        // The active row disappears on stop: move focus to
+                        // the first live row before stopping (m-08c).
+                        if (scheduled.isNotEmpty()) rowFocusFor(scheduled.first().id).requestFocus()
+                        else if (seriesRules.isNotEmpty()) rowFocusFor(seriesRules.first().id).requestFocus()
+                        else if (recordings.isNotEmpty()) rowFocusFor(recordings.first().id).requestFocus()
+                        viewModel.stopRecording()
+                    }
                 }
             }
         }
@@ -179,6 +213,11 @@ fun RecordingsScreen(
                         // own — its action lives in the Annuler button);
                         // without this the D-pad can only land on the
                         // buttons and never on the row.
+                        // ص-19: the initial focus lands on the row itself,
+                        // not on its Annuler button (OK by mistake would
+                        // start cancelling the scheduled recording).
+                        .then(if (focusOnScheduled && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        .focusRequester(rowFocusFor(rec.id))
                         .tvFocus()
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -198,12 +237,19 @@ fun RecordingsScreen(
                         )
                     }
                     if (confirmDeleteId == rec.id) {
-                        GoldButton(text = stringResource(R.string.confirm_delete)) {
+                        GoldButton(
+                            text = stringResource(R.string.confirm_delete),
+                            modifier = Modifier.focusRequester(confirmFocus)
+                        ) {
+                            if (!focusNeighbour(scheduled.map { it.id }, rec.id)) {
+                                if (seriesRules.isNotEmpty()) rowFocusFor(seriesRules.first().id).requestFocus()
+                                else if (recordings.isNotEmpty()) rowFocusFor(recordings.first().id).requestFocus()
+                            }
                             viewModel.cancelScheduled(rec)
                             confirmDeleteId = null
                         }
                     } else {
-                        GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnScheduled && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rec.id }
+                        GhostButton(text = stringResource(R.string.cancel)) { confirmDeleteId = rec.id }
                     }
                 }
             }
@@ -227,6 +273,10 @@ fun RecordingsScreen(
                         // own — its action lives in the Annuler button);
                         // without this the D-pad can only land on the
                         // buttons and never on the row.
+                        // ص-19: the initial focus lands on the row itself,
+                        // not on its Annuler button.
+                        .then(if (focusOnRule && index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                        .focusRequester(rowFocusFor(rule.id))
                         .tvFocus()
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -239,12 +289,19 @@ fun RecordingsScreen(
                         )
                     }
                     if (confirmDeleteId == rule.id) {
-                        GoldButton(text = stringResource(R.string.confirm_delete)) {
+                        GoldButton(
+                            text = stringResource(R.string.confirm_delete),
+                            modifier = Modifier.focusRequester(confirmFocus)
+                        ) {
+                            if (!focusNeighbour(seriesRules.map { it.id }, rule.id)) {
+                                if (recordings.isNotEmpty()) rowFocusFor(recordings.first().id).requestFocus()
+                                else if (scheduled.isNotEmpty()) rowFocusFor(scheduled.first().id).requestFocus()
+                            }
                             viewModel.cancelSeriesRule(rule)
                             confirmDeleteId = null
                         }
                     } else {
-                        GhostButton(text = stringResource(R.string.cancel), modifier = if (focusOnRule && index == 0) Modifier.focusRequester(firstFocus) else Modifier) { confirmDeleteId = rule.id }
+                        GhostButton(text = stringResource(R.string.cancel)) { confirmDeleteId = rule.id }
                     }
                 }
             }
@@ -267,6 +324,7 @@ fun RecordingsScreen(
                                 else -> Modifier
                             }
                         )
+                        .focusRequester(rowFocusFor(recording.id))
                         .tvFocus()
                         .clickable {
                             if (recording.status != RecordingStatus.RECORDING) {
@@ -289,7 +347,14 @@ fun RecordingsScreen(
                     }
                     if (recording.status != RecordingStatus.RECORDING) {
                         if (confirmDeleteId == recording.id) {
-                            GoldButton(text = stringResource(R.string.confirm_delete)) {
+                            GoldButton(
+                                text = stringResource(R.string.confirm_delete),
+                                modifier = Modifier.focusRequester(confirmFocus)
+                            ) {
+                                if (!focusNeighbour(recordings.map { it.id }, recording.id)) {
+                                    if (scheduled.isNotEmpty()) rowFocusFor(scheduled.first().id).requestFocus()
+                                    else if (seriesRules.isNotEmpty()) rowFocusFor(seriesRules.first().id).requestFocus()
+                                }
                                 viewModel.delete(recording)
                                 confirmDeleteId = null
                             }

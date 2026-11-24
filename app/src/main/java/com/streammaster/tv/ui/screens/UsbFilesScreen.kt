@@ -9,13 +9,20 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,7 +38,9 @@ import com.streammaster.tv.ui.components.SectionHeader
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.UsbFilesViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Route for the USB files screen (§4.52). Registered by the nav builder. */
@@ -45,6 +54,35 @@ fun UsbFilesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
+    // Focus (2026-11-23, ص-03 + ص-12): initial focus on the folder button.
+    // §4.1 — return to the same file: PlayerScreen writes a fresh random
+    // recording id (UsbFilesViewModel.preparePlayback creates a new UUID
+    // per play), so "focusedId" can never name the file. Instead the
+    // played file NAME is saved here (in this entry's savedStateHandle,
+    // which survives the navigation) and the row is re-focused on return.
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val lastPlayedName = savedStateHandle?.get<String>("lastPlayedUsbName")
+    val firstFocus = remember { FocusRequester() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val fileFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(uri: String) = fileFocusRequesters.getOrPut(uri) { FocusRequester() }
+    LaunchedEffect(state.loading, lastPlayedName) {
+        if (state.loading || initialFocusDone) return@LaunchedEffect
+        val targetIndex = lastPlayedName?.let { name ->
+            state.files.indexOfFirst { it.name == name }
+        } ?: -1
+        if (targetIndex >= 0) {
+            if (targetIndex > 0) {
+                listState.scrollToItem(targetIndex)
+                delay(100) // let the row compose after the scroll
+            }
+            focusFor(state.files[targetIndex].uri).requestFocus()
+        } else {
+            firstFocus.requestFocus()
+        }
+        initialFocusDone = true
+    }
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri -> if (uri != null) viewModel.listFolder(uri) }
@@ -55,7 +93,7 @@ fun UsbFilesScreen(
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         SectionHeader(stringResource(R.string.ns_usb_title), stringResource(R.string.ns_usb_subtitle))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GoldButton(text = stringResource(R.string.ns_usb_choose_folder), modifier = Modifier.weight(1f)) {
+            GoldButton(text = stringResource(R.string.ns_usb_choose_folder), modifier = Modifier.weight(1f).focusRequester(firstFocus)) {
                 folderLauncher.launch(null)
             }
             GoldButton(
@@ -82,11 +120,14 @@ fun UsbFilesScreen(
             text = stringResource(R.string.ns_usb_count, state.files.size),
             fontSize = 18.sp, fontWeight = FontWeight.Bold, color = GoldWhite
         )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            items(state.files) { file ->
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            itemsIndexed(state.files) { index, file ->
                 CardSurface(modifier = Modifier.fillMaxWidth()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        modifier = Modifier.fillMaxWidth()
+                            .focusRequester(focusFor(file.uri))
+                            .tvFocus()
+                            .padding(20.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
@@ -98,7 +139,10 @@ fun UsbFilesScreen(
                         GhostButton(text = stringResource(R.string.ns_usb_play)) {
                             scope.launch {
                                 val id = viewModel.preparePlayback(file)
-                                if (id != null) navController.navigate(Routes.player("recording", id))
+                                if (id != null) {
+                                    savedStateHandle?.set("lastPlayedUsbName", file.name)
+                                    navController.navigate(Routes.player("recording", id))
+                                }
                             }
                         }
                     }

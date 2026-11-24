@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.delay
 import coil.compose.AsyncImage
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
@@ -98,7 +100,33 @@ fun EpgScreen(
     val state by viewModel.state.collectAsState()
     // Initial focus: the first day tab.
     val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // Focus restore (§4.1, B-E1): PlayerScreen writes "focusedId" (the
+    // channel id) into this entry's savedStateHandle when leaving the
+    // player — same pattern as LiveScreen / FilmsScreen / SeriesScreen.
+    // The restore target is the channel's own cell (B-E2), which is
+    // always composed once the channel list arrives, unlike individual
+    // program cells (loaded per channel, asynchronously).
+    val channelFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val focusedId = savedStateHandle?.get<String>("focusedId")
+    var focusRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { if (focusedId == null) firstFocus.requestFocus() }
+    val listState = rememberLazyListState()
+    LaunchedEffect(focusedId, state.channels) {
+        if (focusedId == null || focusRestored) return@LaunchedEffect
+        val idx = state.channels.indexOfFirst { it.id == focusedId }
+        if (idx >= 0) {
+            listState.scrollToItem(idx)
+            delay(120)
+            channelFocusRequesters[focusedId]?.requestFocus()
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        } else if (state.channels.isNotEmpty()) {
+            // Channels loaded and the id is not among them: nothing to restore.
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+        }
+    }
     val scheduled by viewModel.scheduled.collectAsState()
     // Collecting the catalog starts its load; enrichmentFor() reads its value.
     val catalog by viewModel.catalog.collectAsState()
@@ -203,7 +231,7 @@ fun EpgScreen(
                 }
             }
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(state.channels) { channel ->
                 val programs by viewModel.programsFor(channel.id).collectAsState()
                 Row(
@@ -213,12 +241,20 @@ fun EpgScreen(
                 ) {
                     // E04 — channel cell (.epg-g-ch): 48dp logo + name 18sp + category 15sp gold.
                     // Logo: provider logo via Coil, code fallback.
+                    // B-E2 — the cell is focusable (left arrow from the
+                    // first program cell lands here instead of jumping
+                    // away); OK opens the channel live, like its
+                    // current-program cell. It also owns the B-E1 restore
+                    // FocusRequester for its channel.
                     var cellLogoFailed by remember(channel.id) { mutableStateOf(false) }
                     Row(
                         modifier = Modifier.width(chanW).height(64.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(Color(0x73000000))
                             .border(2.dp, Color(0x3DFFE89E), RoundedCornerShape(16.dp))
+                            .focusRequester(channelFocusRequesters.getOrPut(channel.id) { FocusRequester() })
+                            .tvFocus()
+                            .clickable { navController.navigate(Routes.player("live", channel.id)) }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)

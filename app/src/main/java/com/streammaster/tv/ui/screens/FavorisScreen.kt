@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +55,7 @@ import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.FavorisViewModel
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.SectionHeader
+import kotlinx.coroutines.delay
 
 /** Favoris — favourite channels, films and series (prototype view-favoris:
  *  numbered sections with count badges, always visible, one empty message
@@ -70,16 +72,70 @@ fun FavorisScreen(
     // re-tried (once) when the first section fills.
     val firstFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
+    // §4.1 — return to the same item: PlayerScreen writes the played id
+    // into this entry's savedStateHandle ("focusedId") when exiting the
+    // player. The id is a channel / film / series id; the matching tile
+    // is scrolled into view (section + row) and focused instead of the
+    // default first tile. (Films/series go through the detail page, so a
+    // return from the player restores there first — this covers the
+    // direct channel case and any id that does arrive here.)
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val restoreId = savedStateHandle?.get<String>("focusedId")
+    val hasRestoreTarget = restoreId != null &&
+        (state.channels.any { it.id == restoreId } ||
+            state.films.any { it.id == restoreId } ||
+            state.series.any { it.id == restoreId })
+    val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(id: String) = itemFocusRequesters.getOrPut(id) { FocusRequester() }
+    val listState = rememberLazyListState()
+    val channelsRowState = rememberLazyListState()
+    val filmsRowState = rememberLazyListState()
+    val seriesRowState = rememberLazyListState()
+    var focusRestored by remember { mutableStateOf(false) }
     LaunchedEffect(state.channels.isNotEmpty(), state.films.isNotEmpty(), state.series.isNotEmpty()) {
-        if ((state.channels.isNotEmpty() || state.films.isNotEmpty() || state.series.isNotEmpty()) && !initialFocusDone) {
+        if ((state.channels.isNotEmpty() || state.films.isNotEmpty() || state.series.isNotEmpty()) && !initialFocusDone && !hasRestoreTarget) {
             firstFocus.requestFocus()
             initialFocusDone = true
         }
     }
+    LaunchedEffect(restoreId, state.channels, state.films, state.series) {
+        if (restoreId == null || focusRestored) return@LaunchedEffect
+        val inChannels = state.channels.indexOfFirst { it.id == restoreId }
+        val inFilms = state.films.indexOfFirst { it.id == restoreId }
+        val inSeries = state.series.indexOfFirst { it.id == restoreId }
+        if (inChannels < 0 && inFilms < 0 && inSeries < 0) {
+            // Lists loaded and the id is in none of them: nothing to
+            // restore. (All lists empty = still loading: wait.)
+            if (state.channels.isNotEmpty() || state.films.isNotEmpty() || state.series.isNotEmpty()) {
+                focusRestored = true
+                savedStateHandle?.remove<String>("focusedId")
+            }
+            return@LaunchedEffect
+        }
+        when {
+            inChannels >= 0 -> {
+                listState.scrollToItem(0)
+                channelsRowState.scrollToItem(inChannels)
+            }
+            inFilms >= 0 -> {
+                listState.scrollToItem(1)
+                filmsRowState.scrollToItem(inFilms)
+            }
+            else -> {
+                listState.scrollToItem(2)
+                seriesRowState.scrollToItem(inSeries)
+            }
+        }
+        delay(120) // let the tile compose after the scroll before focusing it
+        focusFor(restoreId).requestFocus()
+        focusRestored = true
+        initialFocusDone = true
+        savedStateHandle?.remove<String>("focusedId")
+    }
     // 2026-11-23: LazyColumn (was a plain Column) so the three sections scroll
     // vertically — with all sections full (1151dp) the old Column clipped the
     // series section even at 1080p, with no way to reach it by remote.
-    LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(28.dp)) {
         item {
             FavSection {
                 SectionHeader("1. ${stringResource(R.string.fav_section_channels)}", count = state.channels.size)
@@ -90,11 +146,12 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    LazyRow(state = channelsRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.channels) { index, channel ->
                             FavChannelCard(
                                 channel = channel,
-                                modifier = if (index == 0) Modifier.focusRequester(firstFocus) else Modifier
+                                modifier = Modifier.focusRequester(focusFor(channel.id))
+                                    .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
                             ) { navController.navigate(Routes.player("live", channel.id)) }
                         }
                     }
@@ -111,14 +168,15 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    LazyRow(state = filmsRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.films) { index, film ->
                             PosterTile(
                                 title = film.title, hue = film.hue,
                                 code = film.title.take(2).uppercase(), isFavorite = true,
                                 quality = film.quality, rating = film.rating, year = film.year,
                                 unstable = film.isBroken,
-                                modifier = if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
+                                modifier = Modifier.focusRequester(focusFor(film.id))
+                                    .then(if (index == 0 && state.channels.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
                             ) {
                                 navController.navigate(Routes.detail("film", film.id))
                             }
@@ -137,14 +195,15 @@ fun FavorisScreen(
                         modifier = Modifier.padding(4.dp, 14.dp)
                     )
                 } else {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                    LazyRow(state = seriesRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                         itemsIndexed(state.series) { index, series ->
                             PosterTile(
                                 title = series.title, hue = series.hue,
                                 code = series.title.take(2).uppercase(), isFavorite = true,
                                 quality = series.quality, rating = series.rating,
                                 seasons = series.seasons, unstable = series.isBroken,
-                                modifier = if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier
+                                modifier = Modifier.focusRequester(focusFor(series.id))
+                                    .then(if (index == 0 && state.channels.isEmpty() && state.films.isEmpty()) Modifier.focusRequester(firstFocus) else Modifier)
                             ) {
                                 navController.navigate(Routes.detail("series", series.id))
                             }

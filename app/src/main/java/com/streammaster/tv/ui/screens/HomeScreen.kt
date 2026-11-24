@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -30,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +67,8 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.HomeViewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import com.streammaster.tv.ui.components.CardSurface
 import com.streammaster.tv.ui.components.SectionHeader
 
@@ -78,19 +83,26 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
-    // Initial focus (2026-11-23): the hero's first button, else the first popular poster, so the
-    // remote (D-pad) moves from the first press. The target only exists
-    // once the data has loaded — a LaunchedEffect(Unit) fires before that
-    // and the request is lost — so the request is re-tried (once) when the
-    // films arrive.
+    // Focus restore (§4.1, 2026-11-23): PlayerScreen / DetailScreen write
+    // "focusedId" into this entry's savedStateHandle when leaving; the tile
+    // that id belongs to gets the focus back once the data has arrived.
+    // Otherwise the initial focus is the "Quoi regarder ce soir ?" button —
+    // the first focusable element of the content, always composed even with
+    // an empty catalogue (so no dead fallback branch and no data wait).
+    // One effect does both: restore first, initial focus only when there is
+    // nothing to restore (or the id turned out stale). Shell requests the
+    // sidebar focus first at startup; this effect runs after it (child
+    // after parent), so the content focus wins deterministically.
     val firstFocus = remember { FocusRequester() }
-    var initialFocusDone by remember { mutableStateOf(false) }
-    LaunchedEffect(state.popularFilms.isNotEmpty()) {
-        if (state.popularFilms.isNotEmpty() && !initialFocusDone) {
-            firstFocus.requestFocus()
-            initialFocusDone = true
-        }
-    }
+    val heroFocus = remember { FocusRequester() }
+    val tileFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val recentRowState = rememberLazyListState()
+    val popularRowState = rememberLazyListState()
+    val trendingRowState = rememberLazyListState()
+    val recommendedRowState = rememberLazyListState()
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val focusedId = savedStateHandle?.get<String>("focusedId")
+    var focusHandled by remember { mutableStateOf(false) }
     // UI scaling (2026-11-23): Hero (420dp) + stats + 4 poster rows
     // exceed the viewport even at the reference, and the Shell does not
     // scroll its content — so Home scrolls vertically (LazyRows inside
@@ -99,6 +111,70 @@ fun HomeScreen(
     // tonight screen (asks how much time, offers 3-4 picks).
     val smartListsViewModel: SmartListsViewModel = hiltViewModel()
     val smartLists by smartListsViewModel.lists.collectAsState()
+    val heroFilm = state.popularFilms.firstOrNull()
+    LaunchedEffect(focusedId, state.popularFilms, state.recentFilms, state.recentSeries, state.trendingSeries, state.recommendedFilms, state.recommendedSeries, smartLists) {
+        if (focusHandled) return@LaunchedEffect
+        val target = focusedId
+        if (target != null) {
+            // The hero's "Détail" button opens the same film.
+            if (heroFilm?.id == target) {
+                heroFocus.requestFocus()
+                focusHandled = true
+                savedStateHandle?.remove<String>("focusedId")
+                return@LaunchedEffect
+            }
+            val rows: List<Pair<LazyListState, List<Pair<String, String>>>> = listOf(
+                recentRowState to (state.recentFilms.map { "film:${it.id}" to it.id } + state.recentSeries.map { "series:${it.id}" to it.id }),
+                popularRowState to state.popularFilms.map { "film:${it.id}" to it.id },
+                trendingRowState to state.trendingSeries.map { "series:${it.id}" to it.id },
+                recommendedRowState to (state.recommendedFilms.map { "film:${it.id}" to it.id } + state.recommendedSeries.map { "series:${it.id}" to it.id })
+            )
+            var restored = false
+            for ((rowState, keys) in rows) {
+                val idx = keys.indexOfFirst { it.second == target }
+                if (idx >= 0) {
+                    rowState.scrollToItem(idx)
+                    // Wait for the tile to actually be laid out instead of
+                    // guessing with a fixed delay.
+                    withTimeoutOrNull(1000) {
+                        snapshotFlow { rowState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+                    }
+                    tileFocusRequesters[keys[idx].first]?.requestFocus()
+                    restored = true
+                    break
+                }
+            }
+            if (!restored) {
+                // Smart lists have no row state: best effort on the tile
+                // requester (works only if the tile is already composed).
+                val smartKey = smartLists.firstNotNullOfOrNull { list ->
+                    when {
+                        list.films.any { it.id == target } -> "film:$target"
+                        list.series.any { it.id == target } -> "series:$target"
+                        list.channels.any { it.id == target } -> "live:$target"
+                        else -> null
+                    }
+                }
+                if (smartKey != null) {
+                    tileFocusRequesters[smartKey]?.requestFocus()
+                    restored = true
+                }
+            }
+            if (restored) {
+                focusHandled = true
+                savedStateHandle?.remove<String>("focusedId")
+                return@LaunchedEffect
+            }
+            val catalogueArrived = state.popularFilms.isNotEmpty() || state.recentFilms.isNotEmpty() ||
+                state.recentSeries.isNotEmpty() || state.trendingSeries.isNotEmpty() ||
+                state.recommendedFilms.isNotEmpty() || state.recommendedSeries.isNotEmpty() ||
+                smartLists.isNotEmpty()
+            if (!catalogueArrived) return@LaunchedEffect // data not in yet; the effect restarts
+            savedStateHandle?.remove<String>("focusedId") // stale id: fall through to initial focus
+        }
+        firstFocus.requestFocus()
+        focusHandled = true
+    }
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(36.dp)
@@ -120,9 +196,10 @@ fun HomeScreen(
         }
 
         // Watch Tonight button (§4.36) — right under the expiry card.
+        // It is the initial-focus target (first focusable of the content).
         com.streammaster.tv.ui.components.GoldButton(
             text = stringResource(R.string.ns_tonight_button),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().focusRequester(firstFocus)
         ) { navController.navigate(WATCH_TONIGHT_ROUTE) }
 
         // Subscription-expiry alert (2026-11-22): warn when <= 7 days remain.
@@ -141,7 +218,6 @@ fun HomeScreen(
 
         // Hero (prototype view-home): featured film of the evening, from the
         // highest-rated film; hue-based backdrop like PosterTile.
-        val heroFilm = state.popularFilms.firstOrNull()
         // Flexible hero height (2026-11-23): the content (~412dp with a
         // 2-line title + 2-line description) overflows the 358dp left by
         // the fixed 420dp height on the narrow 1280x720 screen
@@ -242,7 +318,7 @@ fun HomeScreen(
                         HeroActionButton(
                             text = stringResource(R.string.hero_detail),
                             primary = true, big = true, iconRes = R.drawable.ic_play,
-                            modifier = Modifier.focusRequester(firstFocus)
+                            modifier = Modifier.focusRequester(heroFocus)
                         ) {
                             navController.navigate(Routes.detail("film", heroFilm.id))
                         }
@@ -312,14 +388,17 @@ fun HomeScreen(
                 stringResource(R.string.section_recent),
                 stringResource(R.string.section_recent_badge)
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            LazyRow(state = recentRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 items(state.recentFilms) { film ->
                     PosterTile(
                         title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),
                         progressPercent = film.recentProgress, wide = true,
                         subtitle = film.remainingText.ifBlank { null },
                         quality = film.quality, rating = film.rating, year = film.year,
-                        unstable = film.isBroken
+                        unstable = film.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("film:${film.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("film", film.id)) }
                 }
                 items(state.recentSeries) { series ->
@@ -330,7 +409,10 @@ fun HomeScreen(
                             stringResource(R.string.seasons_label, series.seasons)
                         },
                         quality = series.quality, rating = series.rating,
-                        seasons = series.seasons, unstable = series.isBroken
+                        seasons = series.seasons, unstable = series.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("series:${series.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("series", series.id)) }
                 }
             }
@@ -338,27 +420,32 @@ fun HomeScreen(
 
         // Films populaires
         SectionHeader(stringResource(R.string.section_popular_films))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+        LazyRow(state = popularRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             items(state.popularFilms) { film ->
                 PosterTile(
                     title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),
                     isFavorite = film.isFavorite, progressPercent = film.recentProgress,
                     quality = film.quality, rating = film.rating, year = film.year,
                     unstable = film.isBroken,
-                    modifier = if (heroFilm == null && film == state.popularFilms.firstOrNull()) Modifier.focusRequester(firstFocus) else Modifier
+                    modifier = Modifier.focusRequester(
+                        tileFocusRequesters.getOrPut("film:${film.id}") { FocusRequester() }
+                    )
                 ) { navController.navigate(Routes.detail("film", film.id)) }
             }
         }
 
         // Séries tendances
         SectionHeader(stringResource(R.string.section_trending_series))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+        LazyRow(state = trendingRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
             items(state.trendingSeries) { series ->
                 PosterTile(
                     title = series.title, hue = series.hue, code = series.title.take(2).uppercase(),
                     isFavorite = series.isFavorite, progressPercent = series.recentProgress,
                     quality = series.quality, rating = series.rating,
-                    seasons = series.seasons, unstable = series.isBroken
+                    seasons = series.seasons, unstable = series.isBroken,
+                    modifier = Modifier.focusRequester(
+                        tileFocusRequesters.getOrPut("series:${series.id}") { FocusRequester() }
+                    )
                 ) { navController.navigate(Routes.detail("series", series.id)) }
             }
         }
@@ -366,13 +453,16 @@ fun HomeScreen(
         // Recommandé pour vous (2026-11-22): same genres as recently watched.
         if (state.recommendedFilms.isNotEmpty() || state.recommendedSeries.isNotEmpty()) {
             SectionHeader(stringResource(R.string.section_recommended))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+            LazyRow(state = recommendedRowState, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 items(state.recommendedFilms) { film ->
                     PosterTile(
                         title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),
                         isFavorite = film.isFavorite, progressPercent = film.recentProgress,
                         quality = film.quality, rating = film.rating, year = film.year,
-                        unstable = film.isBroken
+                        unstable = film.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("film:${film.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("film", film.id)) }
                 }
                 items(state.recommendedSeries) { series ->
@@ -380,7 +470,10 @@ fun HomeScreen(
                         title = series.title, hue = series.hue, code = series.title.take(2).uppercase(),
                         isFavorite = series.isFavorite, progressPercent = series.recentProgress,
                         quality = series.quality, rating = series.rating,
-                        seasons = series.seasons, unstable = series.isBroken
+                        seasons = series.seasons, unstable = series.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("series:${series.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("series", series.id)) }
                 }
             }
@@ -397,7 +490,10 @@ fun HomeScreen(
                         title = film.title, hue = film.hue, code = film.title.take(2).uppercase(),
                         isFavorite = film.isFavorite, progressPercent = film.recentProgress,
                         quality = film.quality, rating = film.rating, year = film.year,
-                        unstable = film.isBroken
+                        unstable = film.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("film:${film.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("film", film.id)) }
                 }
                 items(list.series) { series ->
@@ -405,14 +501,20 @@ fun HomeScreen(
                         title = series.title, hue = series.hue, code = series.title.take(2).uppercase(),
                         isFavorite = series.isFavorite, progressPercent = series.recentProgress,
                         quality = series.quality, rating = series.rating,
-                        seasons = series.seasons, unstable = series.isBroken
+                        seasons = series.seasons, unstable = series.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("series:${series.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.detail("series", series.id)) }
                 }
                 items(list.channels) { channel ->
                     PosterTile(
                         title = channel.name, hue = channel.hue, code = channel.name.take(2).uppercase(),
                         subtitle = channel.nowTitle.ifBlank { null },
-                        unstable = channel.isBroken
+                        unstable = channel.isBroken,
+                        modifier = Modifier.focusRequester(
+                            tileFocusRequesters.getOrPut("live:${channel.id}") { FocusRequester() }
+                        )
                     ) { navController.navigate(Routes.player("live", channel.id)) }
                 }
             }

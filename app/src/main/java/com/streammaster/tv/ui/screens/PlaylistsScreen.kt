@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -69,6 +70,7 @@ import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.MAX_PLAYLISTS
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.PlaylistsViewModel
+import kotlinx.coroutines.delay
 
 /**
  * Playlists (Profil) — Y01 3-column grid (22dp gap), Y02 playlist card
@@ -95,9 +97,40 @@ fun PlaylistsScreen(
     val mySeriesBouquets by myPlaylistViewModel.seriesBouquets.collectAsState()
     val myBouquetCount = myLiveBouquets.size + myFilmBouquets.size + mySeriesBouquets.size
     val form by viewModel.form.collectAsState()
-    // Initial focus: the Add card (first focusable).
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // B-PL1 — initial focus is the ACTIVE subscription's card (the Y05
+    // card above the grid, always composed when a playlist exists), via
+    // its Refresh button; while the list is still loading (or truly
+    // empty) it falls back to the My Playlist card, always first in the
+    // grid. The Add card is last in the grid and may not even be
+    // composed with 7+ subscriptions, so it must never own first focus.
+    // The effect runs once per list arrival: re-requesting on every
+    // playlists change would yank focus while the user navigates.
+    val activeFocus = remember { FocusRequester() }
+    val myPlaylistFocus = remember { FocusRequester() }
+    var initialFocusDone by remember { mutableStateOf(false) }
+    LaunchedEffect(playlists) {
+        if (initialFocusDone) return@LaunchedEffect
+        if (playlists.isNotEmpty()) {
+            activeFocus.requestFocus()
+            initialFocusDone = true
+        } else {
+            myPlaylistFocus.requestFocus()
+        }
+    }
+    // B-PL2 — the card that opened the add/edit form, so focus returns
+    // to it (not to the Add card) when the form closes.
+    var formReturnId by remember { mutableStateOf<String?>(null) }
+    val cardFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun cardFocus(id: String) = cardFocusRequesters.getOrPut(id) { FocusRequester() }
+    LaunchedEffect(form.showForm) {
+        if (!form.showForm && formReturnId != null) {
+            // The dialog window is gone; give the underlying window a beat
+            // before returning focus to the edited card.
+            delay(100)
+            cardFocusRequesters[formReturnId]?.requestFocus()
+            formReturnId = null
+        }
+    }
     // Initial focus inside the add/edit dialog: the name field.
     val formFocus = remember { FocusRequester() }
     LaunchedEffect(form.showForm) { if (form.showForm) formFocus.requestFocus() }
@@ -155,7 +188,7 @@ fun PlaylistsScreen(
                             fontSize = 16.sp, fontWeight = FontWeight.Bold, color = GoldBright
                         )
                     }
-                    GhostButton(text = stringResource(R.string.refresh)) { viewModel.refresh(active.id) }
+                    GhostButton(text = stringResource(R.string.refresh), modifier = Modifier.focusRequester(activeFocus)) { viewModel.refresh(active.id) }
                 }
             }
         }
@@ -178,8 +211,9 @@ fun PlaylistsScreen(
             items(playlists) { playlist ->
                 PlaylistCard(
                     playlist = playlist,
+                    focusRequester = cardFocus(playlist.id),
                     onLaunch = { viewModel.activate(playlist.id) },
-                    onEdit = { viewModel.openEdit(playlist) },
+                    onEdit = { formReturnId = playlist.id; viewModel.openEdit(playlist) },
                     onDelete = { viewModel.askDelete(playlist) }
                 )
             }
@@ -192,11 +226,11 @@ fun PlaylistsScreen(
                         .clip(RoundedCornerShape(24.dp))
                         .dashedBorder(2.5.dp, BorderStrong, 24.dp)
                         .background(Color(0x0FE5C158))
-                        // The focusRequester must come BEFORE tvFocus
-                        // (which owns the focusable).
-                        .focusRequester(firstFocus)
+                        // B-X1 — at 10 subscriptions the card stays
+                        // visible (greyed) but leaves the focus path.
+                        .focusProperties { canFocus = canAdd }
                         .tvFocus()
-                        .clickable(enabled = canAdd) { viewModel.openAdd() }
+                        .clickable(enabled = canAdd) { formReturnId = null; viewModel.openAdd() }
                         .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -415,7 +449,7 @@ private fun MyPlaylistCard(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GoldButton(text = stringResource(R.string.my_playlist_manage), modifier = Modifier.weight(1f)) { onManage() }
+            GoldButton(text = stringResource(R.string.my_playlist_manage), modifier = Modifier.weight(1f).focusRequester(myPlaylistFocus)) { onManage() }
         }
         }
     }
@@ -425,6 +459,7 @@ private fun MyPlaylistCard(
 @Composable
 private fun PlaylistCard(
     playlist: Playlist,
+    focusRequester: FocusRequester? = null,
     onLaunch: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
@@ -490,7 +525,13 @@ private fun PlaylistCard(
             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0x29FFE89E)))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GoldButton(text = stringResource(R.string.pl_launch), modifier = Modifier.weight(1f)) { onLaunch() }
+            // B-PL2 — the Lancer button owns the card's restore requester,
+            // so closing the edit form lands back on this card.
+            GoldButton(
+                text = stringResource(R.string.pl_launch),
+                modifier = Modifier.weight(1f)
+                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            ) { onLaunch() }
             GhostButton(text = stringResource(R.string.edit_playlist)) { onEdit() }
             DangerGhostButton(text = stringResource(R.string.delete)) { onDelete() }
         }

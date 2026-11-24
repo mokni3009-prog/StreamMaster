@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -114,6 +117,15 @@ fun BuiltInKeyboard(
         onAction(KeyboardAction.Char(c))
     }
 
+    // Focus (2026-11-23, point 3): the keyboard requests focus on its
+    // first key as soon as it appears — without this the D-pad stays on
+    // the field behind the keyboard and typing is unreachable. The effect
+    // is keyed on the layout, so switching language (FR/AR) or mode
+    // (letters/123) — which disposes every key — re-focuses the first
+    // key of the new layout instead of losing focus entirely.
+    val firstKeyFocus = remember { FocusRequester() }
+    LaunchedEffect(layout) { firstKeyFocus.requestFocus() }
+
     // .kb-panel (prototype): gradient panel, 24dp radius, 2px border.
     val panelShape = RoundedCornerShape(24.dp)
     Column(
@@ -130,16 +142,19 @@ fun BuiltInKeyboard(
             .padding(horizontal = 26.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        layout.rows.forEach { row ->
+        layout.rows.forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                row.forEach { raw ->
+                row.forEachIndexed { keyIndex, raw ->
                     KbKey(
                         label = displayChar(raw),
                         onClick = { emitChar(raw) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).then(
+                            if (rowIndex == 0 && keyIndex == 0) Modifier.focusRequester(firstKeyFocus)
+                            else Modifier
+                        )
                     )
                 }
             }

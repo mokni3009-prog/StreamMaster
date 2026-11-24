@@ -1,26 +1,38 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -33,6 +45,7 @@ import com.streammaster.tv.ui.components.GoldButton
 import com.streammaster.tv.ui.components.KeyboardAction
 import com.streammaster.tv.ui.components.KeyboardLanguage
 import com.streammaster.tv.ui.components.KeyboardMode
+import com.streammaster.tv.ui.theme.BorderStrong
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -189,6 +202,14 @@ fun DriveScreen(
     val messageRes by viewModel.message.collectAsState()
     val busy by viewModel.busy.collectAsState()
     var clientIdDialogOpen by remember { mutableStateOf(false) }
+    // Focus (2026-11-23): initial focus on the Client ID button, and
+    // focus returns to it when the dialog closes (m-12).
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(clientIdDialogOpen) {
+        if (!clientIdDialogOpen) firstFocus.requestFocus()
+    }
+    // Back closes the dialog first, instead of leaving the screen.
+    BackHandler(enabled = clientIdDialogOpen) { clientIdDialogOpen = false }
 
     Column(
         modifier = modifier
@@ -236,7 +257,7 @@ fun DriveScreen(
         Spacer(Modifier.height(16.dp))
         GoldButton(
             text = stringResource(R.string.drive_enter_client_id),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(firstFocus),
             onClick = { clientIdDialogOpen = true }
         )
         Spacer(Modifier.height(12.dp))
@@ -315,53 +336,79 @@ private fun DriveClientIdDialog(
     var mode by remember { mutableStateOf(KeyboardMode.LETTERS) }
     var language by remember { mutableStateOf(KeyboardLanguage.FR) }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(32.dp)) {
-        Text(
-            text = stringResource(R.string.drive_client_id_title),
-            color = GoldWhite,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.drive_client_id_hint),
-            color = TextMuted,
-            fontSize = 15.sp
-        )
-        Spacer(Modifier.height(12.dp))
-        Text(text = text.ifBlank { "…" }, color = GoldWhite, fontSize = 16.sp)
-        Spacer(Modifier.height(12.dp))
-        BuiltInKeyboard(
-            onKey = { text += it },
-            onAction = { action ->
-                when (action) {
-                    is KeyboardAction.Char -> text += action.c
-                    KeyboardAction.Backspace -> text = text.dropLast(1)
-                    KeyboardAction.Space -> text += " "
-                    KeyboardAction.Shift -> Unit
-                    KeyboardAction.SwitchLanguage ->
-                        language = if (language == KeyboardLanguage.FR) KeyboardLanguage.AR else KeyboardLanguage.FR
-                    KeyboardAction.Switch123 ->
-                        mode = if (mode == KeyboardMode.LETTERS) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS
-                    KeyboardAction.Validate -> onSave(text)
-                    KeyboardAction.Close -> onDismiss()
-                }
-            },
-            language = language,
-            mode = mode
-        )
-        Spacer(Modifier.height(12.dp))
-        GoldButton(
-            text = stringResource(R.string.save),
-            modifier = Modifier.fillMaxWidth(),
-            enabled = text.isNotBlank(),
-            onClick = { onSave(text) }
-        )
-        Spacer(Modifier.height(8.dp))
-        GhostButton(
-            text = stringResource(R.string.cancel),
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onDismiss
-        )
+    // Focus (2026-11-23, m-12): a real Dialog — it steals focus on open
+    // (the built-in keyboard focuses its first key), traps focus inside
+    // while open, and Back / onDismissRequest closes it and returns focus
+    // to the button that opened it. Previously this was a plain Column
+    // stacked over the screen, so focus wandered freely behind it.
+    val cardShape = RoundedCornerShape(30.dp)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 980.dp).fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        0.0f to Color(0xFA221807),
+                        1.0f to Color(0xFC0C0903)
+                    ),
+                    cardShape
+                )
+                .border(2.5.dp, BorderStrong, cardShape)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 40.dp, vertical = 32.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.drive_client_id_title),
+                color = GoldWhite,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.drive_client_id_hint),
+                color = TextMuted,
+                fontSize = 15.sp
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(text = text.ifBlank { "…" }, color = GoldWhite, fontSize = 16.sp)
+            Spacer(Modifier.height(12.dp))
+            BuiltInKeyboard(
+                onKey = { text += it },
+                onAction = { action ->
+                    when (action) {
+                        // Char is already handled via onKey — adding it
+                        // again here typed every character twice.
+                        is KeyboardAction.Char -> Unit
+                        KeyboardAction.Backspace -> text = text.dropLast(1)
+                        KeyboardAction.Space -> text += " "
+                        KeyboardAction.Shift -> Unit
+                        KeyboardAction.SwitchLanguage ->
+                            language = if (language == KeyboardLanguage.FR) KeyboardLanguage.AR else KeyboardLanguage.FR
+                        KeyboardAction.Switch123 ->
+                            mode = if (mode == KeyboardMode.LETTERS) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS
+                        KeyboardAction.Validate -> onSave(text)
+                        KeyboardAction.Close -> onDismiss()
+                    }
+                },
+                language = language,
+                mode = mode
+            )
+            Spacer(Modifier.height(12.dp))
+            GoldButton(
+                text = stringResource(R.string.save),
+                modifier = Modifier.fillMaxWidth(),
+                enabled = text.isNotBlank(),
+                onClick = { onSave(text) }
+            )
+            Spacer(Modifier.height(8.dp))
+            GhostButton(
+                text = stringResource(R.string.cancel),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onDismiss
+            )
+        }
     }
 }

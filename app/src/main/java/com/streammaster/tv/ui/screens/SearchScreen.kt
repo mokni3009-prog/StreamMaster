@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,16 +37,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -56,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 import com.streammaster.tv.R
 import com.streammaster.tv.ui.components.showToast
+import com.streammaster.tv.data.matchcenter.LiveMatch
 import com.streammaster.tv.data.model.AppSettings
 import com.streammaster.tv.data.model.ContentKind
 import com.streammaster.tv.data.model.SearchResult
@@ -81,6 +89,8 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.MatchCenterViewModel
 import com.streammaster.tv.ui.viewmodel.SearchViewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /**
@@ -110,9 +120,31 @@ fun SearchScreen(
     val isMatchesToday = state.intent is SearchIntent.MatchesToday
     val todayMatches by matchCenterViewModel.matches.collectAsState()
     val matchesLoading by matchCenterViewModel.loading.collectAsState()
-    // Initial focus: the first scope pill ("Tout").
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
+    // Initial focus (2026-11-23): the keyboard, not the "Tout" pill.
+    // BuiltInKeyboard exposes no per-key FocusRequester, so the anchor is
+    // the (now focusable) search field: focus it, then step Down once —
+    // the nearest focusable below the field is a key of the first
+    // keyboard row. If the step finds nothing the focus stays on the
+    // field, one Down press away from the keyboard.
+    val fieldFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    suspend fun focusKeyboardFirstKey() {
+        fieldFocus.requestFocus()
+        withFrameNanos { }
+        focusManager.moveFocus(FocusDirection.Down)
+    }
+    // Focus restore (§4.1): PlayerScreen writes "focusedId" into this
+    // entry's savedStateHandle when leaving the player; the result card
+    // that id belongs to gets the focus back (see the effect below, after
+    // the result lists are derived).
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val focusedId = savedStateHandle?.get<String>("focusedId")
+    var focusRestored by remember { mutableStateOf(false) }
+    val resultFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    val liveRowState = rememberLazyListState()
+    val filmRowState = rememberLazyListState()
+    val seriesRowState = rememberLazyListState()
+    LaunchedEffect(Unit) { if (focusedId == null) focusKeyboardFirstKey() }
     var keyboardLang by remember { mutableStateOf(KeyboardLanguage.FR) }
     var keyboard123 by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -143,6 +175,43 @@ fun SearchScreen(
     val liveResults = state.results.filter { it.kind == ContentKind.LIVE }
     val filmResults = state.results.filter { it.kind == ContentKind.FILM }
     val seriesResults = state.results.filter { it.kind == ContentKind.SERIES }
+    LaunchedEffect(focusedId, state.results, state.searching) {
+        if (focusedId == null || focusRestored) return@LaunchedEffect
+        val target = focusedId
+        val rows = listOf(
+            liveRowState to liveResults.map { it.id },
+            filmRowState to filmResults.map { it.id },
+            seriesRowState to seriesResults.map { it.id }
+        )
+        var restored = false
+        for ((rowState, ids) in rows) {
+            val idx = ids.indexOf(target)
+            if (idx >= 0) {
+                rowState.scrollToItem(idx)
+                // Wait for the card to actually be laid out instead of
+                // guessing with a fixed delay.
+                withTimeoutOrNull(1000) {
+                    snapshotFlow { rowState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+                }
+                resultFocusRequesters[target]?.requestFocus()
+                restored = true
+                break
+            }
+        }
+        if (restored) {
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+            return@LaunchedEffect
+        }
+        if (state.results.isNotEmpty() || !state.searching) {
+            // Genuinely absent (or nothing was searched): drop the stale
+            // id and fall back to the keyboard.
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+            focusKeyboardFirstKey()
+        }
+        // Else still searching: the effect restarts when results arrive.
+    }
 
     // Narrow canvas (720p xhdpi: 640x360 physical dp — LocalConfiguration
     // reports physical dp, so this is true only there; same check as
@@ -211,6 +280,7 @@ fun SearchScreen(
                     onKey = onKeyboardKey,
                     onAction = onKeyboardAction,
                     onClearQuery = onClearQuery,
+                    fieldFocus = fieldFocus,
                     modifier = Modifier.fillMaxWidth()
                 )
                 SearchSidebar(
@@ -219,7 +289,6 @@ fun SearchScreen(
                     onFilterChange = onFilterChange,
                     onPreviousSearch = onPreviousSearch,
                     onVoiceSearch = onVoiceSearch,
-                    firstFocus = firstFocus,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -237,6 +306,7 @@ fun SearchScreen(
                     onKey = onKeyboardKey,
                     onAction = onKeyboardAction,
                     onClearQuery = onClearQuery,
+                    fieldFocus = fieldFocus,
                     modifier = Modifier.weight(1f)
                 )
                 SearchSidebar(
@@ -245,7 +315,6 @@ fun SearchScreen(
                     onFilterChange = onFilterChange,
                     onPreviousSearch = onPreviousSearch,
                     onVoiceSearch = onVoiceSearch,
-                    firstFocus = firstFocus,
                     modifier = Modifier.width(400.dp)
                 )
             }
@@ -260,7 +329,14 @@ fun SearchScreen(
         ) {
             if (isMatchesToday) {
                 item {
-                    MatchCenterList(matches = todayMatches, loading = matchesLoading)
+                    // Focusable match rows (2026-11-23): MatchCenterList
+                    // renders display-only rows, so Search uses its own
+                    // focusable list over the same feed instead.
+                    FocusableMatchesList(
+                        matches = todayMatches,
+                        loading = matchesLoading,
+                        navController = navController
+                    )
                 }
             }
             if (state.query.isNotEmpty() && state.results.isEmpty() && !state.searching && !isMatchesToday) {
@@ -274,9 +350,15 @@ fun SearchScreen(
                         title = stringResource(R.string.search_results_live),
                         count = liveResults.size
                     ) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        LazyRow(state = liveRowState, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                             items(liveResults) { result ->
-                                ChannelResultCard(result = result, onClick = { openResult(result) })
+                                ChannelResultCard(
+                                    result = result,
+                                    modifier = Modifier.focusRequester(
+                                        resultFocusRequesters.getOrPut(result.id) { FocusRequester() }
+                                    ),
+                                    onClick = { openResult(result) }
+                                )
                             }
                         }
                     }
@@ -287,6 +369,7 @@ fun SearchScreen(
                         count = filmResults.size
                     ) {
                         LazyRow(
+                            state = filmRowState,
                             modifier = Modifier.height(344.dp),
                             horizontalArrangement = Arrangement.spacedBy(20.dp)
                         ) {
@@ -295,6 +378,9 @@ fun SearchScreen(
                                     title = result.title,
                                     hue = result.hue,
                                     code = result.title.take(2).uppercase(),
+                                    modifier = Modifier.focusRequester(
+                                        resultFocusRequesters.getOrPut(result.id) { FocusRequester() }
+                                    ),
                                     onClick = { openResult(result) }
                                 )
                             }
@@ -307,6 +393,7 @@ fun SearchScreen(
                         count = seriesResults.size
                     ) {
                         LazyRow(
+                            state = seriesRowState,
                             modifier = Modifier.height(344.dp),
                             horizontalArrangement = Arrangement.spacedBy(20.dp)
                         ) {
@@ -315,6 +402,9 @@ fun SearchScreen(
                                     title = result.title,
                                     hue = result.hue,
                                     code = result.title.take(2).uppercase(),
+                                    modifier = Modifier.focusRequester(
+                                        resultFocusRequesters.getOrPut(result.id) { FocusRequester() }
+                                    ),
                                     onClick = { openResult(result) }
                                 )
                             }
@@ -341,9 +431,15 @@ private fun SearchPanel(
     onKey: (String) -> Unit,
     onAction: (KeyboardAction) -> Unit,
     onClearQuery: () -> Unit,
+    fieldFocus: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     val panelShape = RoundedCornerShape(24.dp)
+    // The field is display-only (typing happens on the keyboard below),
+    // but it is focusable: it is the initial-focus anchor (the step down
+    // into the keyboard starts here) and the safe focus target when the
+    // clear button disappears. OK on the field steps down to the keyboard.
+    val panelFocusManager = LocalFocusManager.current
     Column(
         modifier = modifier
             .background(
@@ -371,6 +467,9 @@ private fun SearchPanel(
                     .clip(fieldShape)
                     .background(Color(0xEB060401))
                     .border(2.dp, GoldBright, fieldShape)
+                    .focusRequester(fieldFocus)
+                    .tvFocus()
+                    .clickable { panelFocusManager.moveFocus(FocusDirection.Down) }
                     .padding(horizontal = 22.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp)
@@ -390,7 +489,10 @@ private fun SearchPanel(
                     modifier = Modifier.weight(1f)
                 )
                 if (query.isNotEmpty()) {
-                    // .clear-x: 42dp circle.
+                    // .clear-x: 42dp circle. The button unmounts when the
+                    // query becomes empty, so the focus is moved to the
+                    // (always composed) field BEFORE clearing — otherwise
+                    // the remote is left with no focused element.
                     Box(
                         modifier = Modifier
                             .size(42.dp)
@@ -398,7 +500,7 @@ private fun SearchPanel(
                             .background(Color(0x29E5C158))
                             .border(1.5.dp, BorderGold, CircleShape)
                             .tvFocus()
-                            .clickable { onClearQuery() },
+                            .clickable { fieldFocus.requestFocus(); onClearQuery() },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(text = "✕", fontSize = 20.sp, color = GoldWhite)
@@ -430,7 +532,9 @@ private fun SearchPanel(
             onAction = onAction,
             language = keyboardLang,
             mode = if (keyboard123) KeyboardMode.SYMBOLS else KeyboardMode.LETTERS,
-            onClearAll = onClearQuery
+            // Same focus move as the ✕ button: the keyboard's own clear
+            // key must not strand the focus either.
+            onClearAll = { fieldFocus.requestFocus(); onClearQuery() }
         )
 
         // SE08 (part): remote hint — ↑↓←→/OK/⌫.
@@ -449,8 +553,7 @@ private fun SearchPanel(
  * Right column (.kb-side, 400dp on the reference): scope pills
  * ("Rechercher dans"), recent searches, the "Astuce" card and the
  * voice-search button. Extracted from SearchScreen; the narrow layout
- * reuses it full-width below the panel. The initial-focus target (the
- * "Tout" pill, firstFocus) is unchanged.
+ * reuses it full-width below the panel.
  */
 @Composable
 private fun SearchSidebar(
@@ -459,7 +562,6 @@ private fun SearchSidebar(
     onFilterChange: (ContentKind?) -> Unit,
     onPreviousSearch: (String) -> Unit,
     onVoiceSearch: () -> Unit,
-    firstFocus: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -469,7 +571,7 @@ private fun SearchSidebar(
         // SE03: scope pills — "Tout / Chaînes / Films / Séries".
         SideCard(title = stringResource(R.string.search_scope_title)) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SortPill(stringResource(R.string.search_filter_all), filter == null, Modifier.focusRequester(firstFocus)) { onFilterChange(null) }
+                SortPill(stringResource(R.string.search_filter_all), filter == null) { onFilterChange(null) }
                 SortPill(stringResource(R.string.search_filter_live), filter == ContentKind.LIVE) { onFilterChange(ContentKind.LIVE) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -654,12 +756,13 @@ private fun ResultSection(
 @Composable
 private fun ChannelResultCard(
     result: SearchResult,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     // R-B2: plain CardSurface (20dp) with the shadow; focus/click stay on
     // the outer surface so the 1.03 scale covers the whole card.
     CardSurface(
-        modifier = Modifier
+        modifier = modifier
             .width(320.dp)
             .height(120.dp)
             .tvFocus()
@@ -722,5 +825,96 @@ private fun launchVoiceSearch(
         launcher.launch(intent)
     } else {
         showToast(context, context.getString(R.string.voice_search_unavailable))
+    }
+}
+
+/**
+ * Today's matches as focusable rows (2026-11-23, A-P4). Search cannot
+ * reuse [MatchCenterList]: its rows are display-only (no tvFocus, no
+ * clickable) and that file belongs to another executor. This list mirrors
+ * its visuals exactly (same grouping by league, sizes, colours and
+ * padding) with one difference: every match is a focus stop, so the
+ * D-pad reaches each of them.
+ *
+ * Click opens the Match Center screen. Playing the broadcasting channel
+ * directly is not possible from this data: [LiveMatch] carries no
+ * broadcaster / channel id — only teams, logos, score and status.
+ */
+@Composable
+private fun FocusableMatchesList(
+    matches: List<LiveMatch>,
+    loading: Boolean,
+    navController: NavHostController,
+    modifier: Modifier = Modifier
+) {
+    if (loading && matches.isEmpty()) {
+        Text(text = stringResource(R.string.loading), fontSize = 18.sp, color = TextMuted, modifier = modifier)
+        return
+    }
+    if (matches.isEmpty()) {
+        Text(text = stringResource(R.string.matches_none), fontSize = 18.sp, color = TextMuted, modifier = modifier)
+        return
+    }
+    val byLeague = matches.groupBy { it.leagueName.ifBlank { "Football" } }
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        byLeague.forEach { (league, leagueMatches) ->
+            item {
+                Text(
+                    text = league,
+                    fontSize = 20.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Serif, color = Gold
+                )
+            }
+            items(leagueMatches) { match ->
+                FocusableMatchRow(match) { navController.navigate(Routes.MATCH_CENTER) }
+            }
+        }
+    }
+}
+
+/** Same row as MatchCenterScreen's MatchRow, plus focus + click. */
+@Composable
+private fun FocusableMatchRow(match: LiveMatch, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(com.streammaster.tv.ui.theme.CardSurface)
+            .tvFocus()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (!match.homeLogo.isNullOrBlank()) {
+            AsyncImage(
+                model = match.homeLogo, contentDescription = match.homeTeam,
+                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp)
+            )
+        }
+        Text(
+            text = match.homeTeam, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            color = GoldWhite, modifier = Modifier.weight(1f)
+        )
+        val scoreText = if (match.homeScore != null && match.awayScore != null) {
+            "${match.homeScore} - ${match.awayScore}"
+        } else "vs"
+        Text(
+            text = scoreText, fontSize = 20.sp, fontWeight = FontWeight.Black, color = GoldWhite
+        )
+        Text(
+            text = match.awayTeam, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            color = GoldWhite, modifier = Modifier.weight(1f)
+        )
+        if (!match.awayLogo.isNullOrBlank()) {
+            AsyncImage(
+                model = match.awayLogo, contentDescription = match.awayTeam,
+                contentScale = ContentScale.Fit, modifier = Modifier.size(36.dp)
+            )
+        }
+        val statusColor = if (match.state == "in") GoldDeep else TextMuted
+        val statusBg = if (match.state == "in") Gold else com.streammaster.tv.ui.theme.CardSurface
+        Text(
+            text = match.statusText, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = statusColor,
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(statusBg).padding(horizontal = 10.dp, vertical = 4.dp)
+        )
     }
 }

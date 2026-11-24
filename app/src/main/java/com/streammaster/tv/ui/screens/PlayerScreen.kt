@@ -33,7 +33,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -138,32 +139,74 @@ fun PlayerScreen(
 ) {
     val ui by viewModel.ui.collectAsState()
     val playback by viewModel.playbackState.collectAsState()
+    // Focus registry for the controls overlay (B-P3, 2026-11-23): the
+    // overlay is disposed while hidden, so the key of the last focused
+    // control is remembered here in the screen scope and focus is
+    // restored to it when the controls reappear — never always back to
+    // play/pause. Every control reports its key via onFocusChanged
+    // (see FsCtrlButton / FsMainPlayButton / BigPlayButton); the
+    // requesters are pre-created so nothing mutates during composition.
+    // CastButton (external composable) is the only control without a
+    // key — focus on it simply leaves the previous key untouched.
+    // The lists' selected bouquet also lives here (B-P1): the
+    // declaration must precede the lists effect below, which assigns
+    // it the playing channel's bouquet when the lists open.
+    var listBouquetId by remember { mutableStateOf<String?>(null) }
+    val controlFocusers = remember {
+        listOf(
+            "play", "big_play", "rewind", "forward", "previous", "go_live",
+            "volume", "subs", "audio", "programme", "display",
+            "favorite", "quality", "pip", "quit",
+            "speed", "record", "failover", "scores", "dnd", "ticker", "external"
+        ).associateWith { FocusRequester() }
+    }
+    fun controlFocusRequester(key: String): FocusRequester =
+        controlFocusers[key] ?: controlFocusers.getValue("play")
+    var lastControlKey by remember { mutableStateOf<String?>(null) }
+    /** Re-focus the last focused control, falling back to play/pause
+     *  when that button is not composed (e.g. the big play button
+     *  while playing). A failed request simply leaves focus where the
+     *  system puts it on the next arrow press. */
+    fun restoreLastControlFocus() {
+        val target = lastControlKey ?: "play"
+        if (!controlFocusRequester(target).requestFocus() && target != "play") {
+            controlFocusRequester("play").requestFocus()
+        }
+    }
     // Initial focus: the play/pause control, (re-)requested whenever the
     // controls overlay appears, so the D-pad moves from the first press.
-    val firstControlFocus = remember { FocusRequester() }
+    // After the first focus move, the restore above takes over (B-P3).
+    val firstControlFocus = controlFocusRequester("play")
     LaunchedEffect(ui.controlsVisible) {
-        if (ui.controlsVisible) firstControlFocus.requestFocus()
+        if (ui.controlsVisible && !playback.isPip) restoreLastControlFocus()
     }
-    // Lists focus: when the slide-up bouquet/channel lists open, focus
-    // moves into the first bouquet; when they close, focus returns to the
-    // play/pause control (when the controls are visible).
+    // Lists focus (B-P1): the lists do NOT request focus here — the
+    // overlay requests it itself once its bouquets have actually
+    // arrived (see PlayerListsOverlay). Requesting here fired before
+    // the overlay's LiveViewModel had any data, so the lists opened
+    // with no focus. When the lists open, pre-select the bouquet of
+    // the channel currently playing (never the first bouquet by
+    // default); when they close, focus returns to the last focused
+    // control (B-P3) when the controls are visible.
     val listsFirstFocus = remember { FocusRequester() }
     LaunchedEffect(ui.listsOpen) {
         if (ui.listsOpen) {
-            listsFirstFocus.requestFocus()
+            if (ui.kind == "live") {
+                ui.channel?.bouquetId?.let { listBouquetId = it }
+            }
         } else if (ui.controlsVisible) {
-            firstControlFocus.requestFocus()
+            restoreLastControlFocus()
         }
     }
     // PiP focus: when the PiP window appears, focus moves to its
     // Agrandir button — otherwise the PiP bar is unreachable by D-pad.
-    // Leaving PiP returns focus to the controls when they are visible;
-    // otherwise the next arrow press shows them (key handler) and the
-    // controls effect requests focus then.
+    // Leaving PiP returns focus to the last focused control when the
+    // controls are visible; otherwise the next arrow press shows them
+    // (key handler) and the controls effect restores focus then.
     val pipFocus = remember { FocusRequester() }
     LaunchedEffect(playback.isPip) {
         if (playback.isPip) pipFocus.requestFocus()
-        else if (ui.controlsVisible) firstControlFocus.requestFocus()
+        else if (ui.controlsVisible) restoreLastControlFocus()
     }
     val position by viewModel.positionMs.collectAsState()
     val duration by viewModel.durationMs.collectAsState()
@@ -176,25 +219,65 @@ fun PlayerScreen(
     val castManager = remember { CastManager(context) }
     DisposableEffect(Unit) { onDispose { castManager.release() } }
     var selector by remember { mutableStateOf<String?>(null) } // audio | subs | quality | display
+    var selectorEverOpen by remember { mutableStateOf(false) }
     var scoresOpen by remember { mutableStateOf(false) } // Match Center dialog (live only)
     // Match Center toggle (2026-11-22): opt-in, persists until the user
     // turns it off from the same Scores button in the player.
     val matchCenterOn by viewModel.matchCenter.collectAsState()
     LaunchedEffect(matchCenterOn) { if (!matchCenterOn) scoresOpen = false }
     var clock by remember { mutableStateOf("") }
-    var listBouquetId by remember { mutableStateOf<String?>(null) }
     // Programme panel (PL09) and volume OSD (PL08) state.
     var epgPanelOpen by remember { mutableStateOf(false) }
     var volumeOsd by remember { mutableStateOf(false) }
-    // Scores dialog focus: the Refresh button.
+    // Scores dialog focus: the Refresh button. On close, focus returns
+    // to the last focused control (B-P3).
     val scoresFocus = remember { FocusRequester() }
+    var scoresEverOpen by remember { mutableStateOf(false) }
     LaunchedEffect(scoresOpen) {
-        if (scoresOpen) scoresFocus.requestFocus()
+        if (scoresOpen) {
+            scoresEverOpen = true
+            scoresFocus.requestFocus()
+        } else if (scoresEverOpen && ui.controlsVisible && !playback.isPip) {
+            restoreLastControlFocus()
+        }
     }
-    // Programme panel focus: the Fermer button (its only focusable).
+    // Programme panel focus (B-P2): every programme row is focusable
+    // (see the panel below); initial focus goes to the programme now
+    // playing, scrolled into view — or to Fermer when there is no EPG.
+    // The effect also re-runs when EPG data arrives after the panel
+    // opened empty, so focus moves off Fermer onto the programme.
+    // On close, focus returns to the last focused control (B-P3).
     val programmeFocus = remember { FocusRequester() }
-    LaunchedEffect(epgPanelOpen) {
-        if (epgPanelOpen) programmeFocus.requestFocus()
+    val epgListState = rememberLazyListState()
+    val epgRowFocusers = remember(epgPrograms.map { epgProgramKey(it) }) {
+        epgPrograms.associate { epgProgramKey(it) to FocusRequester() }
+    }
+    var epgPanelEverOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(epgPanelOpen, epgPrograms.isNotEmpty()) {
+        if (epgPanelOpen) {
+            epgPanelEverOpen = true
+            if (epgPrograms.isEmpty()) {
+                programmeFocus.requestFocus()
+            } else {
+                val now = System.currentTimeMillis()
+                val nowIndex = epgPrograms.indexOfFirst {
+                    now in it.startMillis until it.endMillis
+                }.coerceAtLeast(0)
+                epgListState.scrollToItem(nowIndex)
+                delay(80)
+                epgRowFocusers[epgProgramKey(epgPrograms[nowIndex])]?.requestFocus()
+            }
+        } else if (epgPanelEverOpen && ui.controlsVisible && !playback.isPip) {
+            restoreLastControlFocus()
+        }
+    }
+    // Selector dialogs (audio/subs/quality/display/speed): on close,
+    // focus returns to the last focused control (B-P3).
+    LaunchedEffect(selector) {
+        if (selector != null) selectorEverOpen = true
+        else if (selectorEverOpen && ui.controlsVisible && !playback.isPip) {
+            restoreLastControlFocus()
+        }
     }
     var volumeLevel by remember { mutableStateOf(0) }
     var volumeMax by remember { mutableStateOf(15) }
@@ -295,10 +378,19 @@ fun PlayerScreen(
         viewModel.showControls()
     }
 
+    // Volume OSD (B-P6): focus the + step when it appears, so the
+    // D-pad adjusts the volume from the first press; when it disappears
+    // (timeout or Back) focus returns to the last focused control (B-P3).
+    val volumeFocus = remember { FocusRequester() }
+    var volumeOsdEverOpen by remember { mutableStateOf(false) }
     LaunchedEffect(volumeOsd) {
         if (volumeOsd) {
+            volumeOsdEverOpen = true
+            volumeFocus.requestFocus()
             delay(3000)
             volumeOsd = false
+        } else if (volumeOsdEverOpen && ui.controlsVisible && !playback.isPip) {
+            restoreLastControlFocus()
         }
     }
 
@@ -424,6 +516,10 @@ fun PlayerScreen(
                         KeyEvent.KEYCODE_6, KeyEvent.KEYCODE_7, KeyEvent.KEYCODE_8,
                         KeyEvent.KEYCODE_9 -> {
                             val digit = ('0' + (event.nativeKeyEvent.keyCode - KeyEvent.KEYCODE_0))
+                            // B-P7: digits while the lists are open close
+                            // the lists first, then run — the channel never
+                            // changes behind open lists.
+                            if (ui.listsOpen) viewModel.closeLists()
                             viewModel.onDigit(digit)
                             true
                         }
@@ -431,14 +527,28 @@ fun PlayerScreen(
                         // keys zap to the next/previous live channel
                         // (same zapChannel the phone remote already used).
                         KeyEvent.KEYCODE_CHANNEL_UP -> {
-                            if (ui.kind == "live") { viewModel.zapChannel(1); true } else false
+                            // B-P7: same as digits — close the lists
+                            // first, then zap.
+                            if (ui.kind == "live") {
+                                if (ui.listsOpen) viewModel.closeLists()
+                                viewModel.zapChannel(1); true
+                            } else false
                         }
                         KeyEvent.KEYCODE_CHANNEL_DOWN -> {
-                            if (ui.kind == "live") { viewModel.zapChannel(-1); true } else false
+                            if (ui.kind == "live") {
+                                if (ui.listsOpen) viewModel.closeLists()
+                                viewModel.zapChannel(-1); true
+                            } else false
                         }
                         KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            if (!ui.controlsVisible) { viewModel.showControls(); true } else false
+                            // B-P4: in PiP the controls are never drawn, so
+                            // an arrow must NOT be swallowed to "show" them
+                            // — return false so focus moves between the
+                            // Agrandir/Fermer buttons (in-player PiP) or
+                            // back to the screen underneath (mini player).
+                            if (playback.isPip) false
+                            else if (!ui.controlsVisible) { viewModel.showControls(); true } else false
                         }
                         else -> false
                     }
@@ -633,6 +743,8 @@ fun PlayerScreen(
                     onToggleTicker = { tickerVisible = !tickerVisible },
                     contentBottomPadding = if (tickerShowing) 76.dp else 32.dp,
                     focusRequester = firstControlFocus,
+                    controlFocusRequester = { controlFocusRequester(it) },
+                    onControlFocused = { lastControlKey = it },
                     onSelector = { selector = it },
                     onVolume = { openVolume() },
                     onProgramme = { epgPanelOpen = true },
@@ -667,6 +779,7 @@ fun PlayerScreen(
                     level = volumeLevel,
                     max = volumeMax,
                     onAdjust = { adjustVolume(it) },
+                    plusFocus = volumeFocus,
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
@@ -700,6 +813,7 @@ fun PlayerScreen(
                         )
                     } else {
                         LazyColumn(
+                            state = epgListState,
                             modifier = Modifier.fillMaxWidth().height(480.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -709,6 +823,17 @@ fun PlayerScreen(
                                     modifier = Modifier.fillMaxWidth()
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(if (isNow) Gold else CardSurface)
+                                        // B-P2: every programme row is
+                                        // focusable (display only — no
+                                        // click) so the D-pad scrolls the
+                                        // list; the requester must come
+                                        // BEFORE tvFocus (which owns the
+                                        // focusable). The 1.03 scale +
+                                        // halo come from tvFocus itself.
+                                        .focusRequester(
+                                            epgRowFocusers[epgProgramKey(prog)] ?: FocusRequester()
+                                        )
+                                        .tvFocus()
                                         .padding(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -967,6 +1092,10 @@ private fun PlayerControls(
     onToggleTicker: () -> Unit,
     contentBottomPadding: Dp = 32.dp,
     focusRequester: FocusRequester,
+    // B-P3: per-control requesters + focus reporting, so the screen can
+    // restore the exact last focused control after auto-hide.
+    controlFocusRequester: (String) -> FocusRequester,
+    onControlFocused: (String) -> Unit,
     onSelector: (String) -> Unit,
     onVolume: () -> Unit,
     onProgramme: () -> Unit,
@@ -1117,7 +1246,10 @@ private fun PlayerControls(
                 contentAlignment = Alignment.Center
             ) {
                 if (!playback.isPlaying) {
-                    BigPlayButton { viewModel.togglePlayPause() }
+                    BigPlayButton(
+                        focusRequester = controlFocusRequester("big_play"),
+                        onFocused = onControlFocused
+                    ) { viewModel.togglePlayPause() }
                 }
             }
 
@@ -1199,22 +1331,26 @@ private fun PlayerControls(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                FsCtrlButton("-10 s", R.drawable.ic_rewind) { viewModel.skip(-10_000) }
+                                FsCtrlButton("-10 s", R.drawable.ic_rewind, focusId = "rewind", focusRequester = controlFocusRequester("rewind"), onFocused = onControlFocused) { viewModel.skip(-10_000) }
                                 FsMainPlayButton(
                                     isPlaying = playback.isPlaying,
-                                    modifier = Modifier.focusRequester(focusRequester)
+                                    modifier = Modifier.focusRequester(focusRequester),
+                                    onFocused = onControlFocused
                                 ) { viewModel.togglePlayPause() }
-                                FsCtrlButton("+10 s", R.drawable.ic_forward) { viewModel.skip(10_000) }
+                                FsCtrlButton("+10 s", R.drawable.ic_forward, focusId = "forward", focusRequester = controlFocusRequester("forward"), onFocused = onControlFocused) { viewModel.skip(10_000) }
                                 if (isLive) {
                                     FsCtrlButton(
                                         stringResource(R.string.previous_channel),
-                                        R.drawable.ic_clock
+                                        R.drawable.ic_clock,
+                                        focusId = "previous",
+                                        focusRequester = controlFocusRequester("previous"),
+                                        onFocused = onControlFocused
                                     ) {
                                         viewModel.previousChannel()
                                     }
                                 }
                                 if (isLive && !playback.atLiveEdge) {
-                                    FsCtrlButton(stringResource(R.string.go_live), R.drawable.ic_tv) {
+                                    FsCtrlButton(stringResource(R.string.go_live), R.drawable.ic_tv, focusId = "go_live", focusRequester = controlFocusRequester("go_live"), onFocused = onControlFocused) {
                                         viewModel.goLiveEdge()
                                     }
                                 }
@@ -1230,22 +1366,25 @@ private fun PlayerControls(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                FsCtrlButton(stringResource(R.string.player_volume), R.drawable.ic_volume) {
+                                FsCtrlButton(stringResource(R.string.player_volume), R.drawable.ic_volume, focusId = "volume", focusRequester = controlFocusRequester("volume"), onFocused = onControlFocused) {
                                     onVolume()
                                 }
-                                FsCtrlButton(stringResource(R.string.subtitles), R.drawable.ic_file_text) {
+                                FsCtrlButton(stringResource(R.string.subtitles), R.drawable.ic_file_text, focusId = "subs", focusRequester = controlFocusRequester("subs"), onFocused = onControlFocused) {
                                     onSelector("subs")
                                 }
-                                FsCtrlButton(stringResource(R.string.audio), R.drawable.ic_volume_2) {
+                                FsCtrlButton(stringResource(R.string.audio), R.drawable.ic_volume_2, focusId = "audio", focusRequester = controlFocusRequester("audio"), onFocused = onControlFocused) {
                                     onSelector("audio")
                                 }
                                 if (isLive) {
                                     FsCtrlButton(
                                         stringResource(R.string.player_programme),
-                                        R.drawable.ic_calendar
+                                        R.drawable.ic_calendar,
+                                        focusId = "programme",
+                                        focusRequester = controlFocusRequester("programme"),
+                                        onFocused = onControlFocused
                                     ) { onProgramme() }
                                 }
-                                FsCtrlButton(stringResource(R.string.display), R.drawable.ic_cast) {
+                                FsCtrlButton(stringResource(R.string.display), R.drawable.ic_cast, focusId = "display", focusRequester = controlFocusRequester("display"), onFocused = onControlFocused) {
                                     onSelector("display")
                                 }
                             }
@@ -1260,14 +1399,14 @@ private fun PlayerControls(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                FsCtrlButton(stringResource(R.string.favorite), R.drawable.ic_heart) {
+                                FsCtrlButton(stringResource(R.string.favorite), R.drawable.ic_heart, focusId = "favorite", focusRequester = controlFocusRequester("favorite"), onFocused = onControlFocused) {
                                     viewModel.toggleFavorite()
                                 }
-                                FsCtrlButton(stringResource(R.string.quality), R.drawable.ic_settings) {
+                                FsCtrlButton(stringResource(R.string.quality), R.drawable.ic_settings, focusId = "quality", focusRequester = controlFocusRequester("quality"), onFocused = onControlFocused) {
                                     onSelector("quality")
                                 }
-                                FsCtrlButton("PiP", R.drawable.ic_maximize) { viewModel.enterPip() }
-                                FsCtrlButton(stringResource(R.string.player_quit), R.drawable.ic_x) {
+                                FsCtrlButton("PiP", R.drawable.ic_maximize, focusId = "pip", focusRequester = controlFocusRequester("pip"), onFocused = onControlFocused) { viewModel.enterPip() }
+                                FsCtrlButton(stringResource(R.string.player_quit), R.drawable.ic_x, focusId = "quit", focusRequester = controlFocusRequester("quit"), onFocused = onControlFocused) {
                                     onExit()
                                 }
                             }
@@ -1285,14 +1424,17 @@ private fun PlayerControls(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     item {
-                        FsCtrlButton(stringResource(R.string.speed)) { onSelector("speed") }
+                        FsCtrlButton(stringResource(R.string.speed), focusId = "speed", focusRequester = controlFocusRequester("speed"), onFocused = onControlFocused) { onSelector("speed") }
                     }
                     if (isLive) {
                         item {
                             FsCtrlButton(
                                 if (recState is com.streammaster.tv.player.RecordingState.Active)
                                     stringResource(R.string.record_stop)
-                                else stringResource(R.string.record_start)
+                                else stringResource(R.string.record_start),
+                                focusId = "record",
+                                focusRequester = controlFocusRequester("record"),
+                                onFocused = onControlFocused
                             ) { viewModel.toggleRecording() }
                         }
                         // Smart failover toggle (2026-11-22): opt-in, off by
@@ -1302,7 +1444,10 @@ private fun PlayerControls(
                             FsCtrlButton(
                                 stringResource(R.string.failover),
                                 // R-S3: ic_check icon when on instead of "✓ ".
-                                iconRes = if (failoverOn) R.drawable.ic_check else null
+                                iconRes = if (failoverOn) R.drawable.ic_check else null,
+                                focusId = "failover",
+                                focusRequester = controlFocusRequester("failover"),
+                                onFocused = onControlFocused
                             ) { onToggleFailover() }
                         }
                         // Match Center toggle (2026-11-22): same pattern —
@@ -1314,7 +1459,10 @@ private fun PlayerControls(
                             FsCtrlButton(
                                 stringResource(R.string.scores),
                                 // R-S3: ic_check icon when on instead of "✓ ".
-                                iconRes = if (centerOn) R.drawable.ic_check else null
+                                iconRes = if (centerOn) R.drawable.ic_check else null,
+                                focusId = "scores",
+                                focusRequester = controlFocusRequester("scores"),
+                                onFocused = onControlFocused
                             ) { onScores() }
                         }
                     }
@@ -1323,7 +1471,10 @@ private fun PlayerControls(
                     item {
                         FsCtrlButton(
                             stringResource(R.string.player_dnd),
-                            iconRes = if (dndOn) R.drawable.ic_check else null
+                            iconRes = if (dndOn) R.drawable.ic_check else null,
+                            focusId = "dnd",
+                            focusRequester = controlFocusRequester("dnd"),
+                            onFocused = onControlFocused
                         ) { onToggleDnd() }
                     }
                     // Live-scores ticker (§4.55): shows/hides the bottom
@@ -1331,7 +1482,10 @@ private fun PlayerControls(
                     item {
                         FsCtrlButton(
                             stringResource(R.string.player_ticker),
-                            iconRes = if (tickerOn) R.drawable.ic_check else null
+                            iconRes = if (tickerOn) R.drawable.ic_check else null,
+                            focusId = "ticker",
+                            focusRequester = controlFocusRequester("ticker"),
+                            onFocused = onControlFocused
                         ) { onToggleTicker() }
                     }
                     // Chromecast (§4.46): opens the device picker; once a
@@ -1357,7 +1511,7 @@ private fun PlayerControls(
                     // External player (not for local recordings/downloads).
                     if (ui.kind != "recording" && ui.kind != "download") {
                         item {
-                            FsCtrlButton(stringResource(R.string.external_player)) {
+                            FsCtrlButton(stringResource(R.string.external_player), focusId = "external", focusRequester = controlFocusRequester("external"), onFocused = onControlFocused) {
                                 viewModel.playExternally()
                             }
                         }
@@ -1374,6 +1528,9 @@ private fun FsCtrlButton(
     text: String,
     iconRes: Int? = null,
     modifier: Modifier = Modifier,
+    focusId: String? = null,
+    focusRequester: FocusRequester? = null,
+    onFocused: ((String) -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Box(
@@ -1381,7 +1538,13 @@ private fun FsCtrlButton(
             .clip(RoundedCornerShape(31.dp))
             .background(Color(0xD20C0802))
             .border(2.dp, BorderGold, RoundedCornerShape(31.dp))
-            .tvFocus().clickable { onClick() }
+            // B-P3: the requester must come BEFORE tvFocus (which owns
+            // the focusable); gaining focus reports the key so the
+            // screen can restore this exact button after auto-hide.
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .tvFocus()
+            .onFocusChanged { if (it.isFocused) focusId?.let { id -> onFocused?.invoke(id) } }
+            .clickable { onClick() }
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -1416,13 +1579,16 @@ private fun FsCtrlButton(
 private fun FsMainPlayButton(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
+    onFocused: ((String) -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier.size(74.dp)
             .background(GoldGradient, CircleShape)
             .border(2.dp, GoldWhite, CircleShape)
-            .tvFocus().clickable { onClick() },
+            .tvFocus()
+            .onFocusChanged { if (it.isFocused) onFocused?.invoke("play") }
+            .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1436,14 +1602,20 @@ private fun FsMainPlayButton(
 
 /** Model .fs-big-play (PL04): 130dp circle, 3px gold border, 54dp icon. */
 @Composable
-private fun BigPlayButton(onClick: () -> Unit) {
+private fun BigPlayButton(
+    focusRequester: FocusRequester? = null,
+    onFocused: ((String) -> Unit)? = null,
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier.size(130.dp)
             .background(Color(0xD20C0802), CircleShape)
             .border(3.dp, GoldBright, CircleShape)
             // Focusable like every other control: without tvFocus the
             // D-pad can land on it with no halo.
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvFocus()
+            .onFocusChanged { if (it.isFocused) onFocused?.invoke("big_play") }
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {
@@ -1622,7 +1794,8 @@ private fun VolumeOsd(
     level: Int,
     max: Int,
     onAdjust: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    plusFocus: FocusRequester? = null
 ) {
     val pct = if (max > 0) (level * 100 / max) else 0
     Box(
@@ -1657,17 +1830,24 @@ private fun VolumeOsd(
                 )
             }
             VolumeStepButton(text = "−") { onAdjust(-1) }
-            VolumeStepButton(text = "+") { onAdjust(1) }
+            // B-P6: the + step takes the initial focus when the OSD
+            // appears (requested by the PlayerScreen volume effect).
+            VolumeStepButton(text = "+", focusRequester = plusFocus) { onAdjust(1) }
         }
     }
 }
 
 @Composable
-private fun VolumeStepButton(text: String, onClick: () -> Unit) {
+private fun VolumeStepButton(
+    text: String,
+    focusRequester: FocusRequester? = null,
+    onClick: () -> Unit
+) {
     // R-B2: CardSurface component (24dp radius = the 48dp circle) so the
     // button carries the prototype --card-shadow; the 2dp gold border kept.
     com.streammaster.tv.ui.components.CardSurface(
         modifier = Modifier.size(48.dp)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .tvFocus().clickable { onClick() },
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(2.dp, BorderGold)
@@ -1723,10 +1903,45 @@ private fun PlayerListsOverlay(
     val liveState by liveViewModel.state.collectAsState()
     val playback by viewModel.playbackState.collectAsState()
     val bouquets = liveState.bouquets
-    val channels = liveState.channels.filter {
-        selectedBouquetId == null || it.bouquetId == selectedBouquetId
-    }
     val playingId = (playback.item as? PlaybackItem.Live)?.channel?.id
+    // B-P1: the bouquet the lists open on is the playing channel's
+    // bouquet — never the first bouquet by default. The screen passes
+    // it in as selectedBouquetId (see the lists effect in PlayerScreen);
+    // the fallbacks cover the race where that state has not landed yet
+    // (playing bouquet from the full channel list) and non-live items
+    // (the LiveViewModel's own current bouquet).
+    val playingBouquetId = remember(playingId, allChannels) {
+        allChannels.firstOrNull { it.id == playingId }?.bouquetId
+    }
+    val effectiveBouquetId =
+        selectedBouquetId ?: playingBouquetId ?: liveState.selectedBouquetId
+    val channels = liveState.channels.filter {
+        effectiveBouquetId == null || it.bouquetId == effectiveBouquetId
+    }
+    // B-P1: focus is requested ONLY once the bouquets have actually
+    // arrived (the overlay's LiveViewModel starts empty), after syncing
+    // its selection to the effective bouquet so the channel column shows
+    // that bouquet, and after scrolling the bouquet column to it — the
+    // requester is attached to the effective bouquet's row, not index 0.
+    // The overlay is composed fresh on every open, so the flag below is
+    // per-open. If the bouquets never arrive the lists stay unfocused
+    // (they are empty anyway) and Back still closes them.
+    val bouquetsListState = rememberLazyListState()
+    var listsInitialised by remember { mutableStateOf(false) }
+    LaunchedEffect(bouquets.isNotEmpty()) {
+        if (bouquets.isNotEmpty() && !listsInitialised) {
+            listsInitialised = true
+            val target = effectiveBouquetId
+            if (target != null && bouquets.any { it.id == target }) {
+                if (target != liveState.selectedBouquetId) liveViewModel.selectBouquet(target)
+                if (target != selectedBouquetId) onBouquet(target)
+            }
+            val focusIndex = bouquets.indexOfFirst { it.id == target }.coerceAtLeast(0)
+            bouquetsListState.scrollToItem(focusIndex)
+            delay(80)
+            firstFocus.requestFocus()
+        }
+    }
     Column(
         modifier = modifier.fillMaxWidth().fillMaxHeight(0.68f)
             .background(
@@ -1765,11 +1980,12 @@ private fun PlayerListsOverlay(
                         color = GoldBright, letterSpacing = 2.sp
                     )
                     LazyColumn(
+                        state = bouquetsListState,
                         modifier = Modifier.fillMaxHeight().padding(top = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        itemsIndexed(bouquets) { index, bouquet ->
-                            val selected = bouquet.id == (selectedBouquetId ?: liveState.selectedBouquetId)
+                        items(bouquets) { bouquet ->
+                            val selected = bouquet.id == effectiveBouquetId
                             val count = allChannels.count { it.bouquetId == bouquet.id }
                             Row(
                                 modifier = Modifier.fillMaxWidth()
@@ -1784,7 +2000,9 @@ private fun PlayerListsOverlay(
                                     )
                                     // The focusRequester must come BEFORE
                                     // tvFocus (which owns the focusable).
-                                    .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                                    // B-P1: it sits on the effective
+                                    // bouquet's row, not on index 0.
+                                    .then(if (bouquet.id == effectiveBouquetId) Modifier.focusRequester(firstFocus) else Modifier)
                                     .tvFocus()
                                     .clickable {
                                         onBouquet(bouquet.id)
@@ -1894,6 +2112,10 @@ private fun PlayerListsOverlay(
         }
     }
 }
+
+/** Stable key for a programme row's FocusRequester (B-P2) — EpgProgram
+ *  has no id, so channel + start time identifies a row. */
+private fun epgProgramKey(prog: EpgProgram): String = "${prog.channelId}:${prog.startMillis}"
 
 private fun fmtHM(millis: Long): String =
     SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(millis))

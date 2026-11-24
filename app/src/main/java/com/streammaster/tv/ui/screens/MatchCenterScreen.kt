@@ -1,6 +1,7 @@
 package com.streammaster.tv.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +40,7 @@ import com.streammaster.tv.ui.theme.Gold
 import com.streammaster.tv.ui.theme.GoldDeep
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.MatchCenterViewModel
 
 /** Match Center — live football scores (ESPN scoreboard, 2026-11-22). */
@@ -108,10 +110,14 @@ fun MatchCenterList(
 
 @Composable
 private fun MatchRow(match: LiveMatch) {
+    // Focus (2026-11-23, m-06): the row itself is focusable so the D-pad
+    // can reach and scroll the list; rows are read-only, OK does nothing.
     Row(
         modifier = Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(CardSurface)
+            .tvFocus()
+            .clickable { }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

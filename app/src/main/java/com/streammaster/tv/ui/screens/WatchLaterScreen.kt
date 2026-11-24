@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +41,7 @@ import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.WatchLaterViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,10 +61,51 @@ fun WatchLaterScreen(
     // list arrives.
     val firstFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
+    // §4.1 — return to the same item: PlayerScreen writes the played id
+    // into this entry's savedStateHandle ("focusedId"); items are keyed
+    // "kind:refId" here, so either form matches. (Items open the detail
+    // page, so a return via the player only restores when the detail
+    // page itself wrote the id back — otherwise the first row is used.)
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val restoreId = savedStateHandle?.get<String>("focusedId")
+    val hasRestoreTarget = restoreId != null &&
+        items.any { it.refId == restoreId || "${it.kind}:${it.refId}" == restoreId }
+    val itemFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(key: String) = itemFocusRequesters.getOrPut(key) { FocusRequester() }
+    val listState = rememberLazyListState()
+    var focusRestored by remember { mutableStateOf(false) }
     LaunchedEffect(items.isNotEmpty()) {
-        if (items.isNotEmpty() && !initialFocusDone) {
+        if (items.isNotEmpty() && !initialFocusDone && !hasRestoreTarget) {
             firstFocus.requestFocus()
             initialFocusDone = true
+        }
+    }
+    LaunchedEffect(items, restoreId) {
+        if (focusRestored || initialFocusDone) return@LaunchedEffect
+        val target = restoreId?.takeIf { id ->
+            items.any { it.refId == id || "${it.kind}:${it.refId}" == id }
+        } ?: return@LaunchedEffect
+        val index = items.indexOfFirst { it.refId == target || "${it.kind}:${it.refId}" == target }
+        if (index > 0) {
+            listState.scrollToItem(index)
+            delay(100) // let the row compose after the scroll before focusing it
+        }
+        val key = items[index].let { "${it.kind}:${it.refId}" }
+        if (index == 0) firstFocus.requestFocus() else focusFor(key).requestFocus()
+        focusRestored = true
+        initialFocusDone = true
+        savedStateHandle?.remove<String>("focusedId")
+    }
+    // Focus (2026-11-23, m-10): the confirm button replaces the focused
+    // "Supprimer" button, and a delete removes the focused row — both
+    // dispose the focused node. The confirm button is re-focused when it
+    // appears, and focus moves to a live neighbour BEFORE the row is
+    // removed; focusRestorer() on the list is the safety net.
+    val confirmFocus = remember { FocusRequester() }
+    LaunchedEffect(confirmDeleteId) {
+        if (confirmDeleteId != null) {
+            delay(50)
+            confirmFocus.requestFocus()
         }
     }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -72,13 +116,14 @@ fun WatchLaterScreen(
         if (items.isEmpty()) {
             Text(text = stringResource(R.string.watch_later_empty), fontSize = 18.sp, color = TextMuted)
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(state = listState, modifier = Modifier.focusRestorer(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(items) { index, item ->
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(20.dp))
                             .background(CardSurface)
                             .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                            .focusRequester(focusFor("${item.kind}:${item.refId}"))
                             .tvFocus()
                             .clickable {
                                 when (item.kind) {
@@ -98,7 +143,14 @@ fun WatchLaterScreen(
                             )
                         }
                         if (confirmDeleteId == "${item.kind}:${item.refId}") {
-                            GoldButton(text = stringResource(R.string.confirm_delete)) {
+                            GoldButton(
+                                text = stringResource(R.string.confirm_delete),
+                                modifier = Modifier.focusRequester(confirmFocus)
+                            ) {
+                                val keys = items.map { "${it.kind}:${it.refId}" }
+                                val idx = keys.indexOf("${item.kind}:${item.refId}")
+                                val next = keys.getOrNull(idx + 1) ?: keys.getOrNull(idx - 1)
+                                if (next != null) focusFor(next).requestFocus()
                                 viewModel.remove(item)
                                 confirmDeleteId = null
                             }

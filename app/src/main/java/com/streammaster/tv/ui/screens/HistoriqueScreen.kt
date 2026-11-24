@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -51,6 +52,7 @@ import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.HistoriqueViewModel
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,11 +72,41 @@ fun HistoriqueScreen(
     // re-tried (once) when the history arrives.
     val firstFocus = remember { FocusRequester() }
     var initialFocusDone by remember { mutableStateOf(false) }
+    // §4.1 — return to the same item: PlayerScreen writes the played id
+    // into this entry's savedStateHandle ("focusedId") when exiting the
+    // player; the id is the entry's refId.
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    val restoreId = savedStateHandle?.get<String>("focusedId")
+    val hasRestoreTarget = restoreId != null && history.any { it.entry.refId == restoreId }
+    val rowFocusRequesters = remember { mutableMapOf<String, FocusRequester>() }
+    fun focusFor(refId: String) = rowFocusRequesters.getOrPut(refId) { FocusRequester() }
+    val listState = rememberLazyListState()
+    var focusRestored by remember { mutableStateOf(false) }
     LaunchedEffect(history.isNotEmpty()) {
-        if (history.isNotEmpty() && !initialFocusDone) {
+        if (history.isNotEmpty() && !initialFocusDone && !hasRestoreTarget) {
             firstFocus.requestFocus()
             initialFocusDone = true
         }
+    }
+    LaunchedEffect(history, restoreId) {
+        if (focusRestored || initialFocusDone) return@LaunchedEffect
+        val target = restoreId?.takeIf { id -> history.any { it.entry.refId == id } }
+            ?: return@LaunchedEffect
+        val shown = history.take(20)
+        val index = shown.indexOfFirst { it.entry.refId == target }
+        if (index < 0) {
+            focusRestored = true
+            savedStateHandle?.remove<String>("focusedId")
+            return@LaunchedEffect
+        }
+        if (index > 0) {
+            listState.scrollToItem(index)
+            delay(100) // let the row compose after the scroll before focusing it
+        }
+        if (index == 0) firstFocus.requestFocus() else focusFor(target).requestFocus()
+        focusRestored = true
+        initialFocusDone = true
+        savedStateHandle?.remove<String>("focusedId")
     }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // Section head with the count badge + the always-visible "Tout effacer"
@@ -102,7 +134,7 @@ fun HistoriqueScreen(
                 modifier = Modifier.fillMaxWidth().padding(40.dp)
             )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 itemsIndexed(history.take(20)) { index, row ->
                     val entry = row.entry
                     // Prototype `.hist-row`: min 64dp, radius 17, black 45%,
@@ -123,6 +155,7 @@ fun HistoriqueScreen(
                             .background(Color(0x73000000))
                             .border(2.dp, BorderGold.copy(alpha = 0.24f), RoundedCornerShape(17.dp))
                             .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                            .focusRequester(focusFor(entry.refId))
                             .tvFocus()
                             .clickable {
                                 when (entry.kind) {

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -82,10 +81,13 @@ fun MiniPlayerOverlay(
         is PlaybackItem.DownloadItem -> item.download.title
         null -> ""
     }
-    // Initial focus: Agrandir, so the D-pad reaches the mini player
-    // from the first press (same pattern as the in-player PiP bar).
+    // A-P1 (2026-11-23): the floating window NEVER requests focus on
+    // its own when it appears — the focus stays where the user was
+    // (channel card / poster / sidebar item). Both buttons stay
+    // focusable, so the user reaches them with the arrows whenever they
+    // want, or with an explicit press. The requester is kept attached
+    // to Agrandir (reachable, never auto-requested).
     val enlargeFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { enlargeFocus.requestFocus() }
 
     Box(
         modifier = Modifier.fillMaxSize(),

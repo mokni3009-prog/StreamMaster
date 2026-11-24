@@ -10,9 +10,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,6 +51,12 @@ fun DiagnosticsScreen(
     viewModel: DiagnosticsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    // Focus (2026-11-23, ص-01): initial focus on the check-server button
+    // once the diagnostics have loaded.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(state.loading) {
+        if (!state.loading) firstFocus.requestFocus()
+    }
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -104,7 +114,7 @@ fun DiagnosticsScreen(
             text = if (state.serverChecking) stringResource(R.string.ns_diag_checking)
             else stringResource(R.string.ns_diag_check_server),
             enabled = !state.serverChecking,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().focusRequester(firstFocus)
         ) { viewModel.checkServer() }
 
         SectionHeader(stringResource(R.string.ns_diag_recent_errors))

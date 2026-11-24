@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +47,8 @@ import com.streammaster.tv.ui.theme.GoldSoft
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
 import com.streammaster.tv.ui.viewmodel.SeriesSort
 import com.streammaster.tv.ui.viewmodel.SeriesViewModel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Series — grid + sort pills (default / rated / most seasons / A–Z).
  *
@@ -57,7 +59,9 @@ import kotlinx.coroutines.delay
  * real (item references); for the active subscription it shows the
  * subscription's series — the Series model carries no bouquetId, so a
  * per-bouquet split of the active catalogue is impossible until the
- * data model gains one.
+ * data model gains one. Until then the active-subscription bouquet
+ * pills are display-only ([DisabledBouquetPill]: same look, no focus,
+ * no click) so the remote never lands on a button that does nothing.
  *
  * §4.1 — returning from the player focuses the series that was playing
  * (PlayerScreen writes "focusedId" into this entry's savedStateHandle).
@@ -100,6 +104,10 @@ fun SeriesScreen(
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     val focusedId = savedStateHandle?.get<String>("focusedId")
     var focusRestored by remember { mutableStateOf(false) }
+    // Initial focus: the first sort pill — but only when there is no
+    // restore target, so it never steals the focus back from a restore.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (focusedId == null) firstFocus.requestFocus() }
     LaunchedEffect(focusedId, displayedSeries, mySeriesAll) {
         if (focusedId == null || focusRestored) return@LaunchedEffect
         if (!mySource && mySeriesAll.any { it.id == focusedId }) {
@@ -110,18 +118,26 @@ fun SeriesScreen(
         val idx = displayedSeries.indexOfFirst { it.id == focusedId }
         if (idx >= 0) {
             gridState.scrollToItem(idx)
-            delay(120)
+            // Wait for the tile to actually be laid out instead of
+            // guessing with a fixed delay.
+            withTimeoutOrNull(1000) {
+                snapshotFlow { gridState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+            }
             tileFocusRequesters[focusedId]?.requestFocus()
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
-        } else if (series.isNotEmpty() && mySeriesAll.isNotEmpty()) {
+        } else if (series.isNotEmpty()) {
+            // The active catalogue has loaded and the id is in neither
+            // list: nothing to restore. (An empty My Playlist must not
+            // block this conclusion — its list is empty by design for a
+            // new user.) The ViewModels are retained in the back stack,
+            // so on this return path both lists already hold their true
+            // values.
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
+            firstFocus.requestFocus()
         }
     }
-    // Initial focus: the first sort pill.
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     Column(modifier = Modifier.fillMaxSize()) {
         // Section head with the "Multi-Saisons" count badge (prototype `.sec-head`).
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -191,9 +207,9 @@ fun SeriesScreen(
                     }
                 }
                 items(activeSeriesBouquets) { bouquet ->
-                    SortPill(bouquet.name, !mySource && activeBouquetId == bouquet.id) {
-                        mySource = false; activeBouquetId = bouquet.id
-                    }
+                    // Display-only: no bouquetId on Series, so this pill
+                    // cannot filter the grid (see DisabledBouquetPill).
+                    DisabledBouquetPill(bouquet.name)
                 }
             }
         }

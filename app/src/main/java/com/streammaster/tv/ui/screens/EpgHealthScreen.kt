@@ -10,12 +10,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,6 +56,12 @@ fun EpgHealthScreen(
 ) {
     val state by viewModel.state.collectAsState()
     var filter by remember { mutableStateOf(EpgFilter.ALL) }
+    // Focus (2026-11-23, ص-02): initial focus on the first filter pill
+    // once the data has loaded.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(state.loading) {
+        if (!state.loading) firstFocus.requestFocus()
+    }
     Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         SectionHeader(stringResource(R.string.ns_epg_health_title))
         if (state.loading) {
@@ -73,7 +82,7 @@ fun EpgHealthScreen(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SortPill(stringResource(R.string.ns_epg_filter_all), filter == EpgFilter.ALL) { filter = EpgFilter.ALL }
+            SortPill(stringResource(R.string.ns_epg_filter_all), filter == EpgFilter.ALL, modifier = Modifier.focusRequester(firstFocus)) { filter = EpgFilter.ALL }
             SortPill(stringResource(R.string.ns_epg_filter_with), filter == EpgFilter.WITH) { filter = EpgFilter.WITH }
             SortPill(stringResource(R.string.ns_epg_filter_without), filter == EpgFilter.WITHOUT) { filter = EpgFilter.WITHOUT }
         }

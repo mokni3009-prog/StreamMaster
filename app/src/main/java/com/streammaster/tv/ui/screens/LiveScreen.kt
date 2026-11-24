@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,8 +84,9 @@ import com.streammaster.tv.ui.theme.TextMuted
 import com.streammaster.tv.ui.theme.tvFocusBorderless
 import com.streammaster.tv.ui.viewmodel.LiveViewModel
 import com.streammaster.tv.ui.viewmodel.MyPlaylistViewModel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -149,6 +151,14 @@ fun LiveScreen(
     val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
     val focusedId = savedStateHandle?.get<String>("focusedId")
     var focusRestored by remember { mutableStateOf(false) }
+    // Initial focus (2026-11-23): the "My Playlist" section header — the
+    // first focusable element of the screen. Gated on the absence of a
+    // restore target so it never steals the focus back from a restore;
+    // the strip's old "Tout" pill (a third "Tout" next to the two section
+    // "Tout" pills) is removed — the section rows already select "all"
+    // for their own source.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (focusedId == null) firstFocus.requestFocus() }
     LaunchedEffect(focusedId, displayChannels, myChannelsAll, allActiveChannels) {
         if (focusedId == null || focusRestored) return@LaunchedEffect
         // Switching source changes displayChannels, so the effect restarts
@@ -173,14 +183,24 @@ fun LiveScreen(
         val idx = displayChannels.indexOfFirst { it.id == focusedId }
         if (idx >= 0) {
             listState.scrollToItem(idx)
-            delay(120)
+            // Wait for the card to actually be laid out instead of
+            // guessing with a fixed delay.
+            withTimeoutOrNull(1000) {
+                snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.index == idx } }.first { it }
+            }
             channelFocusRequesters[focusedId]?.requestFocus()
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
-        } else if (myChannelsAll.isNotEmpty() && allActiveChannels.isNotEmpty()) {
-            // Both lists loaded and the id is in neither: nothing to restore.
+        } else if (allActiveChannels.isNotEmpty()) {
+            // The active catalogue has loaded and the id is in neither
+            // list: nothing to restore. (An empty My Playlist must not
+            // block this conclusion — its list is empty by design for a
+            // new user.) The ViewModels are retained in the back stack,
+            // so on this return path both lists already hold their true
+            // values.
             focusRestored = true
             savedStateHandle?.remove<String>("focusedId")
+            firstFocus.requestFocus()
         }
     }
     // Keep the EPG flow on the displayed channel when the browsed source
@@ -195,9 +215,6 @@ fun LiveScreen(
     // Double-click detection (V11): last OK click on the same channel.
     var lastClickChannelId by remember { mutableStateOf<String?>(null) }
     var lastClickMillis by remember { mutableStateOf(0L) }
-    // Initial focus: the first bouquet pill (first focusable of the screen).
-    val firstFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     fun openChannel(channelId: String) {
         navController.navigate(Routes.player("live", channelId))
     }
@@ -245,7 +262,7 @@ fun LiveScreen(
                 title = stringResource(R.string.my_playlist_name),
                 count = myLiveBouquets.size,
                 expanded = mySectionOpen,
-                modifier = Modifier.padding(bottom = 10.dp),
+                modifier = Modifier.focusRequester(firstFocus).padding(bottom = 10.dp),
                 onToggle = { mySectionOpen = !mySectionOpen }
             )
             if (mySectionOpen) {
@@ -290,37 +307,13 @@ fun LiveScreen(
                 }
             }
             // V02 — bouquet strip (.cat-pill): 50dp high, radius 25, 19sp ExtraBold.
+            // No "Tout" pill here: each named section above already has its
+            // own "Tout" for its source (a third identical "Tout" only
+            // confused the remote order).
             LazyRow(
                 modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                item {
-                    val allSelected = if (mySource) myBouquetId == null else state.selectedBouquetId == null
-                    Box(
-                        modifier = Modifier.height(50.dp)
-                            .focusRequester(firstFocus)
-                            .clip(RoundedCornerShape(25.dp))
-                            .then(
-                                if (allSelected) Modifier.background(GoldGradient)
-                                    .border(2.dp, Color(0xFFFFF8D6), RoundedCornerShape(25.dp))
-                                else Modifier.background(Color(0xEB1A1205))
-                                    .border(2.dp, BorderGold, RoundedCornerShape(25.dp))
-                            )
-                            .tvFocusBorderless()
-                            .clickable {
-                                if (mySource) { myBouquetId = null; myChannelId = null }
-                                else viewModel.selectAll()
-                            }
-                            .padding(horizontal = 24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(R.string.live_all), fontSize = 19.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (allSelected) GoldDeep else GoldWhite
-                        )
-                    }
-                }
                 itemsIndexed(displayBouquets) { _, bouquet ->
                     // Strip bouquets are §3 Bouquet (String id); My Playlist
                     // row ids are Long, stringified by toBouquet().

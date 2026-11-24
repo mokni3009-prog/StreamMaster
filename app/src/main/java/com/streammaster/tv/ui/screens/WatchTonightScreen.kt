@@ -1,5 +1,6 @@
 package com.streammaster.tv.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,9 +11,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,6 +31,7 @@ import com.streammaster.tv.ui.components.SectionHeader
 import com.streammaster.tv.ui.navigation.Routes
 import com.streammaster.tv.ui.theme.GoldWhite
 import com.streammaster.tv.ui.theme.TextMuted
+import com.streammaster.tv.ui.theme.tvFocus
 import com.streammaster.tv.ui.viewmodel.TonightPick
 import com.streammaster.tv.ui.viewmodel.WatchTonightViewModel
 
@@ -43,6 +49,9 @@ fun WatchTonightScreen(
     viewModel: WatchTonightViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    // Focus (2026-11-23, ص-05): initial focus on the first time pill.
+    val firstFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { firstFocus.requestFocus() }
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -56,7 +65,8 @@ fun WatchTonightScreen(
             listOf(30, 60, 90, 120, 180).forEach { minutes ->
                 SortPill(
                     stringResource(R.string.ns_tonight_minutes, minutes),
-                    state.availableMinutes == minutes
+                    state.availableMinutes == minutes,
+                    modifier = if (minutes == 30) Modifier.focusRequester(firstFocus) else Modifier
                 ) { viewModel.setAvailableMinutes(minutes) }
             }
         }
@@ -81,7 +91,11 @@ fun WatchTonightScreen(
 
 @Composable
 private fun TonightPickRow(pick: TonightPick, onClick: () -> Unit) {
-    CardSurface(modifier = Modifier.fillMaxWidth()) {
+    // Focus (2026-11-23, ص-20): the whole row is focusable and clickable,
+    // not just the small action button on the right.
+    CardSurface(
+        modifier = Modifier.fillMaxWidth().tvFocus().clickable { onClick() }
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
             horizontalArrangement = Arrangement.SpaceBetween
