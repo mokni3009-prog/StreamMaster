@@ -12,6 +12,7 @@ import com.streammaster.tv.data.db.RoomQoeStore
 import com.streammaster.tv.data.db.StreamMasterDatabase
 import com.streammaster.tv.data.network.NetworkFactory
 import com.streammaster.tv.data.prefs.SettingsStore
+import com.streammaster.tv.data.security.SecureStore
 import com.streammaster.tv.data.repository.ContentRepository
 import com.streammaster.tv.data.repository.ContentRepositoryImpl
 import com.streammaster.tv.data.repository.DownloadRepository
@@ -179,10 +180,27 @@ object AppModule {
     @Singleton
     fun provideQoeStore(impl: RoomQoeStore): QoeStore = impl
 
+    /**
+     * SEC-02 / SEC-03 / SEC-04 (2026-11-24): the parental PIN, Drive
+     * tokens and OpenSubtitles key are encrypted at rest with
+     * [SecureStore] (Android KeyStore + AES/GCM, no new dependency).
+     * The [SecureStore] binding itself comes from its `@Singleton`
+     * `@Inject` constructor — no `@Provides` method, so there is exactly
+     * one binding. It is passed explicitly to [SettingsStore] here;
+     * [com.streammaster.tv.data.drive.DrivePrefs] and
+     * [com.streammaster.tv.data.subtitles.SubtitlePrefs] are built
+     * manually outside Hilt (DriveScreen, SubtitleDownloader,
+     * SubtitleDownloadButton) and take the same store via their
+     * default constructor argument — the store is stateless, so every
+     * instance guards the same KeyStore key.
+     */
     @Provides
     @Singleton
-    fun provideSettingsStore(@ApplicationContext context: Context): SettingsStore =
-        SettingsStore(context)
+    fun provideSettingsStore(
+        @ApplicationContext context: Context,
+        secureStore: SecureStore
+    ): SettingsStore =
+        SettingsStore(context, secureStore)
 
     @Provides
     @Singleton

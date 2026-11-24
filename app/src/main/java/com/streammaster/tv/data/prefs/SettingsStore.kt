@@ -6,13 +6,16 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.streammaster.tv.data.model.AppSettings
+import com.streammaster.tv.data.security.SecureStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 
 private const val TAG = "StreamMaster"
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -21,8 +24,18 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
  * DataStore Preferences "settings". Keys exactly as CONTRACT §4.
  * lockedBouquetsJson format: "LIVE:id1,id2;FILMS:id3" (kind -> comma-separated ids).
  * lockedItemsJson format: comma-separated item ids.
+ *
+ * SEC-02 (2026-11-24): the parental PIN is stored ENCRYPTED via
+ * [SecureStore] (Android KeyStore + AES/GCM, `v1:` format). [AppSettings.pin]
+ * still carries the plaintext PIN in memory, so the `== pin` comparisons
+ * in Splash/Shell/PlayerViewModel are unchanged. A PIN stored as plaintext
+ * before this change is decrypted transparently on read and rewritten
+ * encrypted by [migrateLegacyPin] on first collection.
  */
-class SettingsStore(private val context: Context) {
+class SettingsStore(
+    private val context: Context,
+    private val secureStore: SecureStore = SecureStore()
+) {
 
     companion object {
         val KEY_LANG = stringPreferencesKey("lang")
@@ -90,10 +103,17 @@ class SettingsStore(private val context: Context) {
         // OP-16: a corrupt/unreadable DataStore file used to throw out of
         // this Flow and crash every collector (settings are read almost
         // everywhere) — fall back to defaults instead.
+        // OP-16 (fixed 2026-11-24 during the SEC-02 work): the catch must
+        // emit emptyPreferences() — the flow carries Preferences, so the
+        // previous emit(AppSettings()) did not type-check. The downstream
+        // map then builds the default AppSettings() from the empty prefs.
         .catch { e ->
             Log.w(TAG, "settings read failed, using defaults", e)
-            emit(AppSettings())
+            emit(emptyPreferences())
         }
+        // SEC-02: one-shot migration — a PIN stored as plaintext before
+        // encryption is rewritten encrypted on first collection.
+        .onEach { prefs -> migrateLegacyPin(prefs) }
         .map { prefs ->
             AppSettings(
                 lang = prefs[KEY_LANG] ?: "fr",
@@ -106,7 +126,7 @@ class SettingsStore(private val context: Context) {
                 epgWindow = prefs[KEY_EPG_WINDOW] ?: "24h",
                 autoResume = prefs[KEY_AUTO_RESUME] ?: false,
                 sleepMinutes = prefs[KEY_SLEEP_MINUTES] ?: 0,
-                pin = prefs[KEY_PIN] ?: "",
+                pin = secureStore.decrypt(prefs[KEY_PIN]),
                 lockedBouquets = decodeLockedBouquets(prefs[KEY_LOCKED_BOUQUETS_JSON] ?: ""),
                 lockedItems = decodeLockedItems(prefs[KEY_LOCKED_ITEMS_JSON] ?: ""),
                 autoStartOnBoot = prefs[KEY_AUTO_START_ON_BOOT] ?: false,
@@ -137,6 +157,27 @@ class SettingsStore(private val context: Context) {
             )
         }
 
+    /**
+     * SEC-02 — one-shot migration of a legacy plaintext PIN: if the stored
+     * value has no `v1:` prefix it is encrypted in place. Runs on first
+     * collection of [settings]; after migration the check is a no-op.
+     * Re-reads the value inside `edit` (it may have changed since the
+     * snapshot), and never loses the value — if encryption fails the
+     * plaintext is kept so the PIN still works.
+     */
+    private suspend fun migrateLegacyPin(prefs: Preferences) {
+        val stored = prefs[KEY_PIN] ?: return
+        if (stored.isEmpty() || secureStore.isEncrypted(stored)) return
+        runCatching {
+            context.settingsDataStore.edit { current ->
+                val raw = current[KEY_PIN] ?: return@edit
+                if (raw.isNotEmpty() && !secureStore.isEncrypted(raw)) {
+                    current[KEY_PIN] = secureStore.encryptForStore(raw, raw)
+                }
+            }
+        }.onFailure { Log.w(TAG, "PIN migration failed, keeping plaintext value", it) }
+    }
+
     suspend fun update(transform: (AppSettings) -> AppSettings) {
         // Read current value from the flow is racy; instead read prefs directly.
         context.settingsDataStore.edit { prefs ->
@@ -151,7 +192,7 @@ class SettingsStore(private val context: Context) {
                 epgWindow = prefs[KEY_EPG_WINDOW] ?: "24h",
                 autoResume = prefs[KEY_AUTO_RESUME] ?: false,
                 sleepMinutes = prefs[KEY_SLEEP_MINUTES] ?: 0,
-                pin = prefs[KEY_PIN] ?: "",
+                pin = secureStore.decrypt(prefs[KEY_PIN]),
                 lockedBouquets = decodeLockedBouquets(prefs[KEY_LOCKED_BOUQUETS_JSON] ?: ""),
                 lockedItems = decodeLockedItems(prefs[KEY_LOCKED_ITEMS_JSON] ?: ""),
                 autoStartOnBoot = prefs[KEY_AUTO_START_ON_BOOT] ?: false,
@@ -191,7 +232,9 @@ class SettingsStore(private val context: Context) {
             prefs[KEY_EPG_WINDOW] = next.epgWindow
             prefs[KEY_AUTO_RESUME] = next.autoResume
             prefs[KEY_SLEEP_MINUTES] = next.sleepMinutes
-            prefs[KEY_PIN] = next.pin
+            // SEC-02: the PIN is stored encrypted; on encryption failure
+            // the previously stored value is kept (never plaintext).
+            prefs[KEY_PIN] = secureStore.encryptForStore(next.pin, prefs[KEY_PIN])
             prefs[KEY_LOCKED_BOUQUETS_JSON] = encodeLockedBouquets(next.lockedBouquets)
             prefs[KEY_LOCKED_ITEMS_JSON] = encodeLockedItems(next.lockedItems)
             prefs[KEY_AUTO_START_ON_BOOT] = next.autoStartOnBoot
@@ -225,7 +268,11 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setPin(pin: String) {
-        context.settingsDataStore.edit { prefs -> prefs[KEY_PIN] = pin }
+        // SEC-02: stored encrypted; on encryption failure the previous
+        // value is kept (never plaintext, never lost).
+        context.settingsDataStore.edit { prefs ->
+            prefs[KEY_PIN] = secureStore.encryptForStore(pin, prefs[KEY_PIN])
+        }
     }
 
     /** §4.37 — last watched live channel (null clears it). Read by the
