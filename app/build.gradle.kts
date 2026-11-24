@@ -119,3 +119,79 @@ dependencies {
     // Coroutines.
     implementation(libs.kotlinx.coroutines.android)
 }
+
+// ---------------------------------------------------------------------------
+// Build-error reporter (§4.66b) — Android Studio build failures, sent to the
+// Stream Master crash-report server (Cloudflare Worker + D1) so the coach no
+// longer has to send screenshots of the Build Output.
+// How it works: a Gradle BuildListener runs when ANY Gradle invocation on his
+// PC finishes (Build APK, Sync, ...). On success it does nothing. On failure
+// it POSTs one JSON report to the same Worker endpoint the in-app crash
+// reporter uses (error_type "BuildError"). The report holds the failed task,
+// the failure message and the cause chain — enough to know what broke and
+// where. It does NOT hold the full compiler error list: Gradle does not
+// expose the Build Output text to a build script, so for a generic Kotlin
+// "Compilation error" the screenshot is still needed.
+// Safety: JDK HttpURLConnection only, no new dependency, 5s timeouts, every
+// failure swallowed — a report that fails can never fail the build.
+// ---------------------------------------------------------------------------
+val buildReportVersionName: String = android.defaultConfig.versionName ?: "?"
+val buildReportVersionCode: Int = android.defaultConfig.versionCode ?: 0
+val buildReportGradleVersion: String = gradle.gradleVersion
+
+fun jsonEscapeBuildReport(value: String): String {
+    val out = StringBuilder()
+    for (ch in value) {
+        when (ch) {
+            '\\' -> out.append("\\\\")
+            '"' -> out.append("\\\"")
+            '\n' -> out.append("\\n")
+            '\r' -> out.append("\\r")
+            '\t' -> out.append("\\t")
+            else -> if (ch < ' ') out.append(String.format("\\u%04x", ch.code)) else out.append(ch)
+        }
+    }
+    return out.toString()
+}
+
+fun postBuildReport(url: String, body: String) {
+    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+    try {
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 5000
+        connection.readTimeout = 5000
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        connection.outputStream.use { stream -> stream.write(body.toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        if (code !in 200..299) {
+            try { connection.errorStream?.close() } catch (_: Exception) { }
+        }
+    } finally {
+        connection.disconnect()
+    }
+}
+
+gradle.addListener(object : org.gradle.BuildAdapter() {
+    override fun buildFinished(result: org.gradle.BuildResult) {
+        val failure = result.failure ?: return
+        try {
+            val chain = StringBuilder()
+            var cause: Throwable? = failure
+            var depth = 0
+            while (cause != null && depth < 8) {
+                chain.append(cause.javaClass.simpleName).append(": ")
+                    .append(cause.message ?: "").append("\n")
+                cause = cause.cause
+                depth++
+            }
+            val body = """{"app_version":"${jsonEscapeBuildReport(buildReportVersionName)}","version_code":$buildReportVersionCode,"device_model":"AndroidStudio-PC","android_version":"${jsonEscapeBuildReport("Gradle " + buildReportGradleVersion)}","error_type":"BuildError","message":"${jsonEscapeBuildReport(("Build failed: " + (failure.message ?: "unknown error")).take(1000))}","stack_trace":"${jsonEscapeBuildReport(chain.toString().take(8000))}"}"""
+            postBuildReport(
+                "https://streammaster-crash-reporter.streammaster.workers.dev",
+                body
+            )
+        } catch (_: Exception) {
+            // A failed report must never fail the build.
+        }
+    }
+})
